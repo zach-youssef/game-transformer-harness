@@ -16,7 +16,7 @@ pub struct GameConfig {
 }
 
 impl GameConfig {
-    fn new(config: gth_config::GameConfig) -> Self {
+    pub(crate) fn new(config: gth_config::GameConfig) -> Self {
         let space = gth_config::ActionSpace::new(&config.buttons);
         GameConfig { config, space }
     }

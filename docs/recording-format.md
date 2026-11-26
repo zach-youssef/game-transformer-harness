@@ -44,7 +44,7 @@ and `start.state` against their SHA-1s in `meta.toml`, the frame and step counts
 | `[harness]` | The harness build, `_native.build_info()`: version, git commit and dirty flag, target, profile, rustc. |
 
 The recorder, player, license and check interval are required wherever a recording is made
-(`RecordingInfo`), so none of them is ever a silent default.
+(`RecordingInfo`, `gtharness.record.Record`), so none of them is ever a silent default.
 
 ### inputs.bin
 
@@ -98,11 +98,23 @@ field isn't one. `meta.toml`'s `[core.lock]` is stored as a plain table for the 
   `meta.toml`. Any error in `run` is terminal: the core may have run a frame the recording
   doesn't hold, so later calls, `finish` included, fail with `Error::Failed` and the directory
   stays incomplete.
+- `RetroEnv(record=Record(...))` records every episode, from the end of its reset's script or
+  state load (so the first observation's frames are in it) to the next reset or `close()`, as
+  `<directory>/<game_id>-<UTC time>-<pid>-<n>.gthrec` (`n` numbers the process's
+  recordings); `env.recordings` lists the finished ones. Starting a recording reloads the
+  state (above), so the first frames match the replay rather than an unrecorded run: on a core
+  that repeats its frame, the first observation is blank. It runs through
+  `_native.Core.start_recording` and `finish_recording`, which record every frame `step` and
+  `run_inputs` run. A failed write raises from the `step`, `reset` or `close()` that ran
+  into it and leaves that recording incomplete; the next episode records again. Human play
+  (gth-play, P6) will use the same `Recorder`.
 - `gth_record::Recording::open(dir)` reads and checks a recording;
   `Replayer::load(recording, core_path, content, system_dir)` loads the core with the
   recording's core options, checks the core version, the content (above) and that every RAM
   variable is in the core's memory, and loads the start state. `step()` replays one agent
-  step, `run_to_end()` the rest.
+  step, `run_to_end()` the rest. `_native.Replayer` (`gtharness.record.Replayer`) adds an
+  observation pipeline: its `step()` returns each step's joypad mask, frame count and last
+  frame at any size, crop and rotation.
 
 A 60 fps minute of random actions at frameskip 4 is about 5.5 KB on the test core (1.8 KB of
 inputs, 2 KB of checks, the rest `meta.toml` and `game.toml`). A real core's start state

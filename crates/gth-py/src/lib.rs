@@ -6,6 +6,7 @@ mod config;
 mod core;
 mod errors;
 mod frame;
+mod record;
 mod testing;
 
 use std::collections::BTreeMap;
@@ -16,7 +17,7 @@ use pyo3::prelude::*;
 /// sources differed from it, target triple, cargo profile and rustc version. Every `gth-*`
 /// crate shares the workspace version. Sorted by key, so serialized metadata is stable.
 #[pyfunction]
-fn build_info() -> BTreeMap<&'static str, &'static str> {
+pub(crate) fn build_info() -> BTreeMap<&'static str, &'static str> {
     BTreeMap::from([
         ("version", env!("CARGO_PKG_VERSION")),
         ("git_sha", env!("GTH_GIT_SHA")),
@@ -36,6 +37,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     core::register(module)?;
     errors::register(module)?;
     frame::register(module)?;
+    record::register(module)?;
     testing::register(module)?;
     Ok(())
 }

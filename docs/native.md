@@ -94,8 +94,24 @@ path, so the env imports it from `_native` directly.
   (architecture.md, "One core per process"); later calls raise `ValueError`. Dropping the
   Python object does the same, but only when the garbage collector gets to it, so code that
   loads another core closes the first explicitly.
+- `start_recording(directory, config, game_id, recorder, player, license, checks_every)` and
+  `finish_recording()` wrap a `gth_record::Recorder` (docs/recording-format.md): while one is
+  in progress, `step` and `run_inputs` run through it (each pair is one recorded step), and
+  `reset` and `unserialize` raise `ValueError`, since a state load would break the replay.
+  `close()` leaves an unfinished recording incomplete. A failed write raises from the call
+  that ran into it and drops the recorder, leaving that recording incomplete, so the next
+  `start_recording` works.
 - Methods take `&mut self`, so PyO3 raises `RuntimeError` (a borrow error) if two Python
   threads call one `Core` at once rather than calling into the core concurrently.
+
+## Replayer
+
+`_native.Replayer` (`gth-py/src/record.rs`, re-exported as `gtharness.record.Replayer`) owns
+a `gth_record::Replayer`, which owns its core, and an observation pipeline taking the same
+explicit arguments as `Core`'s. `step()` replays one agent step (GIL released) and returns
+`(joypad mask, frames, observation)`, or `None` at the end; `run_to_end()` verifies the rest without
+rendering. A desync raises `DesyncError`. Like `Core`, it holds the process's one core slot
+until `close()`.
 
 ## GameConfig
 

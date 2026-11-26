@@ -9,8 +9,10 @@ environments are separate processes.
 from __future__ import annotations
 
 import functools
+import itertools
 import os
 import sys
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
@@ -21,6 +23,7 @@ import numpy.typing as npt
 
 from gtharness import _native
 from gtharness.errors import ConfigError
+from gtharness.record import Record
 from gtharness.rewards import REQUIRED_RAM, Reward
 
 Observation = npt.NDArray[np.uint8]
@@ -31,6 +34,9 @@ GAMES_DIR = Path(__file__).resolve().parents[2] / "games"
 """The checkout's ``games/`` directory, the default for `RetroEnv.from_game`."""
 
 _LIBRARY_SUFFIX = {"win32": ".dll", "darwin": ".dylib"}.get(sys.platform, ".so")
+
+_RECORDING_NUMBERS = itertools.count()
+"""Numbers this process's recordings, so their names are unique even within one second."""
 
 
 class RetroEnv(gym.Env[Observation, Action]):
@@ -55,6 +61,12 @@ class RetroEnv(gym.Env[Observation, Action]):
     made, so a read can fail mid-episode only on bytes that don't decode (a BCD variable
     holding a non-BCD byte), and `step` or `reset` then raises `HarnessError` naming it.
 
+    With ``record``, every episode is recorded (docs/recording-format.md): from the end of
+    its reset's script or state load, so the first observation's frames are in it, to the
+    next reset or `close`. `recordings` lists the finished ones. Starting a recording reloads
+    the state, so the first frames match the replay rather than an unrecorded run (a core that
+    repeats its frame shows a blank first observation).
+
     ``info["episode_frame"]`` counts the frames run since the last reset, including the
     reset's own (script and first observation). It is counted here rather than read from the
     core, because gymnasium's ``check_env`` requires the same info after the same seeded reset
@@ -73,6 +85,9 @@ class RetroEnv(gym.Env[Observation, Action]):
             bytes, checked against its SHA-1 in game.toml); None for a game with a reset
             script.
         interpolation: "area" (averages, best for shrinking) or "bilinear".
+        record: where and how to record episodes (`gtharness.record.Record`), or None.
+        game_id: the game's directory under ``games/``, kept in recordings; required with
+            ``record`` (`from_game` passes it).
     """
 
     metadata: dict[str, Any] = {"render_modes": []}  # noqa: RUF012 (gymnasium's convention)
@@ -90,8 +105,12 @@ class RetroEnv(gym.Env[Observation, Action]):
         reward: Reward,
         reset_state: bytes | None,
         interpolation: str = "area",
+        record: Record | None = None,
+        game_id: str | None = None,
     ) -> None:
         super().__init__()
+        if record is not None and not game_id:
+            raise ValueError("record needs the game_id")
         if action_format not in ("dict", "flat"):
             raise ValueError(f'action_format must be "dict" or "flat", not {action_format!r}')
         if (reset_state is None) != (config.reset_state is None):
@@ -118,6 +137,10 @@ class RetroEnv(gym.Env[Observation, Action]):
         self._button_bits = 1 << np.arange(4, dtype=np.uint32)
         self._episode_frames = 0
         self._ram: dict[str, int] = {}
+        self._record = record
+        self._game_id = game_id
+        self.recordings: list[Path] = []
+        """The episodes recorded and finished so far, oldest first."""
         height, width = obs_size
         try:
             self._core = _native.Core(
@@ -168,6 +191,7 @@ class RetroEnv(gym.Env[Observation, Action]):
         core_path: str | os.PathLike[str] | None = None,
         games_dir: str | os.PathLike[str] = GAMES_DIR,
         interpolation: str = "area",
+        record: Record | None = None,
     ) -> RetroEnv:
         """The game ``games_dir/<game_id>/game.toml``, with its files found (docs/roms.md).
 
@@ -219,6 +243,8 @@ class RetroEnv(gym.Env[Observation, Action]):
             reward=reward,
             reset_state=state,
             interpolation=interpolation,
+            record=record,
+            game_id=game_id,
         )
 
     @property
@@ -257,6 +283,7 @@ class RetroEnv(gym.Env[Observation, Action]):
         episodes; `resets_to_load_state` says which one this core gets.
         """
         super().reset(seed=seed)
+        self._finish_recording()
         self._episode_frames = 0
         state = (options or {}).get("state", self._reset_state)
         if state is None:
@@ -265,6 +292,8 @@ class RetroEnv(gym.Env[Observation, Action]):
             self._episode_frames += sum(frames for _, frames in self._reset_inputs)
         else:
             self._core.unserialize(state)
+        if self._record is not None:
+            self._start_recording(self._record)
         observation = self._run(0)
         self._ram, _ = self._core.read_ram(self._config)
         return observation, self._info()
@@ -291,9 +320,14 @@ class RetroEnv(gym.Env[Observation, Action]):
         return self._core.system_info()
 
     def close(self) -> None:
-        """Unloads the core, so another environment can load one in this process."""
-        self._core.close()
-        super().close()
+        """Finishes the recording in progress and unloads the core, so another environment
+        can load one in this process."""
+        try:
+            if not self._core.closed:
+                self._finish_recording()
+        finally:
+            self._core.close()
+            super().close()
 
     def _flat(self, action: Action) -> int:
         """The flat action of ``action`` in this environment's format; ValueError if invalid."""
@@ -324,6 +358,25 @@ class RetroEnv(gym.Env[Observation, Action]):
         observation = self._core.step(self._frameskip, buttons)
         self._episode_frames += self._frameskip
         return observation
+
+    def _start_recording(self, record: Record) -> None:
+        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        number = next(_RECORDING_NUMBERS)
+        name = f"{self._game_id}-{stamp}-{os.getpid()}-{number:04d}.gthrec"
+        self._core.start_recording(
+            Path(record.directory) / name,
+            self._config,
+            self._game_id,
+            record.recorder,
+            record.player,
+            record.license,
+            record.checks_every,
+        )
+
+    def _finish_recording(self) -> None:
+        path = self._core.finish_recording()
+        if path is not None:
+            self.recordings.append(path)
 
     def _info(self) -> dict[str, Any]:
         return {"episode_frame": self._episode_frames, "ram": dict(self._ram)}

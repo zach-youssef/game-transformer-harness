@@ -62,6 +62,32 @@ pub enum RecorderKind {
     Converted,
 }
 
+impl RecorderKind {
+    pub const ALL: [RecorderKind; 4] = [
+        RecorderKind::Human,
+        RecorderKind::Policy,
+        RecorderKind::Scripted,
+        RecorderKind::Converted,
+    ];
+
+    /// The name in `meta.toml`.
+    pub fn name(self) -> &'static str {
+        match self {
+            RecorderKind::Human => "human",
+            RecorderKind::Policy => "policy",
+            RecorderKind::Scripted => "scripted",
+            RecorderKind::Converted => "converted",
+        }
+    }
+
+    /// The kind named `name` in `meta.toml`, or `None`.
+    pub fn from_name(name: &str) -> Option<RecorderKind> {
+        RecorderKind::ALL
+            .into_iter()
+            .find(|kind| kind.name() == name)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CoreMeta {
@@ -120,5 +146,24 @@ impl Meta {
 
     pub fn to_toml(&self) -> String {
         toml::to_string(self).expect("every field serializes to TOML")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recorder_names_are_the_meta_toml_names() {
+        #[derive(Serialize)]
+        struct One {
+            recorder: RecorderKind,
+        }
+        for kind in RecorderKind::ALL {
+            let text = toml::to_string(&One { recorder: kind }).unwrap();
+            assert_eq!(text.trim(), format!("recorder = \"{}\"", kind.name()));
+            assert_eq!(RecorderKind::from_name(kind.name()), Some(kind));
+        }
+        assert_eq!(RecorderKind::from_name("Human"), None);
     }
 }
