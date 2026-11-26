@@ -42,7 +42,7 @@ table and RAM variable key (the other forms of `reset` and `content`, a savestat
      at known points (the score after a kill, the lives after a death, the stage after a
      clear), from the end of the reset script on, where a BCD variable must already hold
      valid digits. Pin those checks in a ROM test (docs/testing.md, "ROM tests"), which
-     skips on CI. Finding the addresses in the first place is RAM search (P4).
+     skips on CI. Finding the addresses in the first place is RAM search (below).
 6. **Test**: at least a ROM test that makes the game's `RetroEnv` from reset and checks the
    RAM variables and episode end as above. Besides `rom` it needs the real core and the data
    directory: the first such test adds the fixture that finds them and skips with a reason
@@ -206,7 +206,7 @@ read can fail only on a `bcd` variable holding a byte that isn't BCD, and then `
 so pick BCD variables (and reset script end points) where the game always keeps them valid:
 some games write garbage to the score during boot or attract screens.
 
-A game under discovery (RAM search, P4) can use a stub config: no `[ram]`, `terminate = "0"`
+A game under discovery ("RAM search", below) can use a stub config: no `[ram]`, `terminate = "0"`
 and a reward function that doesn't read RAM.
 
 ### Episode
@@ -222,6 +222,63 @@ isn't 0. `||` binds loosest, then `&&`, then the comparisons, as in C, but a com
 can't take another as an operand (`a < b == c` is an error: parenthesize). Every name must
 be a `[ram]` variable. A condition has at most 256 tokens and nests unary operators and
 parentheses at most 32 deep.
+
+## RAM search
+
+RAM search finds a game's RAM variables and checks them, the way an emulator's cheat search
+does: snapshot a memory, play a little, keep only the candidates whose value changed as
+expected, repeat until few are left. It is a developer tool for writing `[ram]` tables;
+game RAM is never a policy's input (architecture.md, "Observations and RAM").
+
+A search covers one **space**: a core memory (`system_ram`, `save_ram`, `video_ram`, `rtc`),
+by offset, or `memory_map`, every memory map region that isn't constant (ROM), by emulated
+address. It reads each candidate through one or more **views**, all searched at once:
+
+| View | Reads |
+|---|---|
+| `le1`, `bcd1` | one byte, unsigned or packed BCD |
+| `le2`, `be2`, `bcd2`, `bcd2-swap16` | two bytes |
+| `le4`, `be4`, `bcd4`, `le4-swap16`, `be4-swap16`, `bcd4-swap16` | four bytes |
+
+The encodings are those of RAM variables (above, "RAM variables"); `-swap16` swaps the bytes
+of each 16-bit word first (FBNeo's 68k RAM) and is searched only at even offsets (even
+addresses in `memory_map`). `be1` and `le2-swap16` are accepted but repeat `le1` and `be2`;
+`all` names the twelve above. A BCD candidate is dropped whenever its bytes aren't BCD.
+
+A **relation** compares each candidate's value with its value at the previous snapshot:
+`equal`, `changed`, `increased`, `decreased`, or `equals` a given value (the number on
+screen). Every filter takes a new snapshot, so the next one compares with it.
+
+### Scripts
+
+A search script (`gth_config::SearchScript`) plays a game from its reset and narrows the
+candidates step by step, so a search can be rerun after a core update or kept beside the
+game as the evidence for its `[ram]` table:
+
+```toml
+space = "system_ram"
+views = ["all"]           # or a list: ["bcd4", "le2"]
+
+[[step]]                  # hold shot for 300 frames: the score went up
+press = ["a"]
+frames = 300
+expect = "increased"
+
+[[step]]                  # wait without shooting: it stayed
+frames = 120
+expect = "equal"
+
+[[step]]                  # the score on screen now
+expect = "equals"
+value = 1500
+```
+
+Each step, in order: loads `state`, a savestate file relative to the script's directory, if
+given; holds `press` (RetroPad buttons, as in a reset script) for `frames` frames; then
+filters by `expect` (and `value`, for `equals` only). A step without `expect` takes a new
+snapshot without filtering. For lives, use pairs of savestates made just before and just
+after a death: a `state` step with the first, then one with the second and `expect =
+"decreased"`, once per pair.
 
 ## `cores.lock`
 

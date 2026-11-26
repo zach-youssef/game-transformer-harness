@@ -17,6 +17,23 @@ pub enum MemoryId {
 }
 
 impl MemoryId {
+    pub const ALL: [MemoryId; 4] = [
+        MemoryId::SystemRam,
+        MemoryId::SaveRam,
+        MemoryId::VideoRam,
+        MemoryId::Rtc,
+    ];
+
+    /// Its name in `game.toml` (`system_ram`, ...).
+    pub fn name(self) -> &'static str {
+        match self {
+            MemoryId::SystemRam => "system_ram",
+            MemoryId::SaveRam => "save_ram",
+            MemoryId::VideoRam => "video_ram",
+            MemoryId::Rtc => "rtc",
+        }
+    }
+
     /// The `RETRO_MEMORY_*` id.
     pub fn id(self) -> u32 {
         match self {
@@ -47,6 +64,19 @@ pub enum Encoding {
     Le,
     /// Unsigned big-endian.
     Be,
+}
+
+impl Encoding {
+    pub const ALL: [Encoding; 3] = [Encoding::Bcd, Encoding::Le, Encoding::Be];
+
+    /// Its name in `game.toml` (`bcd`, `le`, `be`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Encoding::Bcd => "bcd",
+            Encoding::Le => "le",
+            Encoding::Be => "be",
+        }
+    }
 }
 
 /// One named RAM variable. Built only through validation, so its fields always agree.

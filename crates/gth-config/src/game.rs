@@ -196,7 +196,7 @@ fn check_file_name(what: &str, name: &str) -> Result<(), String> {
 
 /// A relative path of plain names joined by `/` (no `..`, no root, no drive), so it stays
 /// inside the directory it is joined to.
-fn check_relative_path(what: &str, path: &str) -> Result<(), String> {
+pub(crate) fn check_relative_path(what: &str, path: &str) -> Result<(), String> {
     (path.split('/'))
         .try_for_each(|name| check_file_name(what, name))
         .map_err(|_| format!("{what} {path:?} must be a plain file name or relative path"))

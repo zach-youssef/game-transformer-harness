@@ -12,7 +12,7 @@ native calls, and the reward function) and only orchestrates.
 | `gth-core` | The libretro host: load a core dynamic library, answer its callbacks, run frames (including frame skip), savestates, RAM and memory-map reads. | Python, windowing, audio output |
 | `gth-frame` | Per-frame pixel ops: pixel format to RGB8, crop, tate rotation, resize to the model size, all into caller-provided buffers. | Anything core-specific |
 | `gth-record` | The recording format (docs/recording-format.md): `Recorder` writes the start state, per-frame joypad masks and desync checks; `Recording` and `Replayer` read and re-run them. | Frame storage (frames are re-rendered by replaying); writing training shards (spec only, P7) |
-| `gth-config` | Config types (serde + TOML): `game.toml`, `cores.lock`, the action space, RAM variables; finding and auditing the user's ROM and BIOS files by hash. | Emulation and frame data |
+| `gth-config` | Config types (serde + TOML): `game.toml`, `cores.lock`, the action space, RAM variables, RAM search scripts and their views and relations; finding and auditing the user's ROM and BIOS files by hash. | Emulation and frame data |
 | `gth-py` | The PyO3 extension module `gtharness._native`: glue that converts types and errors. | Logic: it goes in the crate it belongs to |
 | `gth-libretro-sys` | The FFI subset of `libretro.h` we use, hand-written (docs/libretro.md). | Logic, safe wrappers (those are `gth-core`'s) |
 | `gth-testcore` | A tiny deterministic libretro core (a `cdylib`) that tests and CI load instead of real cores and ROMs. | Dependencies on the host crates (it may use `gth-libretro-sys`) |
