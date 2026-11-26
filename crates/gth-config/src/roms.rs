@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
+use sha2::Sha256;
 
 use crate::{Error, FileSpec, GameConfig, Hashes, Result, StateFile, invalid};
 
@@ -70,8 +71,17 @@ pub(crate) fn hex(digest: &[u8]) -> String {
 
 /// The SHA-1 of a file, as 40 lowercase hex digits.
 pub fn sha1_file(path: &Path) -> Result<String> {
+    digest_file::<Sha1>(path)
+}
+
+/// The SHA-256 of a file, as 64 lowercase hex digits (core builds, `cores.lock`).
+pub fn sha256_file(path: &Path) -> Result<String> {
+    digest_file::<Sha256>(path)
+}
+
+fn digest_file<D: Digest>(path: &Path) -> Result<String> {
     let mut file = std::fs::File::open(path).map_err(|error| io_error(path, error))?;
-    let mut hasher = Sha1::new();
+    let mut hasher = D::new();
     let mut buffer = vec![0; 1 << 20];
     loop {
         let read = file
