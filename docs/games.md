@@ -284,6 +284,29 @@ snapshot without comparing (it drops only BCD candidates that stopped being BCD)
 lives, use pairs of savestates made just before and just after a death: a `state` step with
 the first, then one with the second and `expect = "decreased"`, once per pair.
 
+### Running a search
+
+`gth ram-search <game> <data_dir> <script.toml>` loads the game as `RetroEnv.from_game` does
+(`--rom-dir`, `--core-path` and `--games-dir` as there), resets it, runs the script and prints
+the candidate counts (at the start, then after each step) and the first `--limit` (20)
+candidates, each as a `[ram]` table to paste and rename. `--watch FRAMES` then runs that many
+frames (at most 108000, and 10 million values in all) with no button held and prints the
+candidates' values after each, which tells a score apart from a timer; `--json` prints it
+all as JSON. Exit status: 0 when candidates are left, 1 when none are, 2 on an error (a bad
+script, a missing savestate, a watch over its caps).
+
+From Python, `gtharness.ramsearch.run_script(env, path)` runs a script on an environment and
+returns the `_native.RamSearch` (docs/native.md), which can keep filtering by hand (`filter`,
+`rebase`), list `candidates(limit)` and `watch` them over given inputs. The search runs in
+Rust; over a large memory map, build the extension with `maturin develop --release`.
+
+### Checking variables in tests
+
+`gtharness.ramsearch.assert_ram(info["ram"], name, expected)` asserts that a RAM variable
+equals a value, or satisfies a predicate, after known play: a game test plays a script from
+the reset (or a savestate) and checks the score or lives it should leave. Tests that need the
+game's ROM skip without it (docs/testing.md).
+
 ## `cores.lock`
 
 The pinned build of each core, parsed by `gth_config::CoresLock`. The schema is ready, but

@@ -41,7 +41,8 @@ def test_stub_parameters_match_module():
 
 
 def test_stub_classes_match_module():
-    """Classes with members (not the exceptions): the same public members and parameters."""
+    """Classes with members (not the exceptions): the same public members and parameters, and
+    the special methods the stub lists."""
     for name, node in stub_definitions().items():
         members = [m for m in getattr(node, "body", []) if isinstance(m, ast.FunctionDef)]
         if not members:
@@ -49,7 +50,9 @@ def test_stub_classes_match_module():
         cls = getattr(_native, name)
         stub = {m.name: m for m in members if m.name != "__new__"}
         native = {n for n in dir(cls) if not n.startswith("_")}
-        assert set(stub) == native, name
+        assert {n for n in stub if not n.startswith("_")} == native, name
+        # Special methods (__len__) in the stub must exist too; the class has many others.
+        assert all(hasattr(cls, n) for n in stub), name
         for member, method in stub.items():
             if any(ast.unparse(d) == "property" for d in method.decorator_list):
                 assert inspect.isdatadescriptor(getattr(cls, member)), f"{name}.{member}"

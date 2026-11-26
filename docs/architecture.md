@@ -25,7 +25,8 @@ The Python package `gtharness` (in `python/gtharness/`) orchestrates:
 | `env.py` | `RetroEnv`, the gymnasium environment, and `RetroEnv.from_game` (below) |
 | `rewards.py` | Reward functions on RAM variables (`score_delta`), and `REQUIRED_RAM`, the variables each built-in one reads, checked when an env is made |
 | `record.py` | `Record` (where and how `RetroEnv` records) and `Replayer` (docs/recording-format.md) |
-| `cli.py` | The `gth` command (`gth audit`, docs/roms.md) |
+| `ramsearch.py` | RAM search on an environment's core, `assert_ram` for game tests, and `gth ram-search` (docs/games.md, "RAM search"); a developer tool, never policy input |
+| `cli.py` | The `gth` command (`gth audit`, docs/roms.md; `gth ram-search`) |
 | `errors.py` | The exceptions, re-exported from `_native` (docs/native.md, "Errors") |
 | `_native.pyi` | Type stubs of the extension module (docs/native.md) |
 
@@ -101,6 +102,9 @@ RAM variables (docs/games.md) feed only:
 - the episode end, the game's `episode.terminate` condition;
 - `info["ram"]`, for logging and analysis. It must not be fed to a policy, and nothing in the
   harness does.
+
+RAM search (`gtharness.ramsearch`, docs/games.md) is how a game's RAM variables are found
+and checked; it is a developer tool and reads memory only for that.
 
 `RetroEnv.from_game(game_id, data_dir, ...)` builds the environment from
 `games/<game_id>/game.toml`: it finds the content by SHA-1 in the ROM directory and the rest

@@ -6,6 +6,7 @@ mod config;
 mod core;
 mod errors;
 mod frame;
+mod ramsearch;
 mod record;
 mod testing;
 
@@ -37,6 +38,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     core::register(module)?;
     errors::register(module)?;
     frame::register(module)?;
+    ramsearch::register(module)?;
     record::register(module)?;
     testing::register(module)?;
     Ok(())

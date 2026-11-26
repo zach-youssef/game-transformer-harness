@@ -1,4 +1,5 @@
-"""The ``gth`` command line. ``gth audit``: the ROM audit (docs/roms.md, "Auditing")."""
+"""The ``gth`` command line. ``gth audit``: the ROM audit (docs/roms.md, "Auditing");
+``gth ram-search``: RAM search (docs/games.md, "RAM search")."""
 
 from __future__ import annotations
 
@@ -9,7 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from gtharness import _native
+from gtharness import _native, ramsearch
 from gtharness.env import GAMES_DIR
 from gtharness.errors import ConfigError
 
@@ -88,7 +89,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--game", action="append", dest="games", help="audit only this game (repeatable)"
     )
     audit_parser.add_argument("--json", action="store_true", help="print the report as JSON")
+    ramsearch.add_parser(commands)
     args = parser.parse_args(argv)
+    if args.command == "ram-search":
+        return ramsearch.main(args)
 
     try:
         rom_dir = args.rom_dir if args.rom_dir is not None else _native.rom_dir()

@@ -143,6 +143,8 @@ class RetroEnv(gym.Env[Observation, Action]):
         """The episodes recorded and finished so far, oldest first."""
         height, width = obs_size
         try:
+            # Private, so the policy-facing API offers no core; gtharness.ramsearch, a
+            # developer tool, drives it directly.
             self._core = _native.Core(
                 core_path,
                 content_path,

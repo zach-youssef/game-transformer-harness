@@ -12,8 +12,9 @@ Read this before adding or changing anything it exports.
   name or a function's parameter names differ between the stub and the module.
 - Python code imports the exceptions from `gtharness.errors` and `Replayer` from
   `gtharness.record`, the modules that re-export them, never from `_native`. Classes and
-  functions with no re-export (`Core`, `GameConfig`, `rom_dir`, `user_config_path`) are used
-  from `_native` directly, by the package's own modules (`env.py`, `cli.py`) and tests.
+  functions with no re-export (`Core`, `GameConfig`, `RamSearch`, `rom_dir`,
+  `user_config_path`) are used from `_native` directly, by the package's own modules
+  (`env.py`, `cli.py`, `ramsearch.py`) and tests.
 - Test hooks, which let pytest drive a convention before a real binding uses it, have
   underscore names and live in `gth-py/src/testing.rs`. Only `tests/` calls them.
 
@@ -128,8 +129,22 @@ the file checks `find_content(rom_dir)`, `missing_parents(content)` and
 `missing_bios(system_dir)`. `rom_dir()` and
 `user_config_path()` are module functions (docs/roms.md).
 
+## RamSearch
+
+`_native.RamSearch` (`gth-py/src/ramsearch.rs`) owns a `gth_core::RamSearch` (docs/games.md,
+"RAM search") and no core: every method that reads memory takes the `Core` to search, which
+must be the one it started on (the memory layout is checked). Spaces, views and relations
+are passed as their names and parsed by `gth-config`, a bad name raising `ValueError`.
+`filter`, `rebase`, `watch` and `run_script` release the GIL; `watch(core, inputs, limit)`
+and `run_script(core, script_path)` run frames outside the recorder, so they raise
+`ValueError` while the core records, like `reset`. `candidates(limit)` returns dicts (view,
+location, size, encoding, swap16, value), and `ram_search_views()` lists the views `"all"`
+expands to. `gtharness.ramsearch` wraps it for environments and is its only user besides
+tests.
+
 `tests/test_native_stubs.py` also checks classes: their public members and each method's
-parameter names must match the stub.
+parameter names must match the stub, and special methods the stub lists (`__len__`) must
+exist.
 
 ## GIL
 

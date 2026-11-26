@@ -91,12 +91,13 @@ fn filter(name: &str) -> errors::Result<gth_frame::Filter> {
 }
 
 impl Core {
-    fn core(&mut self) -> errors::Result<&mut gth_core::Core> {
+    pub(crate) fn core(&mut self) -> errors::Result<&mut gth_core::Core> {
         self.core.as_mut().ok_or_else(closed)
     }
 
-    /// The core, unless a recording is in progress: loading a state would break it.
-    fn core_not_recording(&mut self) -> errors::Result<&mut gth_core::Core> {
+    /// The core, unless a recording is in progress: loading a state, or running frames outside
+    /// the recorder, would break it.
+    pub(crate) fn core_not_recording(&mut self) -> errors::Result<&mut gth_core::Core> {
         if self.recorder.is_some() {
             return Err(PyValueError::new_err("finish the recording first").into());
         }
