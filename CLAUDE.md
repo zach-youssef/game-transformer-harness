@@ -7,6 +7,8 @@ Headless libretro cores behind a Python gymnasium environment, with all per-fram
   where hot code lives. Read before adding code anywhere.
 - [docs/development.md](docs/development.md): uv, maturin and cargo commands, CI, the shared
   `CARGO_TARGET_DIR`.
+- [docs/testing.md](docs/testing.md): where tests go, CPU tests in CI, ROM tests that skip,
+  GPU tests on TheaterPC, per-commit checks. Read before writing a test.
 - [docs/native.md](docs/native.md): the `_native` binding conventions and type stubs. Read
   before touching `gth-py` or `_native.pyi`.
 - [docs/libretro.md](docs/libretro.md): the libretro FFI subset in `gth-libretro-sys`, how to

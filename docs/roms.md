@@ -115,12 +115,9 @@ directory (the git-ignored `data/` in a checkout, or anywhere else):
 
 ## Tests
 
-Tests that need a user's ROM take the `rom` fixture (`tests/conftest.py`): `rom(game_id)`
-returns the game's content path, found as above, and skips the test with a reason when the
-ROM directory is unset or the file isn't in it. A `GTH_ROM_DIR` (or `rom_dir`) that names a
-directory that doesn't exist is a misconfiguration, not a missing ROM: the fixture raises
-`ConfigError` rather than skipping, so the mistake is seen. Tests of the lookup itself use
-`games/testcore`, whose files the `testcore_data` fixture writes to a temporary directory.
+Tests that need a user's ROM take the `rom` fixture, which skips without the ROM
+(docs/testing.md, "ROM tests"). Tests of the lookup itself use `games/testcore`, whose files
+the `testcore_data` fixture writes to a temporary directory.
 
 ## Local copies
 
