@@ -1,16 +1,18 @@
 //! Game and core config types (serde, TOML): `game.toml` (docs/games.md), `cores.lock`, RAM
-//! variables and the episode condition. Parsing validates everything it can without a core,
-//! so a config that loads is one the harness can use.
+//! variables, the episode condition and the action space (docs/actions.md). Parsing validates
+//! everything it can without a core, so a config that loads is one the harness can use.
 
+mod actions;
 mod condition;
 mod game;
 mod lock;
 mod ram;
 
+pub use actions::{Action, ActionSpace, Direction, Gamepad};
 pub use condition::Condition;
 pub use game::{
-    Crop, Episode, FileSpec, GameConfig, Member, Orientation, Reset, ResetStep, RetroButton, Slot,
-    StateFile,
+    Crop, Episode, FileSpec, GameConfig, Hashes, Member, Orientation, Reset, ResetStep,
+    RetroButton, Slot, StateFile,
 };
 pub use lock::{CoreLock, CoresLock};
 pub use ram::{Encoding, Location, MemoryId, RamVar};
