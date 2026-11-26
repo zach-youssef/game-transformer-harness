@@ -1,7 +1,7 @@
 """The ``gth`` command line. ``gth audit``: the ROM audit (docs/roms.md, "Auditing");
 ``gth ram-search``: RAM search (docs/games.md, "RAM search"); ``gth export-shards``: training
 shards (docs/recording-format.md, "Training shards"); ``gth cores``: the pinned core builds
-(docs/cores.md)."""
+(docs/cores.md); ``gth bench``: benchmarks of real cores (docs/performance.md)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from gtharness import _native, cores, ramsearch, shards
+from gtharness import _native, bench, cores, ramsearch, shards
 from gtharness.env import GAMES_DIR
 from gtharness.errors import ConfigError
 
@@ -93,12 +93,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     audit_parser.add_argument("--json", action="store_true", help="print the report as JSON")
     ramsearch.add_parser(commands)
     shards.add_parser(commands)
+    bench.add_parser(commands)
     _add_cores_parser(commands)
     args = parser.parse_args(argv)
     if args.command == "ram-search":
         return ramsearch.main(args)
     if args.command == "export-shards":
         return shards.main(args)
+    if args.command == "bench":
+        return bench.main(args)
     if args.command == "cores":
         return _cores_main(args)
 

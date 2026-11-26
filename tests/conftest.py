@@ -4,6 +4,7 @@ core (docs/testing.md, "ROM tests") and the test core's game files."""
 
 import json
 import os
+import struct
 import subprocess
 import sys
 import zipfile
@@ -108,3 +109,21 @@ def testcore_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     with zipfile.ZipFile(system / "gth" / "gth_testcore_bios.zip", "w") as bios:
         bios.writestr("bios.bin", TESTCORE_BIOS)
     return tmp_path / "data"
+
+
+@pytest.fixture
+def zstd_raw_frame() -> Callable[[bytes], bytes]:
+    """``zstd_raw_frame(data)``: ``data`` as a zstd frame, for tests that rewrite a
+    recording's files (Python 3.12 has no zstd module)."""
+    return _zstd_raw_frame
+
+
+def _zstd_raw_frame(data: bytes) -> bytes:
+    """``data`` as a zstd frame of raw (uncompressed) blocks (RFC 8878): single segment, a
+    4-byte content size, no checksum."""
+    frame = struct.pack("<IBI", 0xFD2FB528, 0b1010_0000, len(data))
+    blocks = [data[i : i + 128 * 1024] for i in range(0, len(data), 128 * 1024)] or [b""]
+    for i, block in enumerate(blocks):
+        last = int(i == len(blocks) - 1)
+        frame += (len(block) << 3 | last).to_bytes(3, "little") + block
+    return frame

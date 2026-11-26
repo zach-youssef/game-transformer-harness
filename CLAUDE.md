@@ -24,6 +24,8 @@ Headless libretro cores behind a Python gymnasium environment, with all per-fram
 - [docs/roms.md](docs/roms.md): before touching ROMs, BIOS or cores, or tests that use them.
 - [docs/cores.md](docs/cores.md): the pinned core builds (`cores.lock`, `gth cores`, the cores
   workflow) and how to bump a pin.
+- [docs/performance.md](docs/performance.md): `gth bench` (speed, savestates, determinism on
+  real cores), the measured numbers per machine and the P5 batching decision.
 
 Rules that apply everywhere:
 

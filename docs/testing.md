@@ -11,12 +11,13 @@ TheaterPC only.
 | A crate's logic | Unit tests in the crate (`#[cfg(test)]` modules, or `src/tests.rs`) | `cargo test` |
 | A crate against a loaded core | `crates/<crate>/tests/testcore.rs`, loading `gth-testcore` through `gth_test_support::testcore_path()` | `cargo test` |
 | `_native` bindings (`gth-py`, which has no Rust tests) | `tests/test_native_*.py` | pytest |
-| The Python package: env, recording, shards, CLI, game configs | `tests/test_env.py`, `test_record.py`, `test_shards.py`, `test_cli.py`, `test_games.py` | pytest |
+| The Python package: env, recording, shards, CLI, game configs, benchmark | `tests/test_env.py`, `test_record.py`, `test_shards.py`, `test_cli.py`, `test_games.py`, `test_bench.py` | pytest |
 | A game on its real core and the user's ROM (skips without them) | `tests/test_<game-id>.py`, e.g. `test_gunhed.py` | pytest |
 
 Shared pytest fixtures are in `tests/conftest.py`: `testcore_path` (the built test core),
-`rom` and `core` (below) and `testcore_data` (the files `games/testcore/game.toml` names,
-written to a temporary directory). The test core is deterministic, so tests assert exact frames, RAM
+`rom` and `core` (below), `testcore_data` (the files `games/testcore/game.toml` names,
+written to a temporary directory) and `zstd_raw_frame` (bytes as a zstd frame, for rewriting
+a recording's files). The test core is deterministic, so tests assert exact frames, RAM
 values and hashes rather than ranges (docs/libretro.md, "Test core").
 
 - **One core per process** (architecture.md): pytest runs in one process, so every test that

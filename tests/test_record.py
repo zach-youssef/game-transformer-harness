@@ -6,7 +6,7 @@ import contextlib
 import hashlib
 import struct
 import tomllib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import numpy as np
@@ -132,7 +132,11 @@ def test_episodes_are_recorded_and_replay_the_same_frames(
 
 
 def test_a_tampered_input_raises_desync_error_at_its_frame(
-    testcore_path: Path, testcore_data: Path, content: Path, tmp_path: Path
+    testcore_path: Path,
+    testcore_data: Path,
+    content: Path,
+    tmp_path: Path,
+    zstd_raw_frame: Callable[[bytes], bytes],
 ):
     paths, _, masks = play(testcore_path, testcore_data, record(tmp_path, checks_every=1), 1, 100)
     # Rewrite inputs.bin (as an uncompressed zstd frame) with A toggled on frame 151.
@@ -149,17 +153,6 @@ def test_a_tampered_input_raises_desync_error_at_its_frame(
         with pytest.raises(DesyncError, match=f"frame {tampered}: RAM variable score"):
             replay.run_to_end()
         assert replay.frame == tampered
-
-
-def zstd_raw_frame(data: bytes) -> bytes:
-    """``data`` as a zstd frame of raw (uncompressed) blocks (RFC 8878): single segment, a
-    4-byte content size, no checksum."""
-    frame = struct.pack("<IBI", 0xFD2FB528, 0b1010_0000, len(data))
-    blocks = [data[i : i + 128 * 1024] for i in range(0, len(data), 128 * 1024)] or [b""]
-    for i, block in enumerate(blocks):
-        last = int(i == len(blocks) - 1)
-        frame += (len(block) << 3 | last).to_bytes(3, "little") + block
-    return frame
 
 
 def test_replay_refuses_other_content(
