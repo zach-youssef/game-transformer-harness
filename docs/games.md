@@ -232,7 +232,11 @@ game RAM is never a policy's input (architecture.md, "Observations and RAM").
 
 A search covers one **space**: a core memory (`system_ram`, `save_ram`, `video_ram`, `rtc`),
 by offset, or `memory_map`, every memory map region that isn't constant (ROM), by emulated
-address. It reads each candidate through one or more **views**, all searched at once:
+address; a mirror (the same memory mapped at several addresses) is searched once, at its
+lowest address. Addresses read as `[ram]` variables do, through the first region registered
+that holds them, so if a core registered other memory over that lowest address first, the
+search reads that memory there and can miss a variable held only in the mirror (no known core
+does this). It reads each candidate through one or more **views**, all searched at once:
 
 | View | Reads |
 |---|---|
@@ -276,9 +280,9 @@ value = 1500
 Each step, in order: loads `state`, a savestate file relative to the script's directory, if
 given; holds `press` (RetroPad buttons, as in a reset script) for `frames` frames; then
 filters by `expect` (and `value`, for `equals` only). A step without `expect` takes a new
-snapshot without filtering. For lives, use pairs of savestates made just before and just
-after a death: a `state` step with the first, then one with the second and `expect =
-"decreased"`, once per pair.
+snapshot without comparing (it drops only BCD candidates that stopped being BCD). For
+lives, use pairs of savestates made just before and just after a death: a `state` step with
+the first, then one with the second and `expect = "decreased"`, once per pair.
 
 ## `cores.lock`
 

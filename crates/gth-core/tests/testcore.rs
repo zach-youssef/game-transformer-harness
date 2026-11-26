@@ -386,3 +386,184 @@ save = { memory = "save_ram", offset = 0, size = 1, encoding = "le" }
     let error = core.check_ram_vars(ram).unwrap_err();
     assert!(matches!(error, Error::Ram { .. }), "{error}");
 }
+
+/// The candidates as `(location, view, value)`, for exact comparisons.
+fn candidates(search: &gth_core::RamSearch) -> Vec<(gth_config::Location, String, i64)> {
+    (search.candidates())
+        .map(|c| (c.location, c.view.to_string(), c.value))
+        .collect()
+}
+
+fn script(text: &str) -> gth_config::SearchScript {
+    gth_config::SearchScript::parse(text, "test script").unwrap()
+}
+
+#[test]
+fn ram_search_finds_the_bcd_score_from_a_scripted_session() {
+    use gth_config::{Location, MemoryId};
+    let _serial = serial();
+    let dir = tempdir("ramsearch-score");
+    let content = dir.join("seed.gthc");
+    std::fs::write(&content, b"seed").unwrap();
+    // With content the PRNG changes RAM bytes 4..8 every frame, which `equal` drops.
+    let mut core = load(Some(&content));
+    let steps = r#"
+[[step]]
+press = ["a"]
+frames = 150
+expect = "increased"
+[[step]]
+frames = 60
+expect = "equal"
+[[step]]
+press = ["a"]
+frames = 7
+expect = "increased"
+[[step]]
+expect = "equals"
+value = 157
+"#;
+    let system_ram = |offset| Location::Memory {
+        memory: MemoryId::SystemRam,
+        offset,
+    };
+    let spaces: [(&str, &dyn Fn(usize) -> Location); 2] = [
+        ("system_ram", &system_ram),
+        ("memory_map", &Location::Address),
+    ];
+    for (space, at) in spaces {
+        core.reset();
+        let text = format!("space = \"{space}\"\nviews = [\"all\"]\n{steps}");
+        let (search, counts) = gth_core::RamSearch::run_script(&mut core, &script(&text), &dir)
+            .expect("run the script");
+        assert!(
+            counts.windows(2).all(|pair| pair[0] >= pair[1]),
+            "{counts:?}"
+        );
+        // The score, 00 00 01 57: all four bytes as BCD, and the low two (equal while the
+        // score is below 10000).
+        assert_eq!(
+            candidates(&search),
+            [(at(2), "bcd2".into(), 157), (at(0), "bcd4".into(), 157)],
+            "{space}"
+        );
+        let bcd4 = search.candidates().last().unwrap();
+        assert_eq!(core.read_ram("score", &bcd4.ram_var()).unwrap(), 157);
+        // Watching the score (bcd2 first) while A is held shows it count up, frame by frame.
+        let values = search.watch(&mut core, &[(A, 3)], 1).unwrap();
+        assert_eq!(values, [[Some(158)], [Some(159)], [Some(160)]]);
+    }
+    drop(core);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn ram_search_steps_without_expect_drop_bcd_that_stops_decoding() {
+    let _serial = serial();
+    let dir = tempdir("ramsearch-rebase");
+    let content = dir.join("seed.gthc");
+    std::fs::write(&content, b"seed").unwrap();
+    let mut core = load(Some(&content));
+    // The PRNG bytes change every frame, so some stop being BCD by the last step.
+    let text = r#"
+space = "system_ram"
+views = ["bcd1"]
+[[step]]
+frames = 30
+[[step]]
+frames = 30
+"#;
+    let (search, counts) = gth_core::RamSearch::run_script(&mut core, &script(text), &dir).unwrap();
+    assert!(counts[2] < counts[0], "{counts:?}");
+    assert_eq!(
+        candidates(&search).len(),
+        counts[2],
+        "every candidate decodes"
+    );
+    drop(core);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn ram_search_narrows_on_savestate_pairs() {
+    use gth_config::{Location, MemoryId};
+    let _serial = serial();
+    let dir = tempdir("ramsearch-states");
+    let mut core = load(None);
+    core.run_frames(3, A);
+    std::fs::write(dir.join("after.state"), core.serialize().unwrap()).unwrap();
+    core.run_frames(2, A);
+    std::fs::write(dir.join("before.state"), core.serialize().unwrap()).unwrap();
+    core.run_frames(10, A);
+    // Like a death: the value drops from `before` (5) to `after` (3).
+    let text = r#"
+space = "system_ram"
+views = ["bcd4"]
+[[step]]
+state = "before.state"
+[[step]]
+state = "after.state"
+expect = "decreased"
+[[step]]
+expect = "equals"
+value = 3
+"#;
+    let (search, counts) = gth_core::RamSearch::run_script(&mut core, &script(text), &dir).unwrap();
+    // Every window holding byte 3 decreased (5 -> 3, 500 -> 300, ...); only one reads 3.
+    assert_eq!(counts, [253, 253, 4, 1]);
+    let offset0 = Location::Memory {
+        memory: MemoryId::SystemRam,
+        offset: 0,
+    };
+    assert_eq!(candidates(&search), [(offset0, "bcd4".into(), 3)]);
+
+    let missing = text.replace("after.state", "missing.state");
+    let error = gth_core::RamSearch::run_script(&mut core, &script(&missing), &dir)
+        .err()
+        .expect("a missing savestate fails");
+    assert!(matches!(error, Error::RamSearch { .. }), "{error}");
+    assert!(error.to_string().contains("missing.state"), "{error}");
+    drop(core);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn ram_search_needs_the_memory() {
+    let _serial = serial();
+    let mut core = load(None);
+    let views = ["bcd4".parse().unwrap()];
+    let space = gth_config::Space::Memory(gth_config::MemoryId::SaveRam);
+    let error = gth_core::RamSearch::new(&mut core, space, &views)
+        .err()
+        .expect("the test core has no save RAM");
+    assert_eq!(
+        error.to_string(),
+        "RAM search: the core exposes no save_ram"
+    );
+    let error = gth_core::RamSearch::new(&mut core, space, &[])
+        .err()
+        .expect("no views");
+    assert!(error.to_string().contains("views"), "{error}");
+
+    // A watch longer than the cap fails before running a frame.
+    let space = gth_config::Space::Memory(gth_config::MemoryId::SystemRam);
+    let search = gth_core::RamSearch::new(&mut core, space, &views).unwrap();
+    let half = gth_core::RamSearch::MAX_WATCH_FRAMES / 2 + 1;
+    let error = (search.watch(&mut core, &[(A, half), (0, half)], 1)).expect_err("too many frames");
+    assert!(error.to_string().contains("watch at most"), "{error}");
+    // So does one whose values (candidates times frames) pass the cap.
+    let frames = (gth_core::RamSearch::MAX_WATCH_VALUES / search.len() as u64 + 1) as u32;
+    assert!(frames <= gth_core::RamSearch::MAX_WATCH_FRAMES);
+    let error =
+        (search.watch(&mut core, &[(A, frames)], search.len())).expect_err("too many values");
+    assert!(error.to_string().contains("values"), "{error}");
+    assert_eq!(core.frames_run(), 0);
+}
+
+/// A new, empty directory under the system's temporary directory, unique to this process.
+fn tempdir(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("gth-core-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}

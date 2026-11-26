@@ -107,7 +107,9 @@ fn core_error(error: gth_core::Error) -> PyErr {
         // A file the caller (or a game config) names: a config problem.
         gth_core::Error::Content { .. } => ConfigError::new_err(message),
         gth_core::Error::Savestate { .. } => HarnessError::new_err(message),
-        gth_core::Error::Ram { .. } => HarnessError::new_err(message),
+        gth_core::Error::Ram { .. } | gth_core::Error::RamSearch { .. } => {
+            HarnessError::new_err(message)
+        }
     }
 }
 

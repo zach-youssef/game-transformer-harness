@@ -40,6 +40,7 @@ Read this before adding or changing anything it exports.
   | `gth_core::Error::Content` (content file unreadable) | `ConfigError` |
   | `gth_core::Error::Savestate` | `HarnessError` |
   | `gth_core::Error::Ram` | `HarnessError` |
+  | `gth_core::Error::RamSearch` | `HarnessError` |
   | `gth_frame::Error` (any) | `HarnessError` |
   | `gth_config::Error` (any) | `ConfigError` |
   | `gth_record::Error::Desync` | `DesyncError` |

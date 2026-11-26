@@ -22,6 +22,9 @@ pub enum Error {
     /// A RAM variable couldn't be read or decoded.
     #[error("cannot read RAM variable {name}: {reason}")]
     Ram { name: String, reason: String },
+    /// A RAM search can't start or go on: no such memory, or its layout changed.
+    #[error("RAM search: {reason}")]
+    RamSearch { reason: String },
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
