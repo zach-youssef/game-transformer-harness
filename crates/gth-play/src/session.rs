@@ -2,7 +2,6 @@
 //! records through `gth-record`, and handles the hotkeys (save and load state, pause,
 //! recording). The window, audio and controllers (the binary) only feed it masks.
 
-use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -171,7 +170,7 @@ impl Session {
             recorder: self.settings.recorder,
             player: self.settings.player.clone(),
             license: self.settings.license.clone(),
-            harness: build_info(),
+            harness: gth_build_info::build_info_owned(),
             core_lock: None,
             checks_every: self.settings.checks_every,
         };
@@ -237,24 +236,6 @@ pub fn utc_stamp(unix_seconds: u64) -> String {
     )
 }
 
-/// The build recorded in `meta.toml`'s `[harness]`, with the keys of `_native.build_info()`
-/// (the build script is gth-py's). This repeats gth-py's `build_info` key list, which
-/// `build_info_has_the_native_keys` pins; folding both into one shared function is a
-/// follow-up (it touches gth-py's lib.rs).
-pub fn build_info() -> BTreeMap<String, String> {
-    [
-        ("version", env!("CARGO_PKG_VERSION")),
-        ("git_sha", env!("GTH_GIT_SHA")),
-        ("git_dirty", env!("GTH_GIT_DIRTY")),
-        ("target", env!("GTH_TARGET")),
-        ("profile", env!("GTH_PROFILE")),
-        ("rustc", env!("GTH_RUSTC")),
-    ]
-    .into_iter()
-    .map(|(k, v)| (k.to_owned(), v.to_owned()))
-    .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,23 +254,6 @@ mod tests {
         assert_eq!(
             name,
             format!("gunhed-19700101T000000Z-{}-0007.gthrec", std::process::id())
-        );
-    }
-
-    #[test]
-    fn build_info_has_the_native_keys() {
-        let info = build_info();
-        let keys: Vec<_> = info.keys().map(String::as_str).collect();
-        assert_eq!(
-            keys,
-            [
-                "git_dirty",
-                "git_sha",
-                "profile",
-                "rustc",
-                "target",
-                "version"
-            ]
         );
     }
 }

@@ -17,6 +17,7 @@ test = false
 doctest = false
 
 [dependencies]
+gth-build-info = { path = "../gth-build-info" }
 gth-config = { path = "../gth-config" }
 gth-core = { path = "../gth-core" }
 gth-frame = { path = "../gth-frame" }

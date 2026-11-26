@@ -193,8 +193,10 @@ exist.
 `_native.__version__` is the workspace version (`Cargo.toml`), which `pyproject.toml` repeats.
 `_native.build_info()` returns the version, git commit, target triple, cargo profile and rustc
 version, recorded in every dataset's metadata, as a dict sorted by key so serialized metadata
-is stable. `crates/gth-py/build.rs` captures them at build time and reruns when HEAD or the
-Rust sources change; a build outside a git checkout records `unknown`.
+is stable. It wraps `gth_build_info::build_info()` (`crates/gth-build-info`), which `gth-play`
+records too, so both describe a build the same way. That crate's `build.rs` captures them at
+build time and reruns when HEAD or the Rust sources change; a build outside a git checkout
+records `unknown`.
 
 `git_sha` is the commit, not uncommitted changes. `git_dirty` is `"true"` when the files that
 build the extension (`crates/`, `Cargo.toml`, `Cargo.lock`) differed from it at build time.

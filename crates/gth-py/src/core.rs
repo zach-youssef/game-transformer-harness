@@ -222,10 +222,7 @@ impl Core {
             recorder: kind,
             player,
             license,
-            harness: crate::build_info()
-                .into_iter()
-                .map(|(key, value)| (key.to_owned(), value.to_owned()))
-                .collect(),
+            harness: gth_build_info::build_info_owned(),
             core_lock,
             checks_every,
         };

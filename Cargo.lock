@@ -616,6 +616,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "gth-build-info"
+version = "0.1.0"
+
+[[package]]
 name = "gth-config"
 version = "0.1.0"
 dependencies = [
@@ -662,6 +666,7 @@ dependencies = [
  "cpal",
  "ctrlc",
  "gilrs",
+ "gth-build-info",
  "gth-config",
  "gth-core",
  "gth-frame",
@@ -677,6 +682,7 @@ dependencies = [
 name = "gth-py"
 version = "0.1.0"
 dependencies = [
+ "gth-build-info",
  "gth-config",
  "gth-core",
  "gth-frame",

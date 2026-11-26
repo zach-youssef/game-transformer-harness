@@ -63,10 +63,7 @@ fn export_shard<'py>(
         interpolation: interpolation_filter(interpolation)?,
         steps,
         chunk_samples,
-        harness: crate::build_info()
-            .into_iter()
-            .map(|(key, value)| (key.to_owned(), value.to_owned()))
-            .collect(),
+        harness: gth_build_info::build_info_owned(),
     };
     let summary = py.detach(|| {
         let recording = gth_record::Recording::open(&recording_dir)?;

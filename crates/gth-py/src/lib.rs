@@ -16,19 +16,12 @@ use std::collections::BTreeMap;
 
 use pyo3::prelude::*;
 
-/// Build metadata recorded with datasets: package version, git commit and whether the Rust
-/// sources differed from it, target triple, cargo profile and rustc version. Every `gth-*`
-/// crate shares the workspace version. Sorted by key, so serialized metadata is stable.
+/// Build metadata recorded with datasets (`gth_build_info::build_info`): package version, git
+/// commit and whether the Rust sources differed from it, target triple, cargo profile and
+/// rustc version, sorted by key.
 #[pyfunction]
-pub(crate) fn build_info() -> BTreeMap<&'static str, &'static str> {
-    BTreeMap::from([
-        ("version", env!("CARGO_PKG_VERSION")),
-        ("git_sha", env!("GTH_GIT_SHA")),
-        ("git_dirty", env!("GTH_GIT_DIRTY")),
-        ("target", env!("GTH_TARGET")),
-        ("profile", env!("GTH_PROFILE")),
-        ("rustc", env!("GTH_RUSTC")),
-    ])
+fn build_info() -> BTreeMap<&'static str, &'static str> {
+    gth_build_info::build_info()
 }
 
 /// The `gtharness._native` extension module.
