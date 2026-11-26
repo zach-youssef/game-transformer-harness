@@ -1,9 +1,11 @@
 //! [`Core`]: one loaded libretro core and its game.
 
+use std::collections::BTreeMap;
 use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use gth_config::{Location, RamVar};
 use gth_frame::FrameRef;
 use gth_libretro_sys::*;
 use libloading::Library;
@@ -166,16 +168,51 @@ unsafe fn core_string(ptr: *const c_char) -> String {
         .into_owned()
 }
 
+/// Fails unless every option the caller chose is one the core declared and took.
+fn check_options(core_path: &Path, options: &BTreeMap<String, String>) -> Result<()> {
+    let host = host::host();
+    for (key, value) in options {
+        match host
+            .options
+            .iter()
+            .find(|o| o.key.to_bytes() == key.as_bytes())
+        {
+            None => {
+                return Err(load_error(
+                    core_path,
+                    format!("the core has no option {key}"),
+                ));
+            }
+            Some(option) if option.value.to_bytes() != value.as_bytes() => {
+                return Err(load_error(
+                    core_path,
+                    format!("core option {key} = {value:?} isn't one of the core's values"),
+                ));
+            }
+            Some(_) => {}
+        }
+    }
+    Ok(())
+}
+
 impl Core {
     /// Loads the core at `core_path` and its content (`None` for cores that run without
     /// content), with `system_dir` as the BIOS directory. The core saves into a fresh
     /// temporary directory, removed when the `Core` drops ([`save_dir`](Self::save_dir)).
     /// After loading, the core's state is snapshotted for [`reset`](Self::reset).
     ///
+    /// `options` sets core options (`SET_VARIABLES` keys) to one of the values the core lists
+    /// for them, before the core reads them; the others keep the core's defaults.
+    ///
     /// Fails with [`Error::CoreLoad`] if another `Core` exists in this process, the library
     /// or one of its entry points is missing, its API version isn't 1, the content can't be
-    /// read or the core refuses it.
-    pub fn load(core_path: &Path, content_path: Option<&Path>, system_dir: &Path) -> Result<Core> {
+    /// read, the core refuses it, or an option isn't one the core declares with that value.
+    pub fn load(
+        core_path: &Path,
+        content_path: Option<&Path>,
+        system_dir: &Path,
+        options: &BTreeMap<String, String>,
+    ) -> Result<Core> {
         let claim = Claim::take()
             .ok_or_else(|| load_error(core_path, "another core is loaded in this process"))?;
         let system_dir = path_cstring(system_dir).ok_or_else(|| {
@@ -195,10 +232,22 @@ impl Core {
                 format!("save dir {} isn't UTF-8 without NULs", save_dir.0.display()),
             )
         })?;
+        let mut overrides = Vec::with_capacity(options.len());
+        for (key, value) in options {
+            let (Ok(key), Ok(value)) = (CString::new(key.as_str()), CString::new(value.as_str()))
+            else {
+                return Err(load_error(
+                    core_path,
+                    format!("core option {key} has a NUL"),
+                ));
+            };
+            overrides.push(host::CoreOption { key, value });
+        }
         {
             let mut host = host::host();
             host.system_dir = Some(system_dir);
             host.save_dir = Some(save_dir_c);
+            host.option_overrides = overrides;
         }
 
         // SAFETY: loading a library runs its initialisers. Which core to trust is the user's
@@ -290,11 +339,13 @@ impl Core {
                 let data = if system_info.need_fullpath {
                     Vec::new()
                 } else {
-                    std::fs::read(content_path).map_err(|error| {
-                        load_error(
-                            core_path,
-                            format!("cannot read {}: {error}", content_path.display()),
-                        )
+                    std::fs::read(content_path).map_err(|error| Error::Content {
+                        core: core_path.to_owned(),
+                        path: content_path.to_owned(),
+                        reason: format!(
+                            "{error} (the core reads content into memory, need_fullpath is \
+                             false, so the file must exist)"
+                        ),
                     })?
                 };
                 Some((path, data))
@@ -355,6 +406,7 @@ impl Core {
             return Err(load_error(core_path, "the core refused the content"));
         }
         core.game_loaded = true;
+        check_options(core_path, options)?;
 
         let mut av = retro_system_av_info::default();
         // SAFETY: `av` is writable; plain data.
@@ -425,6 +477,14 @@ impl Core {
             unsafe { (self.api.run)() };
         }
         self.frames_run += u64::from(frames);
+    }
+
+    /// Runs each `(buttons, frames)` pair in order, as [`run_frames`](Self::run_frames) does:
+    /// a scripted input sequence, such as a game's reset script.
+    pub fn run_inputs(&mut self, inputs: &[(u16, u32)]) {
+        for &(buttons, frames) in inputs {
+            self.run_frames(frames, buttons);
+        }
     }
 
     /// Calls `f` with the last frame the core drew, rows packed. Black, at the base size,
@@ -537,6 +597,65 @@ impl Core {
         // game is unloaded, and the range is inside them. They change only inside calls into
         // the core, which need `&mut self` while the slice borrows it.
         Some(unsafe { std::slice::from_raw_parts(ptr, len) })
+    }
+
+    /// RAM variable `name`'s bytes, or [`Error::Ram`] if they aren't in the core's memory.
+    fn ram_bytes(&mut self, name: &str, var: &RamVar) -> Result<&[u8]> {
+        let error = |reason: String| Error::Ram {
+            name: name.to_owned(),
+            reason,
+        };
+        Ok(match var.location {
+            Location::Memory { memory, offset } => {
+                let data = self
+                    .memory(memory.id())
+                    .ok_or_else(|| error(format!("the core exposes no {memory:?}")))?;
+                offset
+                    .checked_add(var.size)
+                    .and_then(|end| data.get(offset..end))
+                    .ok_or_else(|| {
+                        error(format!(
+                            "{} bytes at {offset:#x} are past the end of {memory:?} ({} bytes)",
+                            var.size,
+                            data.len()
+                        ))
+                    })?
+            }
+            Location::Address(address) => self.read_mapped(address, var.size).ok_or_else(|| {
+                error(format!(
+                    "{} bytes at {address:#x} aren't in one memory map region",
+                    var.size
+                ))
+            })?,
+        })
+    }
+
+    /// Reads and decodes RAM variable `name`. Fails with [`Error::Ram`] if its bytes aren't
+    /// in the core's memory or don't decode (docs/games.md, "RAM variables").
+    pub fn read_ram(&mut self, name: &str, var: &RamVar) -> Result<i64> {
+        let bytes = self.ram_bytes(name, var)?;
+        var.decode(bytes).map_err(|reason| Error::Ram {
+            name: name.to_owned(),
+            reason,
+        })
+    }
+
+    /// Checks that every variable in `vars` lies in the core's memory, so that reading them
+    /// later can fail only on bytes that don't decode (a BCD nibble above 9). Memory sizes
+    /// and maps are fixed once the game is loaded, so call this once after loading.
+    pub fn check_ram_vars(&mut self, vars: &BTreeMap<String, RamVar>) -> Result<()> {
+        vars.iter()
+            .try_for_each(|(name, var)| self.ram_bytes(name, var).map(|_| ()))
+    }
+
+    /// Reads every variable in `vars` ([`read_ram`](Self::read_ram)), by name.
+    pub fn read_ram_vars(
+        &mut self,
+        vars: &BTreeMap<String, RamVar>,
+    ) -> Result<BTreeMap<String, i64>> {
+        vars.iter()
+            .map(|(name, var)| Ok((name.clone(), self.read_ram(name, var)?)))
+            .collect()
     }
 }
 

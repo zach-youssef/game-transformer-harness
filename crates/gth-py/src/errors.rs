@@ -64,8 +64,10 @@ impl From<Error> for PyErr {
                 // No wildcard arm: a new gth_core::Error variant must pick its exception here.
                 match error {
                     gth_core::Error::CoreLoad { .. } => CoreLoadError::new_err(message),
+                    gth_core::Error::Content { .. } => HarnessError::new_err(message),
                     gth_core::Error::Desync { .. } => DesyncError::new_err(message),
                     gth_core::Error::Savestate { .. } => HarnessError::new_err(message),
+                    gth_core::Error::Ram { .. } => HarnessError::new_err(message),
                 }
             }
         }

@@ -19,6 +19,7 @@ class Core:
         core_path: str | os.PathLike[str],
         content_path: str | os.PathLike[str] | None,
         system_dir: str | os.PathLike[str],
+        core_options: dict[str, str],
         obs_height: int,
         obs_width: int,
         crop: tuple[int, int, int, int] | None,

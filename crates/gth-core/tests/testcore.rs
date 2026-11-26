@@ -1,6 +1,7 @@
 //! The host against the test core (docs/libretro.md, "Test core"), loaded from its built
 //! library as a real core would be.
 
+use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
@@ -20,12 +21,19 @@ fn serial() -> MutexGuard<'static, ()> {
 }
 
 fn load(content: Option<&Path>) -> Core {
+    load_with(content, &[]).expect("load the test core")
+}
+
+fn load_with(content: Option<&Path>, options: &[(&str, &str)]) -> gth_core::Result<Core> {
+    let options = (options.iter())
+        .map(|&(k, v)| (k.to_owned(), v.to_owned()))
+        .collect();
     Core::load(
         gth_test_support::testcore_path(),
         content,
         &std::env::temp_dir(),
+        &options,
     )
-    .expect("load the test core")
 }
 
 const fn bit(id: u32) -> u16 {
@@ -242,9 +250,14 @@ fn memory_map_reads_the_system_ram() {
 fn one_core_per_process() {
     let _serial = serial();
     let core = load(None);
-    let error = Core::load(gth_test_support::testcore_path(), None, Path::new("."))
-        .err()
-        .expect("second load fails");
+    let error = Core::load(
+        gth_test_support::testcore_path(),
+        None,
+        Path::new("."),
+        &BTreeMap::new(),
+    )
+    .err()
+    .expect("second load fails");
     assert!(matches!(error, Error::CoreLoad { .. }));
     assert!(
         error.to_string().contains("another core is loaded"),
@@ -263,16 +276,113 @@ fn one_core_per_process() {
 #[test]
 fn load_failures_release_the_claim() {
     let _serial = serial();
-    let missing = Core::load(Path::new("no/such/core.so"), None, Path::new("."));
+    let missing = Core::load(
+        Path::new("no/such/core.so"),
+        None,
+        Path::new("."),
+        &BTreeMap::new(),
+    );
     assert!(matches!(missing, Err(Error::CoreLoad { .. })));
     let content = Path::new("no/such/content.gthc");
     let error = Core::load(
         gth_test_support::testcore_path(),
         Some(content),
         Path::new("."),
+        &BTreeMap::new(),
     )
     .err()
     .expect("missing content fails");
-    assert!(error.to_string().contains("cannot read"), "{error}");
+    assert!(matches!(error, Error::Content { .. }), "{error}");
+    assert!(
+        error.to_string().contains("need_fullpath is false"),
+        "{error}"
+    );
     drop(load(None));
+}
+
+#[test]
+fn core_options_are_set_before_the_core_reads_them() {
+    let _serial = serial();
+    let mut core = load_with(None, &[("gth_testcore_step", "4")]).unwrap();
+    core.run_frames(1, RIGHT);
+    assert_eq!(square(&pixels(&core)), (152 + 4, 112), "4 pixels per frame");
+    drop(core);
+    for (options, reason) in [
+        (
+            &[("gth_testcore_step", "3")],
+            "isn't one of the core's values",
+        ),
+        (&[("no_such_option", "1")], "has no option no_such_option"),
+    ] {
+        let error = load_with(None, options).err().expect("bad option fails");
+        assert!(matches!(error, Error::CoreLoad { .. }));
+        assert!(error.to_string().contains(reason), "{error}");
+    }
+    drop(load(None)); // the failed loads released the claim
+}
+
+#[test]
+fn run_inputs_plays_a_script() {
+    let _serial = serial();
+    let mut core = load(None);
+    core.run_inputs(&[(A, 3), (0, 2), (A | RIGHT, 1)]);
+    assert_eq!(core.frames_run(), 6);
+    assert_eq!(ram(&mut core)[..4], [0, 0, 0, 4]);
+    assert_eq!(square(&pixels(&core)), (154, 112));
+}
+
+#[test]
+fn reads_ram_variables_from_memory_and_the_map() {
+    let _serial = serial();
+    let mut core = load(None);
+    core.run_frames(123, A);
+    let config = gth_config::GameConfig::parse(
+        r#"
+core = "gth_testcore"
+orientation = 0
+content = { file = "x.gthc", size = 0, sha1 = "0000000000000000000000000000000000000000", crc32 = "00000000" }
+buttons = { a = "shot" }
+reset = { script = [{ press = [], frames = 1 }] }
+episode = { terminate = "score > 0" }
+[ram]
+score = { memory = "system_ram", offset = 0, size = 4, encoding = "bcd", scale = 10 }
+mapped = { address = 2, size = 2, encoding = "be" }
+swapped = { address = 2, size = 2, encoding = "be", swap16 = true }
+past_end = { memory = "system_ram", offset = 254, size = 4, encoding = "le" }
+unmapped = { address = 0x1000, size = 1, encoding = "le" }
+save = { memory = "save_ram", offset = 0, size = 1, encoding = "le" }
+"#,
+        "test config",
+    )
+    .unwrap();
+    let ram = &config.ram;
+    assert_eq!(core.read_ram("score", &ram["score"]).unwrap(), 1230);
+    assert_eq!(core.read_ram("mapped", &ram["mapped"]).unwrap(), 0x0123);
+    assert_eq!(core.read_ram("swapped", &ram["swapped"]).unwrap(), 0x2301);
+    for (name, reason) in [
+        ("past_end", "past the end of SystemRam (256 bytes)"),
+        ("unmapped", "aren't in one memory map region"),
+        ("save", "exposes no SaveRam"),
+    ] {
+        let error = core.read_ram(name, &ram[name]).unwrap_err();
+        assert!(matches!(error, Error::Ram { .. }));
+        assert!(
+            error
+                .to_string()
+                .starts_with(&format!("cannot read RAM variable {name}: ")),
+            "{error}"
+        );
+        assert!(error.to_string().contains(reason), "{error}");
+    }
+    let mut vars = ram.clone();
+    vars.retain(|name, _| ["score", "mapped"].contains(&name.as_str()));
+    let values = core.read_ram_vars(&vars).unwrap();
+    assert_eq!(
+        values,
+        BTreeMap::from([("mapped".into(), 0x0123), ("score".into(), 1230)])
+    );
+    assert!(core.read_ram_vars(ram).is_err());
+    core.check_ram_vars(&vars).unwrap();
+    let error = core.check_ram_vars(ram).unwrap_err();
+    assert!(matches!(error, Error::Ram { .. }), "{error}");
 }

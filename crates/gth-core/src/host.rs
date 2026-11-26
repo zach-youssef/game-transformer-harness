@@ -30,6 +30,8 @@ pub(crate) struct Host {
     pub audio_frames: u64,
     /// Core options from `SET_VARIABLES` with their current values.
     pub options: Vec<CoreOption>,
+    /// Values the caller chose (`Core::load`), applied when the core declares its options.
+    pub option_overrides: Vec<CoreOption>,
     /// Memory descriptors from `SET_MEMORY_MAPS`.
     pub regions: Vec<MemoryRegion>,
 }
@@ -62,6 +64,7 @@ impl Host {
         buttons: 0,
         audio_frames: 0,
         options: Vec::new(),
+        option_overrides: Vec::new(),
         regions: Vec::new(),
     };
 
@@ -117,16 +120,28 @@ fn pixel_format(format: retro_pixel_format) -> Option<PixelFormat> {
     }
 }
 
-/// The default of a `SET_VARIABLES` definition `"Label; default|other|..."`.
-fn option_default(definition: &CStr) -> CString {
+/// The values of a `SET_VARIABLES` definition `"Label; default|other|..."`, default first.
+fn option_values(definition: &CStr) -> Vec<&[u8]> {
     let bytes = definition.to_bytes();
     let values = bytes
         .windows(2)
         .position(|pair| pair == b"; ")
         .map_or(&[][..], |at| &bytes[at + 2..]);
-    let default = values.split(|&b| b == b'|').next().unwrap_or_default();
+    values.split(|&b| b == b'|').collect()
+}
+
+/// The value an option starts with: the caller's override if the core lists it, otherwise
+/// the default. `Core::load` reports an override the core didn't accept.
+fn option_value(key: &CStr, definition: &CStr, overrides: &[CoreOption]) -> CString {
+    let values = option_values(definition);
+    let chosen = overrides
+        .iter()
+        .find(|o| o.key.as_c_str() == key)
+        .map(|o| o.value.to_bytes())
+        .filter(|value| values.contains(value));
+    let value = chosen.or(values.first().copied()).unwrap_or_default();
     // A sub-slice of a C string has no NUL.
-    CString::new(default).unwrap_or_default()
+    CString::new(value).unwrap_or_default()
 }
 
 /// Answers the core's environment calls. Commands not handled here return `false`, which
@@ -176,9 +191,12 @@ pub(crate) unsafe extern "C" fn environment(cmd: c_uint, data: *mut c_void) -> b
                 while !(*variable).key.is_null() {
                     let entry = *variable;
                     if !entry.value.is_null() {
+                        let key = CStr::from_ptr(entry.key);
+                        let value =
+                            option_value(key, CStr::from_ptr(entry.value), &host.option_overrides);
                         host.options.push(CoreOption {
-                            key: CStr::from_ptr(entry.key).to_owned(),
-                            value: option_default(CStr::from_ptr(entry.value)),
+                            key: key.to_owned(),
+                            value,
                         });
                     }
                     variable = variable.add(1);
@@ -484,6 +502,48 @@ mod tests {
         // SAFETY: SET_VARIABLE takes a `const retro_variable *`.
         assert!(unsafe { environment(RETRO_ENVIRONMENT_SET_VARIABLE, (&raw mut set).cast()) });
         assert_eq!(get(c"a").as_deref(), Some(c"y"));
+    }
+
+    #[test]
+    fn option_overrides_apply_only_to_listed_values() {
+        let _claim = claim();
+        host().option_overrides = vec![
+            CoreOption {
+                key: c"a".to_owned(),
+                value: c"z".to_owned(),
+            },
+            CoreOption {
+                key: c"b".to_owned(),
+                value: c"q".to_owned(),
+            },
+        ];
+        let definitions = [
+            retro_variable {
+                key: c"a".as_ptr(),
+                value: c"Label A; x|y|z".as_ptr(),
+            },
+            retro_variable {
+                key: c"b".as_ptr(),
+                value: c"Label B; p|r".as_ptr(),
+            },
+            retro_variable {
+                key: std::ptr::null(),
+                value: std::ptr::null(),
+            },
+        ];
+        // SAFETY: SET_VARIABLES takes a `{ NULL, NULL }`-terminated array.
+        assert!(unsafe {
+            environment(
+                RETRO_ENVIRONMENT_SET_VARIABLES,
+                definitions.as_ptr().cast_mut().cast(),
+            )
+        });
+        let values: Vec<_> = host().options.iter().map(|o| o.value.clone()).collect();
+        assert_eq!(
+            values,
+            [c"z".to_owned(), c"p".to_owned()],
+            "q isn't listed for b"
+        );
     }
 
     #[test]

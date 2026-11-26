@@ -46,16 +46,25 @@ which cores read as "not supported"):
 | `SET_PIXEL_FORMAT` | accepts `0RGB1555`, `XRGB8888` and `RGB565` |
 | `GET_SYSTEM_DIRECTORY` | the `system_dir` given to `Core::load` (BIOS files, read-only in practice) |
 | `GET_SAVE_DIRECTORY` | a fresh temporary directory per `Core`, removed when it drops, so NVRAM, high scores and memory cards never carry over between loads or race between processes |
-| `SET_VARIABLES`, `GET_VARIABLE`, `SET_VARIABLE` | keeps the options at their defaults (the first listed value) unless the core sets one |
+| `SET_VARIABLES`, `GET_VARIABLE`, `SET_VARIABLE` | each option starts at the value `Core::load` was given for it (a game's `core_options`), or else its default (the first listed value); the core may set one. `Core::load` fails if a given option isn't declared or its value isn't listed |
 | `GET_VARIABLE_UPDATE` | always `false`: the host never changes options |
 | `GET_CORE_OPTIONS_VERSION` | 0 |
 | `SET_MEMORY_MAPS` | copies the descriptors; `read_mapped` reads a region as contiguous from `start` (mirrors aren't resolved) |
 | `SET_INPUT_DESCRIPTORS`, `SET_SUPPORT_NO_GAME` | `true`, ignored |
 | `GET_LOG_INTERFACE` | `false` (no C shim, see above) |
 
+RAM variables (docs/games.md) are read with `Core::read_ram`, from a core memory
+(`retro_get_memory_data`) or the memory map, and fail with `Error::Ram` naming the variable
+when the bytes aren't there. `Core::check_ram_vars` checks that every variable's bytes are
+there without decoding them; memory sizes and maps are fixed once the game is loaded, so
+after that check a read can fail only on bytes that don't decode. `Core::run_inputs` plays a scripted input sequence, such as a
+game's reset script.
+
 Input is port 0's joypad only, answered per button and for `RETRO_DEVICE_ID_JOYPAD_MASK`.
 Audio is counted and dropped. Content is read into memory unless the core sets
-`need_fullpath`, and stays alive until the game is unloaded.
+`need_fullpath`, and stays alive until the game is unloaded; an unreadable file is
+`Error::Content`. A `need_fullpath` core gets only the path, which needn't exist: FBNeo
+loads a clone in a merged set from `<dir>/<clone>.zip` through its parent's zip.
 
 `Core::reset` restores a savestate taken right after loading, so every reset starts from the
 same state. `retro_reset` is the console's reset button, and many cores keep RAM or NVRAM

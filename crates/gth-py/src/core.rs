@@ -66,9 +66,9 @@ impl Core {
 
 #[pymethods]
 impl Core {
-    /// Loads a core (one per process) and sets up the observation pipeline. `crop` is
-    /// `(x, y, width, height)` in the core's pixels, `rotate` is 0, 90 or 270 degrees
-    /// clockwise, `interpolation` is "area" or "bilinear".
+    /// Loads a core (one per process) with `core_options` set, and sets up the observation
+    /// pipeline. `crop` is `(x, y, width, height)` in the core's pixels, `rotate` is 0, 90 or
+    /// 270 degrees clockwise, `interpolation` is "area" or "bilinear".
     #[new]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -76,6 +76,7 @@ impl Core {
         core_path: PathBuf,
         content_path: Option<PathBuf>,
         system_dir: PathBuf,
+        core_options: BTreeMap<String, String>,
         obs_height: usize,
         obs_width: usize,
         crop: Option<(usize, usize, usize, usize)>,
@@ -95,8 +96,14 @@ impl Core {
             rotation(rotate)?,
             filter(interpolation)?,
         )?;
-        let core =
-            py.detach(|| gth_core::Core::load(&core_path, content_path.as_deref(), &system_dir))?;
+        let core = py.detach(|| {
+            gth_core::Core::load(
+                &core_path,
+                content_path.as_deref(),
+                &system_dir,
+                &core_options,
+            )
+        })?;
         Ok(Core {
             core: Some(core),
             pipeline,

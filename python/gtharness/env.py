@@ -70,7 +70,7 @@ class RetroEnv(gym.Env[Observation, Action]):
         self._episode_frames = 0
         height, width = obs_size
         self._core = _native.Core(
-            core_path, content_path, system_dir, height, width, crop, rotate, interpolation
+            core_path, content_path, system_dir, {}, height, width, crop, rotate, interpolation
         )
         self.observation_space = gym.spaces.Box(0, 255, (height, width, 3), np.uint8)
         self.action_space = gym.spaces.MultiBinary(BUTTONS)

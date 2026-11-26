@@ -12,6 +12,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+gth-config = { path = "../gth-config" }
 gth-frame = { path = "../gth-frame" }
 gth-libretro-sys = { path = "../gth-libretro-sys" }
 libloading = "0.9.1"

@@ -36,6 +36,7 @@ Read this before adding or changing anything it exports.
   | `gth_core::Error::CoreLoad` | `CoreLoadError` |
   | `gth_core::Error::Desync` | `DesyncError` |
   | `gth_core::Error::Savestate` | `HarnessError` |
+  | `gth_core::Error::Ram` | `HarnessError` |
   | `gth_frame::Error` (any) | `HarnessError` |
 
 - Their `__module__` is `gtharness.errors`, so they pickle across the process boundary of
