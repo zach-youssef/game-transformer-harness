@@ -1,0 +1,22 @@
+# Lightening Force: Quest for the Darkstar (Genesis, USA; Thunder Force IV), Technosoft.
+# Only [content] is final: the hashes of the user's dump (~/roms/manifest.md: size and
+# SHA-1 from the manifest, CRC-32 from the file). The rest is a stub, so the config parses
+# and the ROM audit can check the content, until G3 sets the buttons, reset and RAM variables.
+
+core = "genesis_plus_gx"
+orientation = 0
+
+[content]
+file = "Lightening Force - Quest for the Darkstar (USA).md"
+size = 1048576
+sha1 = "ab5bd9ddbfc07d860f44b9c72d098aef2581d1d8"
+crc32 = "c8f8c0e0"
+
+[buttons]
+a = "shot"                # stub until G3
+
+[reset]
+script = [{ press = [], frames = 1 }]   # stub until G3
+
+[episode]
+terminate = "0"           # stub until G3: never ends

@@ -93,6 +93,13 @@ of them are unreadable. The exit status is 0 when every audited game is ok, 1 ot
 on a usage or config error (no ROM directory, or no game to audit). The work is
 `GameConfig::audit` in `gth-config` (`audit.rs`); the CLI is `python/gtharness/cli.py`.
 
+### Content tables
+
+| Game | `games/<id>` | Hashes from |
+|---|---|---|
+| Gunhed, Zanac, Lightening Force | `gunhed`, `zanac`, `lightening-force` | the user's dumps (`~/roms/manifest.md`); only `[content]` is final until G1-G3 |
+| Arcade sets | not yet | FBNeo's driver tables list names, sizes and CRC-32s but no SHA-1, which `members` needs: to do once `cores.lock` pins FBNeo |
+
 ## Data directory
 
 `RetroEnv.from_game(game_id, data_dir, ...)` takes everything but the content from a data

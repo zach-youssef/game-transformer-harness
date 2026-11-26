@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from gtharness import _native
 from gtharness.cli import main
 from gtharness.env import GAMES_DIR
 
@@ -17,6 +18,13 @@ _SHA1 = "1a03ac5869e1d56cfd138db9790087dd926c18b3"  # games/testcore content
 def run(capsys: pytest.CaptureFixture[str], *args: str) -> tuple[int, str]:
     code = main(["audit", *args])
     return code, capsys.readouterr().out
+
+
+def test_every_game_config_parses():
+    games = sorted(GAMES_DIR.glob("*/game.toml"))
+    assert len(games) >= 4
+    for path in games:
+        _native.GameConfig.load(path)
 
 
 def test_the_testcore_game_audits_ok(testcore_data: Path, capsys: pytest.CaptureFixture[str]):

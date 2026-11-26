@@ -1,0 +1,22 @@
+# Zanac (NES, Project Egg re-release with an iNES header), Compile.
+# Only [content] is final: the hashes of the user's dump (~/roms/manifest.md: size and
+# SHA-1 from the manifest, CRC-32 from the file). The rest is a stub, so the config parses
+# and the ROM audit can check the content, until G2 sets the buttons, reset and RAM variables.
+
+core = "fceumm"
+orientation = 0
+
+[content]
+file = "Zanac (Project Egg).nes"
+size = 131088
+sha1 = "c62479b307acb9bbf708f53f3a9b708e5fe79a4e"
+crc32 = "38ab8f89"
+
+[buttons]
+a = "shot"                # stub until G2
+
+[reset]
+script = [{ press = [], frames = 1 }]   # stub until G2
+
+[episode]
+terminate = "0"           # stub until G2: never ends

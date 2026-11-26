@@ -1,0 +1,22 @@
+# Gunhed (PC Engine HuCard, Japan, English), Compile/Hudson.
+# Only [content] is final: the hashes of the user's dump (~/roms/manifest.md: size and
+# SHA-1 from the manifest, CRC-32 from the file). The rest is a stub, so the config parses
+# and the ROM audit can check the content, until G1 sets the buttons, reset and RAM variables.
+
+core = "mednafen_pce_fast"
+orientation = 0
+
+[content]
+file = "Gunhed (Japan) (En).pce"
+size = 393216
+sha1 = "0107d93ff5d10325092d45e6bfd21e8130efeed7"
+crc32 = "a17d4d7e"
+
+[buttons]
+a = "shot"                # stub until G1
+
+[reset]
+script = [{ press = [], frames = 1 }]   # stub until G1
+
+[episode]
+terminate = "0"           # stub until G1: never ends
