@@ -33,12 +33,16 @@ binary (`src/bin/gth-play/`) only adds the window, the audio device and the cont
 
    ```sh
    target/release/gth-play gunhed --games-dir games --data-dir <data_dir> --lock cores.lock \
-       --out <recordings_dir> --player <your name> --license CC-BY-4.0 --checks-every 60
+       --out <recordings_dir> --player <your name> --license CC-BY-4.0 --checks-every 60 \
+       --rewind-seconds 3
    ```
 
    Every recording option is required, as in `RetroEnv`'s `Record`: who recorded and under
    which license is never a default. `--checks-every` is how often (in frames) the recording
-   stores a frame hash for the desync check (docs/recording-format.md).
+   stores a frame hash for the desync check (docs/recording-format.md). `--rewind-seconds`
+   is how far a death or the rewind hotkey goes back (below, "Rewind"), `0` for never, at
+   most 600 and at least one frame otherwise; it decides which frames the recording keeps,
+   so it is required too.
 
    `--lock` is the `cores.lock` that pins the core builds (docs/cores.md), normally the
    checkout's. When the core file is the build it pins for this platform (by SHA-256, as
@@ -57,6 +61,8 @@ binary (`src/bin/gth-play/`) only adds the window, the audio device and the cont
      credit), then press **R**. A recording always starts from a savestate of that moment,
      written into the recording, so it replays without the menus before it.
    - Play the credit. The title shows `[REC n]` with the frames recorded.
+   - When you lose a ship, play rewinds 3 seconds and pauses: press **P** to try that
+     stretch again (below, "Rewind"). **Backspace** rewinds by hand.
    - Press **R** again to finish it (or **Escape** to finish it and quit). The path is
      printed: `<recordings_dir>/gunhed-<UTC time>-<pid>-<n>.gthrec`.
 
@@ -76,6 +82,7 @@ binary (`src/bin/gth-play/`) only adds the window, the audio device and the cont
 | `1` | Save the practice state (kept in memory and in `<out>/<game>.state`); a recording goes on |
 | `2` | Load the practice state (or the file from an earlier session). A recording can't hold a jump, so a running one is finished first. While paused, the screen keeps the old picture until the next frame runs (a loaded state carries no picture) |
 | `P` | Pause (the core and sound stop; a recording simply gets no frames while paused) |
+| `Backspace` | Rewind the running recording `--rewind-seconds` and pause (below, "Rewind"); `rewind` in `keyboard.toml`, Backspace when a file from before rewinds has no entry |
 | `Escape` | Finish any recording and quit |
 
 Every way of quitting finishes a running recording first, so it is never left incomplete:
@@ -87,6 +94,52 @@ logoff and shutdown. Those signals only ask the loop to exit; a second one exits
 finishes the recording too. Only `kill -9` or a crash in the core loses it.
 
 Hotkeys are keyboard keys even when playing on a gamepad, and they never reach the core.
+
+### Rewind
+
+While recording, a death rewinds the game `--rewind-seconds` (3 s is 180 frames at 60 fps,
+rounded to whole frames) and pauses, so you can play that stretch again; press pause to go
+on. The hotkey does the same by hand, for a mistake that costs no life. The idea is one
+credit's recording that plays better than you did in one go, plus the deaths as labelled
+examples. No bomb is used for you: bomb after a rewind yourself if it makes sense.
+
+- **A death** is the game's `lives` RAM variable (`[ram.lives]`, docs/games.md) going down
+  between two frames. It is read by the player only, to decide when to rewind; nothing read
+  from RAM goes into the observations. A game without `lives` (or whose `lives` the core's
+  memory doesn't hold) rewinds on the hotkey only, and `gth-play` says so at start:
+  `rewind: MANUAL ONLY ...` and why. `--rewind-seconds 0` turns both off. On Gunhed,
+  `lives` counts the spare ships, so losing the last ship (`lives` 0, then game over) is no
+  drop and doesn't rewind. Many shmups drop `lives` at the respawn, after the explosion, not
+  at the hit: there 3 s may go back only 1-2 s before the hit, so pick `--rewind-seconds`
+  for the game.
+- **The recording stays one run.** A rewind from frame D to frame B = D - rewind cuts the
+  recording's inputs and checks back to B and goes on from the state at B, so it replays from
+  its start state as one deterministic run (`--verify` checks it like any other) and lists
+  the rewind in `[[rewind]]` (docs/recording-format.md). B stops at the recording's start,
+  and one frame after the oldest savestate the ring buffer (below) holds: a loaded savestate
+  has no picture until a frame runs, so landing on one would make the check at B (finishing
+  right after a rewind) hash a blank frame the replay doesn't show.
+- **Every rewind keeps a clip**: frames B to D as their own recording,
+  `<recording>-rewind-<nnn>.gthrec` beside it, from the state at B, ending on the frame where
+  `lives` dropped. Its `[branch]` names the recording it came from, B, and the cause (`lives`
+  or `manual`). A second death inside the rewind window rewinds past the first branch: both
+  clips stay, and the first's B is on the timeline the second rewind replaced.
+- **Ring buffer**: a savestate every `SNAPSHOT_EVERY` = 30 frames while recording (and one
+  at its start), keeping `RING_REWINDS` = 4 rewinds' worth (with 3 s, 25 savestates). A
+  rewind loads the latest savestate before B and replays the logged inputs forward to B, then
+  records the clip from there to D, then seeks to B again. Measured on Gunhed
+  (mednafen_pce_fast, release, M-series Mac): a savestate is 80.6 KB and takes 0.009 ms to
+  take and 0.07 ms to load, and a frame runs in 0.15-0.17 ms (about 6000 fps), so the ring
+  costs 2 MB and under 0.001 ms a frame, and a 3 s rewind took 38 ms (the two replays of up
+  to 30 frames are under 5 ms each; the clip's 180 frames and its checks are most of it). A
+  savestate every frame would be as cheap to take but 30 times the memory, and a coarser
+  grid only lengthens the replay, which is already well inside a frame's time at this
+  interval. At start `gth-play` prints the ring's size: up to 4 x `--rewind-seconds` of
+  savestates, so the 600 s cap is about 380 MB on Gunhed.
+- A failed clip (a full disk, or its name taken) leaves the game where it was (replayed to
+  D from the ring, so its picture is drawn), removes the clip if it made it, and warns; play
+  goes on unrewound. A recording that can't be rewritten stops and stays incomplete, as any
+  failed write does. A ring savestate that fails warns too, and rewinds reach less far.
 
 ## Bindings
 
@@ -222,9 +275,19 @@ rest. minifb would need cpal and gilrs anyway and lacks monitor and DPI queries.
 - `crates/gth-play/src/*`: unit tests of the stick mapping, opposite cancelling, the
   bindings files (templates, clashes, bad values), blitting and scaling, the audio rate control
   and resampler, recording names and the latency summary.
+- `crates/gth-play/tests/rewind.rs`: rewinds on the test core's lives byte
+  (docs/libretro.md): an automatic rewind on a drop, with the spliced recording's inputs,
+  `[[rewind]]` and replay checked and the clip replaying from the recording's state at the
+  branch to the death; the hotkey on a game without `lives` and `gth-play --verify` on the
+  result; a rewind stopping at the recording's start; a second death inside the window;
+  rewinds stopping just after the ring's oldest savestate, and a recording finished there at
+  once; and a failed clip that warns and leaves play to go on. All recordings, clips
+  included, replay without desync. No ROM test: ROM tests are Python (docs/testing.md) and the session isn't
+  bound to Python; a Gunhed death was rewound and verified by hand (the measurements above).
 - `crates/gth-play/tests/testcore.rs`: the headless smoke and its replay, the session's
   hotkeys keeping recordings whole (pause adds no frame, loading a state finishes the
   recording, the next one starts from the loaded state), `[core.lock]` kept only with the
   pinned core (the test core standing in for a pinned build, in a lock written with its
-  hash), and the latency probe on the test core.
+  hash), `--rewind-seconds` refused past 600 (main.rs unit-tests the bounds and a length
+  under one frame), and the latency probe on the test core.
 - The window, the audio device and gamepads are checked by hand: CI has none of them.

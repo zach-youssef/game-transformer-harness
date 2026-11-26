@@ -36,8 +36,16 @@ pub struct Hotkeys {
     pub load_state: KeyCode,
     /// Start a recording from the current state, or finish the one running.
     pub record: KeyCode,
+    /// Rewind the running recording (docs/human-play.md, "Rewind"). Backspace when a file
+    /// from before rewinds has none, so it still loads.
+    #[serde(default = "default_rewind")]
+    pub rewind: KeyCode,
     /// Finish any recording and quit.
     pub quit: KeyCode,
+}
+
+fn default_rewind() -> KeyCode {
+    KeyCode::Backspace
 }
 
 impl Hotkeys {
@@ -46,12 +54,13 @@ impl Hotkeys {
         self.all().iter().any(|(k, _)| *k == key)
     }
 
-    fn all(&self) -> [(KeyCode, &'static str); 5] {
+    fn all(&self) -> [(KeyCode, &'static str); 6] {
         [
             (self.pause, "pause"),
             (self.save_state, "save_state"),
             (self.load_state, "load_state"),
             (self.record, "record"),
+            (self.rewind, "rewind"),
             (self.quit, "quit"),
         ]
     }
@@ -126,6 +135,7 @@ pause = "KeyP"
 save_state = "Digit1"
 load_state = "Digit2"
 record = "KeyR"
+rewind = "Backspace"
 quit = "Escape"
 "#;
 
@@ -237,10 +247,19 @@ mod tests {
         let keyboard = parse_keyboard(KEYBOARD_TEMPLATE, "template").unwrap();
         assert_eq!(keyboard.buttons[&RetroButton::B], [KeyCode::KeyZ]);
         assert_eq!(keyboard.hotkeys.quit, KeyCode::Escape);
+        assert_eq!(keyboard.hotkeys.rewind, KeyCode::Backspace);
         let gamepad = parse_gamepad(GAMEPAD_TEMPLATE, "template").unwrap();
         assert_eq!(gamepad.sticks, [Stick::Left]);
         assert_eq!(gamepad.buttons[&RetroButton::Start], [Button::Start]);
         assert_eq!(gamepad.stick_map(), StickMap::new(0.5, 45.0).unwrap());
+    }
+
+    #[test]
+    fn a_file_from_before_rewinds_still_loads() {
+        let old = KEYBOARD_TEMPLATE.replace("rewind = \"Backspace\"\n", "");
+        assert!(!old.contains("rewind"));
+        let keyboard = parse_keyboard(&old, "old").unwrap();
+        assert_eq!(keyboard.hotkeys.rewind, KeyCode::Backspace);
     }
 
     #[test]
@@ -264,6 +283,9 @@ mod tests {
         let bound = KEYBOARD_TEMPLATE.replace("quit = \"Escape\"", "quit = \"KeyZ\"");
         let error = parse_keyboard(&bound, "k").unwrap_err();
         assert!(error.contains("both hotkey quit and button B"), "{error}");
+        let shared = KEYBOARD_TEMPLATE.replace("rewind = \"Backspace\"", "rewind = \"KeyR\"");
+        let error = parse_keyboard(&shared, "k").unwrap_err();
+        assert!(error.contains("record and rewind share KeyR"), "{error}");
         let error = parse_keyboard("[buttons]\n", "k").unwrap_err();
         assert!(error.contains("hotkeys"), "{error}");
         let wide = GAMEPAD_TEMPLATE.replace("diagonal_degrees = 45.0", "diagonal_degrees = 95.0");

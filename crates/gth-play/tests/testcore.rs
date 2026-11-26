@@ -150,6 +150,7 @@ fn session(out: &Path, core_lock: Option<CoreLock>) -> Session {
         license: "CC0-1.0".into(),
         checks_every: NonZeroU32::new(7).unwrap(),
         core_lock,
+        rewind_frames: 0,
     };
     Session::new(load(), game(), "testcore", None, settings)
 }
@@ -294,7 +295,8 @@ fn recordings_keep_the_pin_of_a_pinned_core() {
     let error = gth_play::game::pinned_core(&out.0.join("missing.lock"), &game(), path);
     assert!(error.unwrap_err().contains("missing.lock"));
 
-    // And playing needs one: the binary refuses before opening a window.
+    // And playing needs one (and a rewind length): the binary refuses before opening a
+    // window.
     let output = Command::new(env!("CARGO_BIN_EXE_gth-play"))
         .args(["testcore", "--games-dir"])
         .arg(games_dir())
@@ -309,6 +311,28 @@ fn recordings_keep_the_pin_of_a_pinned_core() {
             "CC0-1.0",
             "--checks-every",
             "60",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("--rewind-seconds is required"), "{stderr}");
+    let output = Command::new(env!("CARGO_BIN_EXE_gth-play"))
+        .args(["testcore", "--games-dir"])
+        .arg(games_dir())
+        .args(["--data-dir"])
+        .arg(&out.0)
+        .args(["--out"])
+        .arg(&out.0)
+        .args([
+            "--player",
+            "test",
+            "--license",
+            "CC0-1.0",
+            "--checks-every",
+            "60",
+            "--rewind-seconds",
+            "3",
         ])
         .output()
         .unwrap();
@@ -334,4 +358,33 @@ fn testcore_shows_a_press_on_its_own_frame() {
         latency::frames_to_response(&mut core, &state, 0, 10).unwrap(),
         None
     );
+}
+
+/// `--rewind-seconds` past the ring's cap is refused before a window opens (the bounds
+/// themselves are the binary's unit test).
+#[test]
+fn a_rewind_length_past_the_cap_is_refused() {
+    let out = TempDir::new();
+    let output = Command::new(env!("CARGO_BIN_EXE_gth-play"))
+        .args(["testcore", "--games-dir"])
+        .arg(games_dir())
+        .args(["--data-dir"])
+        .arg(&out.0)
+        .args(["--out"])
+        .arg(&out.0)
+        .args([
+            "--player",
+            "test",
+            "--license",
+            "CC0-1.0",
+            "--checks-every",
+            "60",
+            "--rewind-seconds",
+            "1e17",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("from 0 to 600"), "{stderr}");
 }

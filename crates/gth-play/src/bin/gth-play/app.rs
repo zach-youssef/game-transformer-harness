@@ -13,6 +13,7 @@ use gth_play::display::{Screen, integer_scale};
 use gth_play::input::clean_opposites;
 use gth_play::latency;
 use gth_play::session::{Event, Session};
+use gth_record::RewindCause;
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
@@ -195,6 +196,11 @@ impl App {
         let ran_at = Instant::now();
         match self.session.run_frame(mask) {
             Ok(true) => {
+                for event in self.session.take_events() {
+                    eprintln!("gth-play: {}", describe(&event));
+                    self.sync_pause();
+                    self.update_title();
+                }
                 if mask != self.last_mask {
                     self.shown_input_at = input_at;
                 }
@@ -215,6 +221,13 @@ impl App {
                 eprintln!("gth-play: {error}");
                 self.update_title();
             }
+        }
+    }
+
+    /// Pauses or resumes the sound with the session (a rewind pauses it).
+    fn sync_pause(&mut self) {
+        if let Some(sound) = &mut self.sound {
+            sound.set_paused(self.session.is_paused());
         }
     }
 
@@ -251,9 +264,7 @@ impl App {
         let hotkeys = self.keyboard.hotkeys;
         let events = if key == hotkeys.pause {
             let event = self.session.toggle_pause();
-            if let Some(sound) = &mut self.sound {
-                sound.set_paused(self.session.is_paused());
-            }
+            self.sync_pause();
             Ok(vec![event])
         } else if key == hotkeys.save_state {
             self.session.save_state().map(|e| vec![e])
@@ -261,6 +272,10 @@ impl App {
             self.session.load_state()
         } else if key == hotkeys.record {
             self.session.toggle_recording().map(|e| vec![e])
+        } else if key == hotkeys.rewind {
+            let rewound = self.session.rewind().map(|e| vec![e]);
+            self.sync_pause();
+            rewound
         } else if key == hotkeys.quit {
             event_loop.exit();
             return;
@@ -288,6 +303,10 @@ impl App {
         let mut title = self.title.clone();
         if let Some((_, frames)) = self.session.recording() {
             title.push_str(&format!(" [REC {frames}]"));
+            let rewinds = self.session.rewinds();
+            if rewinds > 0 {
+                title.push_str(&format!(" [{rewinds} rewound]"));
+            }
         }
         if self.session.is_paused() {
             title.push_str(" [PAUSED]");
@@ -358,6 +377,20 @@ fn describe(event: &Event) -> String {
         Event::StateLoaded => "state loaded".into(),
         Event::RecordingStarted(dir) => format!("recording to {}", dir.display()),
         Event::RecordingFinished(dir) => format!("recording finished: {}", dir.display()),
+        Event::Rewound {
+            from,
+            to,
+            cause,
+            clip,
+        } => format!(
+            "rewound ({}) from frame {from} to {to}, paused: press pause to play on; clip {}",
+            match cause {
+                RewindCause::Lives => "lives dropped",
+                RewindCause::Manual => "hotkey",
+            },
+            clip.display()
+        ),
+        Event::Warning(message) => format!("warning: {message}"),
     }
 }
 
@@ -533,6 +566,7 @@ mod tests {
             license: "CC0-1.0".into(),
             checks_every: NonZeroU32::new(5).unwrap(),
             core_lock: None,
+            rewind_frames: 0,
         };
         let session = Session::new(load(), game.clone(), "testcore", None, settings);
         let keyboard = bindings::parse_keyboard(bindings::KEYBOARD_TEMPLATE, "template").unwrap();

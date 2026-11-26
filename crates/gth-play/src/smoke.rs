@@ -58,6 +58,7 @@ pub fn run(core_path: &Path, games_dir: &Path, out: &Path) -> Result<PathBuf, St
         checks_every: NonZeroU32::new(60).expect("non-zero"),
         // The test core is no pinned build.
         core_lock: None,
+        rewind_frames: 0,
     };
     let mut screen = Screen::new(&game);
     let mut session = Session::new(core, game, "testcore", None, settings);

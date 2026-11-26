@@ -283,6 +283,8 @@ required option: `--obs-size H W`, `--crop game|none|X Y W H`, `--orientation ga
 (`game` takes each recording's `game.toml`), `--frameskip N|recorded`, `--filter
 all|playing` and `--chunk-samples N`; only `--interpolation` defaults (`area`, as
 `RetroEnv`). Content, BIOS files and the core are found as `RetroEnv.from_game` finds them.
+A shard doesn't carry `[branch]`: to keep rewind clips (deaths) out of a training set, or
+to label them, pick the recordings by their `meta.toml` before exporting.
 Each recording exports in its own spawned process (one core per process, one process per
 recording), `--jobs` (default: the CPU count) at a time. A recording that fails, or whose
 process dies, leaves no shard (the parent removes a partial one) and doesn't stop the

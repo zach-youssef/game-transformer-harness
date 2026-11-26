@@ -10,14 +10,45 @@ use std::process::ExitCode;
 
 use gth_config::RetroButton;
 use gth_play::game::{self, GamePaths};
-use gth_play::session::{RecordSettings, Session};
+use gth_play::session::{RING_REWINDS, RecordSettings, RewindMode, Session};
 use gth_record::RecorderKind;
+
+/// The longest `--rewind-seconds`: the ring then holds 4 x 600 s of savestates, about
+/// 380 MB on Gunhed (80 KB a state, docs/human-play.md, "Rewind").
+const MAX_REWIND_SECONDS: f64 = 600.0;
+
+/// `--rewind-seconds`: from 0 to [`MAX_REWIND_SECONDS`].
+fn parse_rewind_seconds(text: &str) -> Result<f64, String> {
+    text.parse::<f64>()
+        .ok()
+        .filter(|s| (0.0..=MAX_REWIND_SECONDS).contains(s))
+        .ok_or(format!(
+            "--rewind-seconds: a number of seconds from 0 to {MAX_REWIND_SECONDS} (the ring \
+             buffer keeps {RING_REWINDS} rewinds of savestates in memory)"
+        ))
+}
+
+/// The rewind length in whole frames at `fps`; a nonzero length under one frame is refused
+/// rather than turning rewinds off.
+fn rewind_frames(seconds: f64, fps: f64) -> Result<u64, String> {
+    let frames = (seconds * fps).round() as u64;
+    if seconds > 0.0 && frames == 0 {
+        return Err(format!(
+            "--rewind-seconds {seconds} is under one frame at {fps:.2} fps: give 0 for no \
+             rewinds, or a longer rewind"
+        ));
+    }
+    Ok(frames)
+}
 
 const USAGE: &str = "\
 usage:
   gth-play GAME_ID --games-dir DIR --data-dir DIR --lock FILE --out DIR --player NAME
-           --license SPDX --checks-every N [--rom-dir DIR] [--core PATH] [--quit-after FRAMES]
+           --license SPDX --checks-every N --rewind-seconds S [--rom-dir DIR] [--core PATH]
+           [--quit-after FRAMES]
       Play GAME_ID in a window; the record hotkey records to --out (docs/human-play.md).
+      While recording, a death (the game's lives dropping) or the rewind hotkey rewinds S
+      seconds (0: never, at most 600) and keeps the rewound frames as a clip.
   gth-play --verify RECORDING --data-dir DIR [--rom-dir DIR] [--core PATH]
       Replay a recording and fail on any desync.
   gth-play --measure-latency GAME_ID --games-dir DIR --data-dir DIR --state FILE
@@ -178,6 +209,7 @@ fn play(args: &[String]) -> Result<(), String> {
             "player",
             "license",
             "checks-every",
+            "rewind-seconds",
             "quit-after",
         ],
     )?;
@@ -191,6 +223,7 @@ fn play(args: &[String]) -> Result<(), String> {
         .required("checks-every")?
         .parse::<NonZeroU32>()
         .map_err(|e| format!("--checks-every: {e}"))?;
+    let rewind_seconds = parse_rewind_seconds(options.required("rewind-seconds")?)?;
     let lock_path = options.path("lock")?;
     let (dir, player, license) = (
         options.path("out")?,
@@ -219,6 +252,8 @@ fn play(args: &[String]) -> Result<(), String> {
             lock_path.display()
         ),
     }
+    let fps = loaded.core.av_info().fps;
+    let rewind_frames = rewind_frames(rewind_seconds, fps)?;
     let settings = RecordSettings {
         dir,
         recorder: RecorderKind::Human,
@@ -226,14 +261,57 @@ fn play(args: &[String]) -> Result<(), String> {
         license,
         checks_every,
         core_lock,
+        rewind_frames,
     };
     let screen = gth_play::display::Screen::new(&loaded.game);
-    let session = Session::new(
+    let mut session = Session::new(
         loaded.core,
         loaded.game,
         game_id,
         Some(loaded.content),
         settings,
     );
+    if session.rewind_mode() != RewindMode::Off {
+        let depth = session.ring_depth();
+        match session.core_mut().serialize() {
+            Ok(state) => eprintln!(
+                "gth-play: rewind ring: up to {depth} savestates of {} KB, about {} MB",
+                state.len().div_ceil(1000),
+                (depth * state.len()).div_ceil(1_000_000)
+            ),
+            Err(error) => eprintln!("gth-play: warning: no savestates, so no rewinds: {error}"),
+        }
+    }
+    match session.rewind_mode() {
+        RewindMode::Off => eprintln!("gth-play: rewind off (--rewind-seconds 0)"),
+        RewindMode::ManualOnly(why) => eprintln!(
+            "gth-play: rewind: MANUAL ONLY, {rewind_frames} frames on the rewind hotkey; no \
+             automatic rewind on a death: {why}"
+        ),
+        RewindMode::Auto => eprintln!(
+            "gth-play: rewind: {rewind_frames} frames on a death (`lives` drops) or the \
+             rewind hotkey"
+        ),
+    }
     app::run(session, screen, game_id, quit_after)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_rewind_length_is_bounded_and_at_least_a_frame() {
+        assert_eq!(parse_rewind_seconds("3"), Ok(3.0));
+        assert_eq!(parse_rewind_seconds("600"), Ok(600.0));
+        for bad in ["600.5", "1e17", "-1", "inf", "NaN", "three"] {
+            let error = parse_rewind_seconds(bad).unwrap_err();
+            assert!(error.contains("from 0 to 600"), "{bad}: {error}");
+        }
+        assert_eq!(rewind_frames(3.0, 60.0), Ok(180));
+        assert_eq!(rewind_frames(0.0, 60.0), Ok(0));
+        assert_eq!(rewind_frames(600.0, 59.82), Ok(35892));
+        let error = rewind_frames(0.004, 60.0).unwrap_err();
+        assert!(error.contains("under one frame"), "{error}");
+    }
 }

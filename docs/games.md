@@ -229,7 +229,8 @@ encoding = "le"
   whose largest value times `scale` doesn't fit an `i64` (8 `le` bytes, say) is rejected
   when the config is parsed.
 - Names are identifiers. Use `score`, `lives`, `bombs`, `stage` and `credits` for those
-  meanings, so rewards and tools work across games; add others as needed.
+  meanings, so rewards and tools work across games; add others as needed. `gth-play` rewinds
+  when `lives` goes down (docs/human-play.md, "Rewind"), so it must fall on every lost life.
 
 RAM variables are for rewards, episode ends and logging, never for the policy: game RAM is
 never part of an observation (architecture.md, "Observations and RAM"). `RetroEnv` passes
