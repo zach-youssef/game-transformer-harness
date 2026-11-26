@@ -6,6 +6,9 @@ commit = "a836e52198aa5ce1f54be7b050e44872a1223797"
 library_version = "v1.0.0.03 261110 GITa836e52"
 
 [cores.fbneo.artifacts]
+aarch64-apple-darwin = "115ba5648280743389d4096e7b6e22539926f68e8b331edc074aeff5b803f4bd"
+x86_64-pc-windows-msvc = "cccbdf386d66e50ed8780c565cdf28bd9f9cc44dfb06e57e8a4ab179347b165e"
+x86_64-unknown-linux-gnu = "c79a9e93feff4740218b8fcccf9fae4b5b020af74d546856248eeb478b2adc79"
 
 [cores.fceumm]
 repo = "https://github.com/libretro/libretro-fceumm"
@@ -13,6 +16,9 @@ commit = "e0f3086a8104f8fbbe49a2615b10401504a9533f"
 library_version = "(SVN) e0f3086"
 
 [cores.fceumm.artifacts]
+aarch64-apple-darwin = "ba23d4c3ca9e4127f88de83012e80728dad712463961c54f6f538c3dcdb7cab5"
+x86_64-pc-windows-msvc = "40b137ecce1952adcc6372a227ffbba03e9c7dc7782ceaf9cb437ca75a61c13e"
+x86_64-unknown-linux-gnu = "76987d364b3cae02b1b32afdb3a1698905e4835ad88635a15c0e2c97dd49e057"
 
 [cores.genesis_plus_gx]
 repo = "https://github.com/libretro/Genesis-Plus-GX"
@@ -20,6 +26,9 @@ commit = "b9c2316441978d4015ba30e9a95d9b0e6f8ee981"
 library_version = "v1.7.4 b9c2316"
 
 [cores.genesis_plus_gx.artifacts]
+aarch64-apple-darwin = "06388d4f36371c1891bae46fb31e5da3b5f0a8c4cf7329408a6d6e5304b64f37"
+x86_64-pc-windows-msvc = "eda47005d0aba39c8f38632df098a09b493e7754aab35b7ee44c7488dac5f664"
+x86_64-unknown-linux-gnu = "61a2d10f0106ebbc4bda0ed083ccfcc8c13b92155e6238060ef6a921f817e017"
 
 [cores.mednafen_pce_fast]
 repo = "https://github.com/libretro/beetle-pce-fast-libretro"
@@ -27,3 +36,6 @@ commit = "2de1ce1c3f237b161c126c54ba407990bb86d1e9"
 library_version = "v1.31.0.0 2de1ce1"
 
 [cores.mednafen_pce_fast.artifacts]
+aarch64-apple-darwin = "5a704965a6340fe6658f1ffe99e2df937dd5f8a363aa18113f061260ab6829d3"
+x86_64-pc-windows-msvc = "903af9b2bdd0aba7f862e8c0aab974cab6199d2412d4a3e3cb2ddab3004a07c4"
+x86_64-unknown-linux-gnu = "a73ea44a4595ce6d25750768a7fe7e31a10ce58420583a27cb5aac83991e8b23"
