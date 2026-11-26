@@ -18,7 +18,7 @@ history brings in commits whose tree isn't the libretro port (FBNeo's `301a167` 
 | `mednafen_pce_fast` | Gunhed | libretro/beetle-pce-fast-libretro | `2de1ce1c3f237b161c126c54ba407990bb86d1e9` | 2026-10-30 | Fetch translations & Recreate libretro_core_options_intl.h |
 | `fceumm` | Zanac | libretro/libretro-fceumm | `e0f3086a8104f8fbbe49a2615b10401504a9533f` | 2026-11-02 | libretro: send path checks through the frontend VFS (#660) |
 | `genesis_plus_gx` | Lightening Force | libretro/Genesis-Plus-GX | `b9c2316441978d4015ba30e9a95d9b0e6f8ee981` | 2026-11-09 | libretro: define ALIGN_LONG for 32-bit ARM unix builds (#415) |
-| `fbneo` | arcade sets (none yet) | libretro/FBNeo | `a836e52198aa5ce1f54be7b050e44872a1223797` | 2026-11-10 | (libretro) update files |
+| `fbneo` | Battle Garegga, Ketsui, DoDonPachi III / Dai-Ou-Jou Black Label, Gunbird, Strikers 1945 | libretro/FBNeo | `a836e52198aa5ce1f54be7b050e44872a1223797` | 2026-11-10 | (libretro) update files |
 
 FBNeo's commit also fixes its driver tables, so the arcade sets' `game.toml` member lists
 (docs/roms.md, "Content tables") are taken from FBNeo at
@@ -132,7 +132,8 @@ A bump invalidates every savestate and recording made with the old build: a core
 format and its emulation can change between commits, so reset states (`reset.state` in
 `game.toml`, checked by SHA-1) and recorded episodes no longer replay. Make new reset states,
 update their SHA-1s in the games' configs and re-record what the bump affects, in the same
-change. An FBNeo bump can also change the arcade sets' member lists.
+change. An FBNeo bump can also change the arcade sets' member lists: compare the new
+driver tables with the `games/` content tables (docs/roms.md, "Content tables").
 
 Changing how a core is built (the script, or the runner images) without changing a pin keeps
 the tag, so main won't rebuild it. To publish new builds anyway, delete the tag's release

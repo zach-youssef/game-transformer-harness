@@ -104,7 +104,27 @@ The work is `GameConfig::audit` in `gth-config` (`audit.rs`); the CLI is
 | Game | `games/<id>` | Hashes from |
 |---|---|---|
 | Gunhed, Zanac, Lightening Force | `gunhed`, `zanac`, `lightening-force` | the user's dumps (`~/roms/manifest.md`); only `[content]` is final until G1-G3 |
-| Arcade sets | not yet | FBNeo's driver tables list names, sizes and CRC-32s but no SHA-1, which `members` needs; `cores.lock` pins FBNeo `a836e52` (docs/cores.md), whose tables the sets follow |
+| Battle Garegga, Ketsui, DoDonPachi III and DoDonPachi Dai-Ou-Jou Black Label, Gunbird, Strikers 1945 | `bgaregga`, `ket`, `ddp3`, `ddpdojblk` (in `ddp3.zip`, `in_parent`), `gunbird`, `s1945` | names, sizes and CRC-32s from the pinned FBNeo's driver tables (`a836e52`, below); SHA-1s from MAME 0.289 (below); only `[content]` is final until G4-G6 |
+
+FBNeo's driver tables list each member's name, size and CRC-32 but no SHA-1, which `members`
+needs, so the arcade tables take each member's name, size and CRC-32 from FBNeo at the
+`cores.lock` pin (`a836e52`, docs/cores.md), the core that loads them, and its SHA-1 from
+MAME's driver for the same set, used only where MAME's CRC-32 and size match FBNeo's:
+
+| Sets | FBNeo `a836e52` | MAME 0.289 |
+|---|---|---|
+| `bgaregga` | [`toaplan/d_battleg.cpp`](https://github.com/libretro/FBNeo/blob/a836e52198aa5ce1f54be7b050e44872a1223797/src/burn/drv/toaplan/d_battleg.cpp) | [`toaplan/raizing.cpp`](https://github.com/mamedev/mame/blob/mame0289/src/mame/toaplan/raizing.cpp) |
+| `ket`, `ddp3`, `ddpdojblk` | [`pgm/d_pgm.cpp`](https://github.com/libretro/FBNeo/blob/a836e52198aa5ce1f54be7b050e44872a1223797/src/burn/drv/pgm/d_pgm.cpp) | [`igs/pgm.cpp`](https://github.com/mamedev/mame/blob/mame0289/src/mame/igs/pgm.cpp) |
+| `gunbird`, `s1945` | [`psikyo/d_psikyo.cpp`](https://github.com/libretro/FBNeo/blob/a836e52198aa5ce1f54be7b050e44872a1223797/src/burn/drv/psikyo/d_psikyo.cpp) | [`psikyo/psikyo.cpp`](https://github.com/mamedev/mame/blob/mame0289/src/mame/psikyo/psikyo.cpp) |
+
+MAME 0.289 is the latest MAME release before the FBNeo pin (2026-07-30; the pin is from
+2026-11-10), so its tables are the closest to what FBNeo follows, and the user's sets are MAME
+merged sets. Every member's CRC-32 and size agree between the two, so no member lacks a SHA-1.
+A set's table is FBNeo's driver table plus the BIOS table it adds (`STDROMPICKEXT`): the
+PGM sets carry their BIOS ROMs inside their own zip, so they have no `[[bios]]`. Members
+that were never dumped (`NODUMP` in both drivers: the PGM sets' `*_igs027a.bin`, Gunbird's
+`3020.u19` and `3021.u69`, Strikers 1945's `4-u59.bin`) are left out, as no set holds them.
+When the FBNeo pin moves, compare its tables again (docs/cores.md, "Bumping a pin").
 
 ## Data directory
 

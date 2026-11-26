@@ -1,0 +1,32 @@
+# Battle Garegga (Europe / USA / Japan / Asia) (Sat Feb 3 1996), Raizing / Eighting.
+# Only [content] is final: names, sizes and CRC-32s from FBNeo a836e52
+# (src/burn/drv/toaplan/d_battleg.cpp, bgareggaRomDesc), SHA-1s from MAME 0.289
+# (src/mame/toaplan/raizing.cpp), whose CRC-32 matches for every member (docs/roms.md,
+# "Content tables"). The rest is a stub, so the config parses and the ROM audit can check the
+# content, until G4 sets the orientation, buttons, reset and RAM variables.
+
+core = "fbneo"
+orientation = 0           # stub until G4
+
+[content]
+file = "bgaregga.zip"
+members = [
+  { name = "prg0.bin", size = 524288, crc32 = "f80c2fc2", sha1 = "a9aac5c7f5439b6fe8d1b3db1fb02a27cc28fdf6" },
+  { name = "prg1.bin", size = 524288, crc32 = "2ccfdd1e", sha1 = "7a9f11f851854f3f8389b9c3c0906ebb8dc28712" },
+  { name = "rom4.bin", size = 2097152, crc32 = "b333d81f", sha1 = "5481465f1304334fd55798be2f44324c57c2dbcb" },
+  { name = "rom3.bin", size = 2097152, crc32 = "51b9ebfb", sha1 = "30e0c326f5175aa436df8dba08f6f4e08130b92f" },
+  { name = "rom2.bin", size = 2097152, crc32 = "b330e5e2", sha1 = "5d48e9d56f99d093b6390e0af1609fd796df2d35" },
+  { name = "rom1.bin", size = 2097152, crc32 = "7eafdd70", sha1 = "7c8da8e86c3f9491719b1d7d5d285568d7614f38" },
+  { name = "text.u81", size = 32768, crc32 = "e67fd534", sha1 = "987d0edffc2c243a13d4567319ea3d185eaadbf8" },
+  { name = "snd.bin", size = 131072, crc32 = "68632952", sha1 = "fb834db83157948e2b420b6051102a9c6ac3969b" },
+  { name = "rom5.bin", size = 1048576, crc32 = "f6d49863", sha1 = "3a3c354852adad06e8a051511abfab7606bce382" },
+]
+
+[buttons]
+a = "shot"                # stub until G4
+
+[reset]
+script = [{ press = [], frames = 1 }]   # stub until G4
+
+[episode]
+terminate = "0"           # stub until G4: never ends

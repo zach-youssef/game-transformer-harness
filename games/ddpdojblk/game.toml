@@ -1,0 +1,48 @@
+# DoDonPachi Dai-Ou-Jou Black Label (Japan, 2002.10.07.Black Ver, newer), Cave (IGS PGM); a
+# clone of ddp3, inside the merged ddp3.zip (in_parent).
+# Only [content] is final: names, sizes and CRC-32s from FBNeo a836e52
+# (src/burn/drv/pgm/d_pgm.cpp, ddp3blkRomDesc and the BIOS table it adds), SHA-1s from MAME
+# 0.289 (src/mame/igs/pgm.cpp), whose CRC-32 matches for every member (docs/roms.md, "Content
+# tables"). Not listed: ddp3_igs027a.bin, never dumped (NODUMP in both drivers, so no set
+# holds it). The rest is a stub, so the config parses and the ROM audit can check the
+# content, until G5 sets the orientation, buttons, reset and RAM variables.
+
+core = "fbneo"
+orientation = 0           # stub until G5
+
+[content]
+file = "ddpdojblk.zip"
+in_parent = true
+members = [
+  { name = "ddb10_10_8_434f.u45", size = 2097152, crc32 = "d21561db", sha1 = "66a0103bc5f17b28736b562e32807271a5afa261" },
+  { name = "cave_t04401w064.u19", size = 8388608, crc32 = "3a95f19c", sha1 = "fd3c47cf0b8b1e20c6bec4be68a089fc8bbf4dbe" },
+  { name = "cave_a04401w064.u7", size = 8388608, crc32 = "ed229794", sha1 = "1cf1863495a18c7c7d277a9be43ec116b00960b0" },
+  { name = "cave_a04402w064.u8", size = 8388608, crc32 = "752167b0", sha1 = "c33c3398dd8e479c9d5bd348924958a6aecbf0fc" },
+  { name = "cave_b04401w064.u1", size = 8388608, crc32 = "17731c9d", sha1 = "0e0aa0ec01035323985ac8e08228a0fd6edf6689" },
+  { name = "cave_m04401b032.u17", size = 4194304, crc32 = "5a0dbd76", sha1 = "06ab202f6bd5ebfb35b9d8cc7a8fb83ec8840659" },
+  { name = "ddp3blk_defaults.nv", size = 131072, crc32 = "c2282720", sha1 = "80b7662a7577883dabd043b6500ae244379047c2" },
+  { name = "pgm_t01s.rom", size = 2097152, crc32 = "1a7123a0", sha1 = "cc567f577bfbf45427b54d6695b11b74f2578af3" },
+  { name = "pgm_m01s.rom", size = 2097152, crc32 = "45ae7159", sha1 = "d3ed3ff3464557fd0df6b069b2e431528b0ebfa8" },
+  { name = "ddp3_bios.u37", size = 524288, crc32 = "b3cc5c8f", sha1 = "02d9511cf71e4a0d6ca8fd9a1ef2c79b0d001824" },
+]
+parents = [{ file = "ddp3.zip", members = [
+    { name = "ddp3_v101_16m.u36", size = 2097152, crc32 = "fba2180e", sha1 = "59c1a76243e587c07215c8a76649401ef0bff7c7" },
+    { name = "cave_t04401w064.u19", size = 8388608, crc32 = "3a95f19c", sha1 = "fd3c47cf0b8b1e20c6bec4be68a089fc8bbf4dbe" },
+    { name = "cave_a04401w064.u7", size = 8388608, crc32 = "ed229794", sha1 = "1cf1863495a18c7c7d277a9be43ec116b00960b0" },
+    { name = "cave_a04402w064.u8", size = 8388608, crc32 = "752167b0", sha1 = "c33c3398dd8e479c9d5bd348924958a6aecbf0fc" },
+    { name = "cave_b04401w064.u1", size = 8388608, crc32 = "17731c9d", sha1 = "0e0aa0ec01035323985ac8e08228a0fd6edf6689" },
+    { name = "cave_m04401b032.u17", size = 4194304, crc32 = "5a0dbd76", sha1 = "06ab202f6bd5ebfb35b9d8cc7a8fb83ec8840659" },
+    { name = "ddp3_defaults.nv", size = 131072, crc32 = "571e96c0", sha1 = "348940c77ca348213331b85b9b1d3aabb96a528a" },
+    { name = "pgm_t01s.rom", size = 2097152, crc32 = "1a7123a0", sha1 = "cc567f577bfbf45427b54d6695b11b74f2578af3" },
+    { name = "pgm_m01s.rom", size = 2097152, crc32 = "45ae7159", sha1 = "d3ed3ff3464557fd0df6b069b2e431528b0ebfa8" },
+    { name = "ddp3_bios.u37", size = 524288, crc32 = "b3cc5c8f", sha1 = "02d9511cf71e4a0d6ca8fd9a1ef2c79b0d001824" },
+]}]
+
+[buttons]
+a = "shot"                # stub until G5
+
+[reset]
+script = [{ press = [], frames = 1 }]   # stub until G5
+
+[episode]
+terminate = "0"           # stub until G5: never ends

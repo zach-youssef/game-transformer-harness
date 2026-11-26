@@ -1,0 +1,34 @@
+# Strikers 1945 (World), Psikyo.
+# Only [content] is final: names, sizes and CRC-32s from FBNeo a836e52
+# (src/burn/drv/psikyo/d_psikyo.cpp, s1945RomDesc), SHA-1s from MAME 0.289
+# (src/mame/psikyo/psikyo.cpp), whose CRC-32 matches for every member (docs/roms.md, "Content
+# tables"). Not listed: 4-u59.bin, never dumped (NODUMP in both drivers, so no set holds it).
+# The rest is a stub, so the config parses and the ROM audit can check the content, until G6
+# sets the orientation, buttons, reset and RAM variables.
+
+core = "fbneo"
+orientation = 0           # stub until G6
+
+[content]
+file = "s1945.zip"
+members = [
+  { name = "2s.u40", size = 262144, crc32 = "9b10062a", sha1 = "cf963bba157422b659d8d64b4493eb7d69cd07b7" },
+  { name = "3s.u41", size = 262144, crc32 = "f87e871a", sha1 = "567167c7fcfb622f78e211d74b04060c3d29d6b7" },
+  { name = "u20.bin", size = 2097152, crc32 = "28a27fee", sha1 = "913f3bc4d0c6fb6b776a020c8099bf96f16fd06f" },
+  { name = "u22.bin", size = 2097152, crc32 = "ca152a32", sha1 = "63efee83cb5982c77ca473288b3d1a96b89e6388" },
+  { name = "u21.bin", size = 2097152, crc32 = "c5d60ea9", sha1 = "e5ce90788211c856172e5323b01b2c7ab3d3fe50" },
+  { name = "u23.bin", size = 2097152, crc32 = "48710332", sha1 = "db38b732a09b31ce55a96ec62987baae9b7a00c1" },
+  { name = "u1.bin", size = 262144, crc32 = "dee22654", sha1 = "5df05b0029ff7b1f7f04b41da7823d2aa8034bd2" },
+  { name = "u34.bin", size = 2097152, crc32 = "aaf83e23", sha1 = "1c75d09ff42c0c215f8c66c699ca75688c95a05e" },
+  { name = "3-u63.bin", size = 131072, crc32 = "42d40ae1", sha1 = "530a5a3f78ac489b84a631ea6ce21010a4f4d31b" },
+  { name = "u61.bin", size = 2097152, crc32 = "a839cf47", sha1 = "e179eb505c80d5bb3ccd9e228f2cf428c62b72ee" },
+]
+
+[buttons]
+a = "shot"                # stub until G6
+
+[reset]
+script = [{ press = [], frames = 1 }]   # stub until G6
+
+[episode]
+terminate = "0"           # stub until G6: never ends

@@ -1,0 +1,32 @@
+# Ketsui: Kizuna Jigoku Tachi (2003/01/01. Master Ver.), Cave (IGS PGM).
+# Only [content] is final: names, sizes and CRC-32s from FBNeo a836e52
+# (src/burn/drv/pgm/d_pgm.cpp, ketRomDesc and the BIOS table it adds), SHA-1s from MAME 0.289
+# (src/mame/igs/pgm.cpp), whose CRC-32 matches for every member (docs/roms.md, "Content
+# tables"). Not listed: ket_igs027a.bin, never dumped (NODUMP in both drivers, so no set
+# holds it). The rest is a stub, so the config parses and the ROM audit can check the
+# content, until G5 sets the orientation, buttons, reset and RAM variables.
+
+core = "fbneo"
+orientation = 0           # stub until G5
+
+[content]
+file = "ket.zip"
+members = [
+  { name = "ketsui_v100.u38", size = 2097152, crc32 = "dfe62f3b", sha1 = "baa58d1ce47a707f84f65779ac0689894793e9d9" },
+  { name = "cave_t04701w064.u19", size = 8388608, crc32 = "2665b041", sha1 = "fb1107778b66f2af0de77ac82e1ee2902f53a959" },
+  { name = "cave_a04701w064.u7", size = 8388608, crc32 = "5ef1b94b", sha1 = "f10dfa46e0a4d297c3a856aea5b49d648f98935c" },
+  { name = "cave_a04702w064.u8", size = 8388608, crc32 = "26d6da7f", sha1 = "f20e07a7994f41b5ed917f8b0119dc5542f3541c" },
+  { name = "cave_b04701w064.u1", size = 8388608, crc32 = "1bec008d", sha1 = "07d117dc2eebb35727fb18a7c563acbaf25a8d36" },
+  { name = "cave_m04701b032.u17", size = 4194304, crc32 = "b46e22d1", sha1 = "670853dc485942fb96380568494bdf3235f446ee" },
+  { name = "ket_defaults.nv", size = 131072, crc32 = "3ca892d8", sha1 = "67430df5217e453ae8140c5653deeadfad8fa684" },
+  { name = "pgm_t01s.rom", size = 2097152, crc32 = "1a7123a0", sha1 = "cc567f577bfbf45427b54d6695b11b74f2578af3" },
+]
+
+[buttons]
+a = "shot"                # stub until G5
+
+[reset]
+script = [{ press = [], frames = 1 }]   # stub until G5
+
+[episode]
+terminate = "0"           # stub until G5: never ends

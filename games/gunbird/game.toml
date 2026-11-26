@@ -1,0 +1,35 @@
+# Gunbird (World), Psikyo.
+# Only [content] is final: names, sizes and CRC-32s from FBNeo a836e52
+# (src/burn/drv/psikyo/d_psikyo.cpp, gunbirdRomDesc), SHA-1s from MAME 0.289
+# (src/mame/psikyo/psikyo.cpp), whose CRC-32 matches for every member (docs/roms.md, "Content
+# tables"). Not listed: 3020.u19, 3021.u69, never dumped (NODUMP in both drivers, so no set
+# holds them). The rest is a stub, so the config parses and the ROM audit can check the
+# content, until G6 sets the orientation, buttons, reset and RAM variables.
+
+core = "fbneo"
+orientation = 0           # stub until G6
+
+[content]
+file = "gunbird.zip"
+members = [
+  { name = "4.u46", size = 262144, crc32 = "b78ec99d", sha1 = "399b79931652d9df1632cd4d7ec3d214e473a5c3" },
+  { name = "5.u39", size = 262144, crc32 = "925f095d", sha1 = "301a536119a0320a756e9c6e51fb10e36b90ef16" },
+  { name = "u14.bin", size = 2097152, crc32 = "7d7e8a00", sha1 = "9f35f5b54ae928e9bf2aa6ad4604f669857955ec" },
+  { name = "u24.bin", size = 2097152, crc32 = "5e3ffc9d", sha1 = "c284eb9ef56c8e6261fe11f91a10c5c5a56c9803" },
+  { name = "u15.bin", size = 2097152, crc32 = "a827bfb5", sha1 = "6e02436e12085016cf1982c9ae07b6c6dec82f1b" },
+  { name = "u25.bin", size = 1048576, crc32 = "ef652e0c", sha1 = "6dd994a15ced31d1bbd1a3b0e9d8d86eca33e217" },
+  { name = "u3.bin", size = 262144, crc32 = "0905aeb2", sha1 = "8cca09f7dfe3f804e77515f7b1b1bdbeb7bb3d80" },
+  { name = "u33.bin", size = 2097152, crc32 = "54494e6b", sha1 = "f5d090d2d34d908b56b53a246def194929eba990" },
+  { name = "3.u71", size = 131072, crc32 = "2168e4ba", sha1 = "ca7ad6acb5f806ce2528e7b52c19e8cceecb8543" },
+  { name = "u64.bin", size = 524288, crc32 = "e187ed4f", sha1 = "05060723d89b1d05714447a14b5f5888ff3c2306" },
+  { name = "u56.bin", size = 1048576, crc32 = "9e07104d", sha1 = "3bc54cb755bb3194197706965b532d62b48c4d12" },
+]
+
+[buttons]
+a = "shot"                # stub until G6
+
+[reset]
+script = [{ press = [], frames = 1 }]   # stub until G6
+
+[episode]
+terminate = "0"           # stub until G6: never ends

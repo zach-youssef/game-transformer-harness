@@ -19,7 +19,10 @@ table and RAM variable key (the other forms of `reset` and `content`, a savestat
    Python's `zlib.crc32` give the rest. `gth audit` also prints them: a file named as in
    `content.file` at the top of the ROM directory is reported `bad-hash` with the size and
    hashes found, and for an archive `--json` lists the members that match no expected
-   member, with their hashes.
+   member, with their hashes. An arcade set's `members` are the exception: their names,
+   sizes and CRC-32s come from the pinned FBNeo's driver table and their SHA-1s from MAME's
+   driver where the CRC-32s agree (docs/roms.md, "Content tables"), and the audit against
+   the user's zip is the check.
 3. **Audit**: `uv run gth audit <data_dir> --game <id>` (docs/roms.md, "Auditing") must report
    the game `ok` on a machine that has its files: content found by SHA-1, parents beside it,
    BIOS files under `<data_dir>/system`, archive members by hash. Add the game to the content
