@@ -1,0 +1,69 @@
+name: CI
+
+# Every pushed branch gets CI (PRs show the push run), so a branch pushed without a PR is still checked.
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Cancel superseded branch runs, never main's: every merged commit keeps a finished run.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # Build gth-py as an extension module (what maturin sets), so cargo never links libpython.
+  PYO3_BUILD_EXTENSION_MODULE: "1"
+
+jobs:
+  check:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-latest is Apple silicon (arm64); pinned macOS labels get retired (macos-14 was).
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: astral-sh/setup-uv@v10.4.0  # no major tag after v7: bump by hand
+        with:
+          version: "0.13.10"  # the uv that wrote uv.lock; bump both together
+          enable-cache: true
+
+      - name: Python env (uv.lock)
+        run: uv sync --locked
+
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+      # Through `uv run` so PyO3's build script finds the venv's Python 3.12, not the runner's.
+      - name: cargo clippy
+        run: uv run --locked cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: cargo test
+        run: uv run --locked cargo test --workspace --locked
+
+      - name: maturin develop
+        run: uv run --locked maturin develop --uv --locked
+
+      - name: ruff check
+        run: uv run --locked ruff check
+
+      - name: ruff format
+        run: uv run --locked ruff format --check
+
+      - name: pytest
+        run: uv run --locked pytest

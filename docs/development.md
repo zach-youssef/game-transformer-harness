@@ -35,6 +35,11 @@ uv run cargo test --workspace
 - `uv sync` removes packages it didn't install, including the one `maturin develop` installed,
   so rerun `maturin develop` after it. `uv run` doesn't remove anything.
 - `gth-py` has no Rust tests (`test = false`): it is glue, and pytest tests it through Python.
+- CI (`.github/workflows/ci.yml`) runs the commands above on Linux, macOS (arm64) and
+  Windows, on every pushed branch (a PR shows its branch's push run). CI has no ROMs and no
+  real cores. `astral-sh/setup-uv` publishes no major-version tag, so the workflow pins an
+  exact release and bumping it is manual. It also pins uv itself to the version that wrote
+  `uv.lock`; bump both together.
 
 ## Build directory
 
