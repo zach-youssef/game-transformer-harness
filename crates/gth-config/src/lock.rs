@@ -77,6 +77,15 @@ impl CoresLock {
         })
     }
 
+    /// Core `name`'s entry if `path` is the build for `target` that this lock pins (by
+    /// SHA-256), else `None`: the lock has no such core or no build of it for `target`, or
+    /// `path` isn't that build (or can't be read). This is what a recording keeps as its
+    /// core's lock entry (`[core.lock]`), which then says exactly which build made it.
+    pub fn pinned(&self, name: &str, target: &str, path: &Path) -> Option<&CoreLock> {
+        let core = self.cores.get(name)?;
+        core.check_artifact(name, target, path).ok().map(|()| core)
+    }
+
     /// The tag of the GitHub release with this lock's builds: `cores-` and 16 hex digits of a
     /// SHA-256 over each core's name, repository and commit. The versions and artifact hashes
     /// are left out, so writing them into the lock after the release keeps its tag.
@@ -249,6 +258,20 @@ x86_64-pc-windows-msvc = "111111111111111111111111111111111111111111111111111111
             .unwrap_err()
             .to_string();
         assert!(error.contains("no build for riscv64gc"), "{error}");
+        assert_eq!(filled.pinned("fbneo", target, &build), Some(fbneo));
+        assert_eq!(lock.pinned("fbneo", target, &build), None, "another hash");
+        assert_eq!(
+            filled.pinned("fceumm", target, &build),
+            None,
+            "no such core"
+        );
+        let other = "riscv64gc-unknown-linux-gnu";
+        assert_eq!(
+            filled.pinned("fbneo", other, &build),
+            None,
+            "no build pinned"
+        );
+        assert_eq!(filled.pinned("fbneo", target, &dir.join("none")), None);
         let missing = lock.with_builds(&dir, &["x86_64-unknown-linux-gnu"]);
         assert!(
             missing

@@ -59,7 +59,7 @@ def fetch(lock: _native.CoresLock, data_dir: Path, source: str | None, report: R
     for name in lock.names:
         path = cores_dir / _native.library_file(name, TARGET)
         try:
-            if _pinned(lock, name, path):
+            if lock.pins(name, TARGET, path):
                 report(f"{name}: {path} has the pinned hash")
             else:
                 asset = _native.asset_name(name, TARGET)
@@ -102,7 +102,7 @@ def _check(lock: _native.CoresLock, cores_dir: Path, system_dir: Path, report: R
         if TARGET not in lock.artifacts(name):
             pin = f"no {TARGET} hash pinned"
         else:
-            pin = "the pinned hash" if _pinned(lock, name, path) else "not the pinned hash"
+            pin = "the pinned hash" if lock.pins(name, TARGET, path) else "not the pinned hash"
         report(f"{name}: loads and reports {version!r}; {pin}")
     return failed
 
@@ -133,20 +133,7 @@ def pinned_lock(lock_path: Path, name: str, core_path: Path) -> _native.CoresLoc
     if not lock_path.is_file():
         return None
     lock = _native.CoresLock.load(lock_path)
-    if name not in lock.names or not _pinned(lock, name, core_path):
-        return None
-    return lock
-
-
-def _pinned(lock: _native.CoresLock, name: str, path: Path) -> bool:
-    """Whether ``path`` exists and is the pinned build of ``name`` for this platform."""
-    if not path.is_file():
-        return False
-    try:
-        lock.check_artifact(name, TARGET, path)
-    except ConfigError:
-        return False
-    return True
+    return lock if lock.pins(name, TARGET, core_path) else None
 
 
 def _probe(lock: _native.CoresLock, name: str, path: Path, system_dir: Path) -> str:

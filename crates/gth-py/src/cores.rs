@@ -86,6 +86,12 @@ impl CoresLock {
         Ok(py.detach(|| core.check_artifact(name, target, &path))?)
     }
 
+    /// Whether `path` is core `name`'s pinned build for `target`: False, too, when the lock
+    /// has no such core or no build of it for `target`, or `path` can't be read.
+    fn pins(&self, py: Python<'_>, name: &str, target: &str, path: PathBuf) -> bool {
+        py.detach(|| self.lock.pinned(name, target, &path).is_some())
+    }
+
     /// Raises `ConfigError` unless `reported` is core `name`'s pinned `library_version`.
     fn check_library_version(&self, name: &str, reported: &str) -> errors::Result<()> {
         Ok(self
