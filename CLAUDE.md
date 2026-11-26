@@ -9,8 +9,9 @@ Headless libretro cores behind a Python gymnasium environment, with all per-fram
   `CARGO_TARGET_DIR`.
 - [docs/native.md](docs/native.md): the `_native` binding conventions and type stubs. Read
   before touching `gth-py` or `_native.pyi`.
-- [docs/libretro.md](docs/libretro.md): the libretro FFI subset in `gth-libretro-sys` and how to
-  extend it. Read before touching that crate or the host's callbacks.
+- [docs/libretro.md](docs/libretro.md): the libretro FFI subset in `gth-libretro-sys`, how to
+  extend it, and what the test core does. Read before touching either crate, the host's
+  callbacks or tests that load a core.
 - [docs/roms.md](docs/roms.md): before touching ROMs, BIOS or cores, or tests that use them.
 
 Rules that apply everywhere:

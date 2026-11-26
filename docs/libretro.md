@@ -34,3 +34,31 @@ and cores fall back to `SET_VARIABLES`. Cheats and `retro_load_game_special` are
 C-variadic functions (the log callback) can be called from Rust but not defined, so a host
 that wants core logs needs a small C shim; until then it answers `GET_LOG_INTERFACE` with
 `false`.
+
+## Test core
+
+`crates/gth-testcore` is a deterministic libretro core (a `cdylib`) that stands in for real
+cores in tests and CI: video, input, RAM, core options and savestates, with no ROM.
+
+- **Content** is optional (`SET_SUPPORT_NO_GAME`). Content bytes, passed in memory
+  (`need_fullpath = false`, extension `gthc`), only seed the PRNG.
+- **Video**: 320x240 `XRGB8888` at 60 fps; `retro_load_game` fails if the host refuses the
+  format. Each frame: the background's green is the low byte of the frame number (the number
+  of `retro_run` calls since load or reset, so the first frame is 1) and its blue is the PRNG
+  state's low byte (0 without content); a strip of 16 cells, 20x8 each, across the top, cell
+  `id` coloured `0xFF0000 | id * 0x1010` while joypad button `id` is held; a 16x16 white
+  square, starting at (152, 112), that the d-pad moves by the `gth_testcore_step` core option
+  (`2|1|4` pixels, default 2) per frame, clamped to the screen.
+- **Input**: port 0 joypad, queried per button (not with `RETRO_DEVICE_ID_JOYPAD_MASK`).
+- **Audio**: 800 silent stereo frames per `retro_run`, through the batch callback.
+- **RAM**: `RETRO_MEMORY_SYSTEM_RAM` is 256 bytes, also registered with `SET_MEMORY_MAPS` at
+  address 0. Bytes 0-3 are the score, 8 packed BCD digits with the most significant byte
+  first, which goes up by 1 on every frame A is held and wraps after 99999999. Bytes 4-7 are
+  the last PRNG output (xorshift32 seeded with FNV-1a of the content, little-endian; zero
+  without content). The rest stays zero. No save RAM.
+- **Savestates**: 276 bytes, the frame number, square position, PRNG state and system RAM. The
+  step option is not saved, and a state that is short or puts the square off screen is
+  refused. `retro_reset` returns to the state right after loading.
+
+Its unit tests (`src/tests.rs`) call the exported functions directly with a fake host behind
+the callbacks.
