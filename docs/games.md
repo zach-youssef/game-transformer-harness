@@ -124,7 +124,7 @@ after a load shows what the process ran before it, and a recording doesn't repla
 process (its first frame hash differs while RAM matches). FBNeo's Toaplan GP9001 drivers
 (`bgaregga`) draw each frame with the palette computed after the previous one, which is
 outside the state, and nothing recomputes it on load; its CAVE drivers (`ket`, `ddp3`) do
-the same (docs/performance.md, "FBNeo frames after a savestate load"). With
+the same (docs/performance.md, "FBNeo and savestates"). With
 `settle_frames = n`, every load (`Core::unserialize`, `Core::reset`, the replayer's and the
 recorder's start, `RetroEnv.reset`) runs `n` frames with no button held, unseen, and loads
 the state again, so the next frame depends only on the state. It isn't quite the frame the
@@ -132,7 +132,8 @@ original run showed: that one used the palette from the frame before the state, 
 state doesn't hold, so on a frame where the palette changes the two differ. The frames after
 it are exact, which is why gth-play's rewind seek (docs/human-play.md) replays 1 +
 `settle_frames` frames past a savestate. Recordings and replays settle alike, so recordings
-replay with no desync.
+replay with no desync (for `bgaregga` together with FBNeo's patches, docs/cores.md,
+"Patches", which add state whose loss the frames after a load don't recover from).
 
 Set it to the fewest frames that make the first frame after a load the same whatever ran
 before (1 for the FBNeo games above), checked on the game's ROM as

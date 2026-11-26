@@ -21,6 +21,11 @@ history brings in commits whose tree isn't the libretro port (FBNeo's `301a167` 
 | `genesis_plus_gx` | Lightening Force | libretro/Genesis-Plus-GX | `b9c2316441978d4015ba30e9a95d9b0e6f8ee981` | 2026-11-09 | libretro: define ALIGN_LONG for 32-bit ARM unix builds (#415) |
 | `fbneo` | Battle Garegga, Ketsui, DoDonPachi III / Dai-Ou-Jou Black Label, Gunbird, Strikers 1945 | libretro/FBNeo | `a836e52198aa5ce1f54be7b050e44872a1223797` | 2026-11-10 | (libretro) update files |
 
+FBNeo carries three patches, each adding state its savestates left out:
+`0001-ym2151-scan-render-position.patch`, `0002-toaplan-scan-previous-scanline.patch` and
+`0003-msm6295-scan-render-position.patch` (below and docs/performance.md, "FBNeo and
+savestates").
+
 FBNeo's commit also fixes its driver tables, so the arcade sets' `game.toml` member lists
 (docs/roms.md, "Content tables") are taken from FBNeo at
 `a836e52198aa5ce1f54be7b050e44872a1223797` until FBNeo is bumped.
@@ -76,7 +81,7 @@ Local builds work on a Mac with the Xcode command-line tools, for example to try
 
 ```
 scripts/build-core.sh fceumm https://github.com/libretro/libretro-fceumm <commit> osx out
-scripts/build-core.sh <name> <repo> <commit> osx out cores/patches/<name>/*.patch
+scripts/build-core.sh fbneo https://github.com/libretro/FBNeo <commit> osx out cores/patches/fbneo/*.patch
 gth cores check out          # loads every core in out/ and checks its version
 ```
 
@@ -108,7 +113,8 @@ upstream too; anything else (a build flag, a Makefile quirk) is a `case` in the 
 - The build script applies them with `git apply --index` and commits them with a fixed
   author, message and the upstream commit's dates, so the patched commit has the same hash
   everywhere. Cores that report `git rev-parse --short HEAD` then report that commit's hash,
-  which isn't upstream's. So `library_version` also tells a patched build from an unpatched one, and from one with other
+  which isn't upstream's: FBNeo at `a836e52` with its patches reports `GIT0630faa`. So
+  `library_version` also tells a patched build from an unpatched one, and from one with other
   patches.
 - The release tag covers the patches (below), so adding, changing or dropping one is a new
   release, like a bump: clear the core's `artifacts`, set `library_version` to what the

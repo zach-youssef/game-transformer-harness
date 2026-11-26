@@ -61,11 +61,14 @@ A ROM test that runs the real core also takes the `core` fixture: `core(game_id)
 the game's core library in the checkout's git-ignored `data/cores/` (where
 `uv run gth cores fetch data` puts it, docs/cores.md), whose parent is then the data
 directory for `RetroEnv.from_game`. It skips with a reason when the library is missing or
-isn't the build `cores.lock` pins for this platform, so a machine with ROMs but no fetched
-core skips rather than fails, and values a test pins (scores, frames) are always checked on
-the build they came from. `core(game_id, data_dir)` looks in another data directory. No
-game with BIOS files has a ROM test yet: `RetroEnv.from_game` raises naming any missing from
-`data/system/`, and the first such test adds a skip for them.
+isn't the build `cores.lock` pins for this platform (including when the lock pins none yet,
+between a pin or patch change and its release), so a machine with ROMs but no fetched core
+skips rather than fails, and values a test pins (scores, frames) are always checked on the
+build they came from. To run one against a local build before its release, put the build in
+`data/cores/` and its hash in your copy of the lock for that run only (never commit it).
+`core(game_id, data_dir)` looks in another data directory. No game with BIOS files has a ROM
+test yet: `RetroEnv.from_game` raises naming any missing from `data/system/`, and the first
+such test adds a skip for them.
 `tests/test_gunhed.py` is the example (docs/games.md, "Adding a game"):
 
 ```sh

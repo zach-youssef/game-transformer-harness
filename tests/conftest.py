@@ -81,7 +81,13 @@ def core() -> Callable[..., Path]:
             pytest.skip(
                 f"{game_id}: no {path.name} in {path.parent} (gth cores fetch, docs/cores.md)"
             )
-        if cores.pinned_lock(cores.LOCK, name, path) is None:
+        lock = _native.CoresLock.load(cores.LOCK)
+        if cores.TARGET not in lock.artifacts(name):
+            pytest.skip(
+                f"{game_id}: cores.lock pins no {cores.TARGET} build of {name} yet: its release"
+                " isn't written into the lock (docs/cores.md)"
+            )
+        if not lock.pins(name, cores.TARGET, path):
             pytest.skip(f"{game_id}: {path} isn't the build cores.lock pins (gth cores fetch)")
         return path
 

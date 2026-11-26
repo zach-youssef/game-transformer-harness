@@ -3,12 +3,14 @@
 [cores.fbneo]
 repo = "https://github.com/libretro/FBNeo"
 commit = "a836e52198aa5ce1f54be7b050e44872a1223797"
-library_version = "v1.0.0.03 261110 GITa836e52"
+library_version = "v1.0.0.03 261110 GIT0630faa"
+
+[cores.fbneo.patches]
+"0001-ym2151-scan-render-position.patch" = "a2a471bebf8fe4262b7079c72f990a7b208d2107d762bf7f1091af87609a50b3"
+"0002-toaplan-scan-previous-scanline.patch" = "0dc7a2fa2674d614af80642eba7490364c3d5e8531ec4e7fa662cc7d15392646"
+"0003-msm6295-scan-render-position.patch" = "6c39a66692b9b99b7bfdb77d4fbbd0a233ec12bc04a46ad80b16f3a648d22326"
 
 [cores.fbneo.artifacts]
-aarch64-apple-darwin = "115ba5648280743389d4096e7b6e22539926f68e8b331edc074aeff5b803f4bd"
-x86_64-pc-windows-msvc = "cccbdf386d66e50ed8780c565cdf28bd9f9cc44dfb06e57e8a4ab179347b165e"
-x86_64-unknown-linux-gnu = "c79a9e93feff4740218b8fcccf9fae4b5b020af74d546856248eeb478b2adc79"
 
 [cores.fceumm]
 repo = "https://github.com/libretro/libretro-fceumm"

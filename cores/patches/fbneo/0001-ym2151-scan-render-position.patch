@@ -1,0 +1,37 @@
+burn_ym2151: save the render position and carried samples in savestates
+
+BurnYM2151Render() carries nYM2151Position, nFractionalPosition and the last few samples in
+pBuffer from one frame into the next, and BurnYM2151Scan() saved none of them. A loaded state
+then rendered as many samples as the history before the load left over. Drivers whose
+YM2151 IRQ is timed by rendered samples rather than BurnTimer (Battle Garegga) ran their Z80
+differently after a load than in the run that saved the state, so recordings desynced in
+the sound CPU's RAM hundreds of frames later (docs/performance.md, "FBNeo and savestates").
+
+Upstream: not merged yet; drop this file when the pinned commit contains the change
+(docs/cores.md, "Patches").
+
+diff --git a/src/burn/snd/burn_ym2151.cpp b/src/burn/snd/burn_ym2151.cpp
+index 1b5c22a..cbc734f 100644
+--- a/src/burn/snd/burn_ym2151.cpp
++++ b/src/burn/snd/burn_ym2151.cpp
+@@ -373,6 +373,20 @@ void BurnYM2151Scan(INT32 nAction, INT32 *pnMin)
+ 	}
+ 
+ 	SCAN_VAR(nBurnCurrentYM2151Register);
++	// The render position and the samples BurnYM2151Render() carries into the next frame.
++	// Without them a loaded state renders as many samples as the history before the load
++	// left over, and drivers that time the YM2151's IRQ by rendered samples (no BurnTimer)
++	// run their sound CPU differently after a load than in the run that saved the state.
++	SCAN_VAR(nYM2151Position);
++	SCAN_VAR(nFractionalPosition);
++	{
++		struct BurnArea ba;
++		memset(&ba, 0, sizeof(ba));
++		ba.Data = pBuffer;
++		ba.nLen = 4 * 4096 * sizeof(INT16);
++		ba.szName = "YM2151 carried samples";
++		BurnAcb(&ba);
++	}
+ 
+ 	BurnYM2151Scan_int(nAction); // Scan the YM2151's internal registers
+ 
