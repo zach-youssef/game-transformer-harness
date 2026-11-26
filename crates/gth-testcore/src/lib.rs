@@ -21,6 +21,9 @@ const RAM_SIZE: usize = 0x100;
 const SCORE: usize = 0;
 /// RAM offset of the last PRNG output, a little-endian u32 (zero without content).
 const RNG_OUT: usize = 4;
+/// RAM offset of a lives counter for rewind tests: Select held adds one, L held takes one
+/// (stopping at zero); nothing else changes it.
+const LIVES: usize = 8;
 /// frame (u64), x, y (i32), rng (u32), RAM; all little-endian.
 const STATE_SIZE: usize = 8 + 4 + 4 + 4 + RAM_SIZE;
 const SAMPLE_RATE: usize = 48_000;
@@ -119,6 +122,13 @@ impl Game {
         self.y = (self.y + dy * self.step).clamp(0, (HEIGHT - SQUARE) as i32);
         if held(RETRO_DEVICE_ID_JOYPAD_A) == 1 {
             bcd_increment(&mut self.ram[SCORE..SCORE + 4]);
+        }
+        let lives = &mut self.ram[LIVES];
+        if held(RETRO_DEVICE_ID_JOYPAD_SELECT) == 1 {
+            *lives = lives.wrapping_add(1);
+        }
+        if held(RETRO_DEVICE_ID_JOYPAD_L) == 1 {
+            *lives = lives.saturating_sub(1);
         }
         if self.rng != 0 {
             self.rng ^= self.rng << 13;

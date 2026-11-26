@@ -96,7 +96,9 @@ cores in tests and CI: video, input, RAM, core options and savestates, with no R
   address 0. Bytes 0-3 are the score, 8 packed BCD digits with the most significant byte
   first, which goes up by 1 on every frame A is held and wraps after 99999999. Bytes 4-7 are
   the last PRNG output (xorshift32 seeded with FNV-1a of the content, little-endian; zero
-  without content). The rest stays zero. No save RAM.
+  without content). Byte 8 is a lives counter for rewind tests: +1 (wrapping) on every frame
+  Select is held, then -1 (stopping at 0) on every frame L is held. The rest stays zero. No
+  save RAM.
 - **Savestates**: 276 bytes, the frame number, square position, PRNG state and system RAM. The
   options are not saved, and a state that is short or puts the square off screen is
   refused. `retro_reset` is a soft reset, like a console's reset button: the frame number and
