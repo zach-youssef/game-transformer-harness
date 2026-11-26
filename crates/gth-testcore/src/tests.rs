@@ -13,6 +13,7 @@ struct Host {
     step: &'static CStr,
     step_changed: bool,
     dupe: &'static CStr,
+    lag: &'static CStr,
     pixel_format: Option<retro_pixel_format>,
     memory_map: Option<retro_memory_descriptor>,
     step_defined: bool,
@@ -35,6 +36,7 @@ impl Host {
             step: c"2",
             step_changed: false,
             dupe: c"off",
+            lag: c"off",
             pixel_format: None,
             memory_map: None,
             step_defined: false,
@@ -80,6 +82,8 @@ unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool {
             let key = unsafe { CStr::from_ptr(variable.key) };
             variable.value = if key == STEP_KEY {
                 host.step.as_ptr()
+            } else if key == LAG_KEY {
+                host.lag.as_ptr()
             } else {
                 assert_eq!(key, DUPE_KEY);
                 host.dupe.as_ptr()
@@ -301,6 +305,34 @@ fn dupe_option_repeats_the_frame_while_no_button_is_held() {
     host().step_changed = true;
     session.run(0);
     assert_eq!(host().dupes, 1);
+}
+
+#[test]
+fn lag_option_draws_red_from_the_previous_frame_which_states_dont_hold() {
+    let red = |frame: &[u32]| frame[WIDTH * 100] >> 16;
+    let session = Session::start(None);
+    host().lag = c"on";
+    host().step_changed = true;
+    assert_eq!(red(&session.run(0)), 0, "no frame since load");
+    assert_eq!(red(&session.run(0)), 1);
+    let state = session.save();
+    assert_eq!(red(&session.run(0)), 2, "frame 3 shows frame 2's number");
+    for _ in 0..10 {
+        session.run(0);
+    }
+    assert!(session.load(&state));
+    assert_eq!(
+        red(&session.run(0)),
+        13,
+        "after a load, the frame shows the last frame run before it"
+    );
+    for _ in 0..200 {
+        session.run(0);
+    }
+    assert_eq!(red(&session.run(0)), 203 & 0x7F, "red stays below 0x80");
+    host().lag = c"off";
+    host().step_changed = true;
+    assert_eq!(red(&session.run(0)), 0);
 }
 
 #[test]

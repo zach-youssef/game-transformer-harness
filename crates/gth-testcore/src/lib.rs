@@ -32,6 +32,7 @@ static SILENCE: [i16; 2 * SAMPLE_RATE / FPS] = [0; 2 * SAMPLE_RATE / FPS];
 
 const STEP_KEY: &CStr = c"gth_testcore_step";
 const DUPE_KEY: &CStr = c"gth_testcore_dupe";
+const LAG_KEY: &CStr = c"gth_testcore_lag";
 const VERSION: &CStr =
     match CStr::from_bytes_with_nul(concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes()) {
         Ok(version) => version,
@@ -86,6 +87,12 @@ struct Game {
     /// Core option `gth_testcore_dupe`: on frames with no button held, send no new frame
     /// (`NULL`, "repeat the previous one"), if the host allows it. Not saved either.
     dupe: bool,
+    /// Core option `gth_testcore_lag`: draw the background's red from `previous`, as FBNeo's
+    /// Toaplan drivers draw with the palette they computed after the previous frame.
+    lag: bool,
+    /// The low 7 bits of the previous frame's number, set after each frame (drawn or not) and
+    /// 0 at load: state the core derives while running and its savestates don't hold.
+    previous: u8,
     pixels: Vec<u32>,
 }
 
@@ -99,6 +106,8 @@ impl Game {
             ram: Box::new([0; RAM_SIZE]),
             step: options.step,
             dupe: options.dupe,
+            lag: options.lag,
+            previous: 0,
             pixels: vec![0; WIDTH * HEIGHT],
         };
         game.reset();
@@ -138,9 +147,15 @@ impl Game {
         }
     }
 
-    /// Background: green is the frame number's low byte, blue the PRNG's.
+    /// Background: green is the frame number's low byte, blue the PRNG's, and with the lag
+    /// option red is `previous` (below 0x80, so never a button cell's 0xFF).
     fn render(&mut self, buttons: u16) {
-        let background = u32::from(self.frame as u8) << 8 | u32::from(self.rng as u8);
+        let red = if self.lag {
+            u32::from(self.previous)
+        } else {
+            0
+        };
+        let background = red << 16 | u32::from(self.frame as u8) << 8 | u32::from(self.rng as u8);
         self.pixels.fill(background);
         let cell = WIDTH / 16;
         for id in (0..16).filter(|id| (buttons >> id) & 1 == 1) {
@@ -229,6 +244,7 @@ unsafe fn environment<T>(cmd: c_uint, data: *mut T) -> bool {
 struct Options {
     step: i32,
     dupe: bool,
+    lag: bool,
 }
 
 /// An option's value, or `None` if the host doesn't have it.
@@ -248,7 +264,7 @@ fn read_option(key: &CStr) -> Option<&'static [u8]> {
     Some(unsafe { CStr::from_ptr(variable.value) }.to_bytes())
 }
 
-/// The options, with the defaults (step 2, dupe off) for any the host doesn't have. Dupe is
+/// The options, with the defaults (step 2, dupe and lag off) for any the host doesn't have. Dupe is
 /// also off if the host can't repeat frames (`GET_CAN_DUPE`).
 fn read_options() -> Options {
     let step = match read_option(STEP_KEY) {
@@ -261,7 +277,8 @@ fn read_options() -> Options {
     let can_dupe =
         unsafe { environment(RETRO_ENVIRONMENT_GET_CAN_DUPE, &mut can_dupe) } && can_dupe;
     let dupe = can_dupe && read_option(DUPE_KEY) == Some(b"on");
-    Options { step, dupe }
+    let lag = read_option(LAG_KEY) == Some(b"on");
+    Options { step, dupe, lag }
 }
 
 // Entry points, in header order. Signatures are checked against gth-libretro-sys at the end.
@@ -282,6 +299,10 @@ pub unsafe extern "C" fn retro_set_environment(callback: retro_environment_t) {
         retro_variable {
             key: DUPE_KEY.as_ptr(),
             value: c"Repeat the frame while no button is held; off|on".as_ptr(),
+        },
+        retro_variable {
+            key: LAG_KEY.as_ptr(),
+            value: c"Draw red from the previous frame, which states don't hold; off|on".as_ptr(),
         },
         retro_variable {
             key: std::ptr::null(),
@@ -403,15 +424,17 @@ pub extern "C" fn retro_run() {
         let mut guard = lock(&GAME);
         let Some(game) = guard.as_mut() else { return };
         if let Some(options) = options {
-            (game.step, game.dupe) = (options.step, options.dupe);
+            (game.step, game.dupe, game.lag) = (options.step, options.dupe, options.lag);
         }
         game.update(buttons);
-        if game.dupe && buttons == 0 {
+        let pixels = if game.dupe && buttons == 0 {
             std::ptr::null()
         } else {
             game.render(buttons);
             game.pixels.as_ptr()
-        }
+        };
+        game.previous = (game.frame & 0x7F) as u8;
+        pixels
     };
     if let Some(video) = callbacks.video {
         // SAFETY: `pixels` is null (repeat the frame, which the host allowed) or WIDTH *

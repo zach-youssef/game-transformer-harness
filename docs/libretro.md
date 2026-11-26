@@ -90,6 +90,11 @@ cores in tests and CI: video, input, RAM, core options and savestates, with no R
   core option `on` (default `off`) and a host that answers `GET_CAN_DUPE`, a frame with no
   button held sends no new picture (`NULL`, repeat the previous one), as cores do on static
   screens.
+  With the `gth_testcore_lag` core option `on` (default `off`), the background's red is the
+  low 7 bits of the previous frame's number (drawn or repeated; 0 when none has run since
+  load), which savestates don't hold: like FBNeo's Toaplan drivers, which draw with the
+  palette computed after the previous frame, the first frame after a load shows what the
+  process ran before it (docs/games.md, `settle_frames`).
 - **Input**: port 0 joypad, queried per button (not with `RETRO_DEVICE_ID_JOYPAD_MASK`).
 - **Audio**: 800 silent stereo frames per `retro_run`, through the batch callback.
 - **RAM**: `RETRO_MEMORY_SYSTEM_RAM` is 256 bytes, also registered with `SET_MEMORY_MAPS` at
