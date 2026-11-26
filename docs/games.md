@@ -7,6 +7,61 @@ errors that name the field. `games/testcore/game.toml` (gth-testcore as a game) 
 field, and `RetroEnv.from_game` (architecture.md, "Observations and RAM") builds an
 environment from a config.
 
+## Adding a game
+
+1. **Pick the id**: the directory name under `games/`, lowercase with hyphens
+   (`lightening-force`). Recordings, savestate paths (`<data_dir>/states/<id>/`) and the
+   audit name the game by it, so don't rename it later.
+2. **Content and BIOS hashes** (below, "Content and BIOS files"): size, SHA-1 and CRC-32 in
+   lowercase hex, from the user's own dump, never from a download (docs/roms.md, "Rules").
+   On the Mac `~/roms/manifest.md` lists names, sizes and SHA-1s; `shasum -a 1 <file>` and
+   Python's `zlib.crc32` give the rest. `gth audit` also prints them: a file named as in
+   `content.file` at the top of the ROM directory is reported `bad-hash` with the size and
+   hashes found, and for an archive `--json` lists the members that match no expected
+   member, with their hashes.
+3. **Audit**: `uv run gth audit <data_dir> --game <id>` (docs/roms.md, "Auditing") must report
+   the game `ok` on a machine that has its files: content found by SHA-1, parents beside it,
+   BIOS files under `<data_dir>/system`, archive members by hash. Add the game to the content
+   table in docs/roms.md, saying where its hashes came from.
+4. **Core, frame, buttons and reset**: `core` is the core's name in `cores.lock`
+   (docs/cores.md, coming with P1) and, now and after, the stem of its library's file name,
+   `<core>_libretro.<so|dylib|dll>` (docs/roms.md, "Data directory"), so use the libretro
+   build's real name (`mednafen_pce_fast`); `orientation` and `crop` give the picture a policy sees;
+   `[buttons]` maps the game's controls onto the four slots (docs/actions.md); `[reset]` gets
+   from power-on to the first controllable frame with a script, or names a savestate.
+5. **RAM variables and the episode end** (below). Each is validated in three stages:
+   - parsing rejects a bad name, encoding or size, a `scale` that can overflow, and a
+     `terminate` condition naming a variable that doesn't exist;
+   - making a `RetroEnv` checks every variable's bytes against the core's memory and memory
+     map, so a memory the core doesn't expose, or bytes outside it or outside one map region,
+     fail at once (`HarnessError` naming the variable); a wrong offset that is still in range
+     doesn't;
+   - neither can tell whether the bytes mean what the name says, so check the values
+     against the game: step a `RetroEnv` from reset and compare `info["ram"]` with the screen
+     at known points (the score after a kill, the lives after a death, the stage after a
+     clear), from the end of the reset script on, where a BCD variable must already hold
+     valid digits. Pin those checks in a ROM test (docs/testing.md, "ROM tests"), which
+     skips on CI. Finding the addresses in the first place is RAM search (P4).
+6. **Test**: at least a ROM test that makes the game's `RetroEnv` from reset and checks the
+   RAM variables and episode end as above. Besides `rom` it needs the real core and the data
+   directory: the first such test adds the fixture that finds them and skips with a reason
+   when either is missing (docs/testing.md, "ROM tests").
+
+A game can land in stages: until its RAM variables are found, a stub with only `[content]`
+final (one button, a one-frame reset script, no `[ram]`, `terminate = "0"`) parses and lets
+the audit check the content, as `games/gunhed` does. Say in the file's header comment what is
+still a stub.
+
+### Changing the schema
+
+A new `game.toml` field goes in `GameConfig` (`crates/gth-config/src/game.rs`), the table
+below, `games/testcore/game.toml` (`test_testcore_config_uses_every_field` checks that it uses
+every table and RAM variable key; a variant it can't hold, such as `reset.state`, gets a test
+that writes its own config, as in `tests/test_games.py`) and the `_native.GameConfig` getters
+`RetroEnv` needs (docs/native.md). Recordings
+store their `game.toml`, so a change old files no longer parse under is a recording format
+change (docs/recording-format.md, "Versioning").
+
 ## Fields
 
 | Field | Required | Meaning |
