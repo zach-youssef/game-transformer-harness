@@ -213,6 +213,71 @@ impl Core {
         system_dir: &Path,
         options: &BTreeMap<String, String>,
     ) -> Result<Core> {
+        let (mut core, setup) = Self::open(core_path, content_path, system_dir, options)?;
+
+        let game = core._content.as_ref().map(|(path, data)| retro_game_info {
+            path: path.as_ptr(),
+            data: if data.is_empty() {
+                std::ptr::null()
+            } else {
+                data.as_ptr().cast()
+            },
+            size: data.len(),
+            meta: std::ptr::null(),
+        });
+        let game_ptr = game.as_ref().map_or(std::ptr::null(), std::ptr::from_ref);
+        // SAFETY: `game_ptr` is NULL (no content) or points to `game`, whose strings and data
+        // live in `core._content` until the game is unloaded.
+        if !unsafe { (setup.load_game)(game_ptr) } {
+            return Err(load_error(core_path, "the core refused the content"));
+        }
+        core.game_loaded = true;
+        check_options(core_path, options)?;
+
+        let mut av = retro_system_av_info::default();
+        // SAFETY: `av` is writable; plain data.
+        unsafe { (setup.get_system_av_info)(&mut av) };
+        let geometry = av.geometry;
+        core.av_info = AvInfo {
+            base_width: geometry.base_width,
+            base_height: geometry.base_height,
+            max_width: geometry.max_width,
+            max_height: geometry.max_height,
+            aspect_ratio: if geometry.aspect_ratio > 0.0 {
+                geometry.aspect_ratio
+            } else {
+                geometry.base_width as f32 / geometry.base_height.max(1) as f32
+            },
+            fps: av.timing.fps,
+            sample_rate: av.timing.sample_rate,
+        };
+        // SAFETY: plain integers; port 0 is a joypad, which most cores assume anyway.
+        unsafe { (setup.set_controller_port_device)(0, RETRO_DEVICE_JOYPAD) };
+        core.load_state = core.serialize().ok();
+        core.clear_frame();
+        Ok(core)
+    }
+
+    /// Loads the core at `core_path` without a game and unloads it again: `retro_init`,
+    /// `retro_get_system_info`, `retro_deinit`. A check that the library loads on this
+    /// machine (its dependencies are there) and reports the expected version, as `gth cores`
+    /// does (docs/cores.md); `system_dir` is the BIOS directory, as for [`load`](Self::load).
+    ///
+    /// Fails with [`Error::CoreLoad`] as `load` does before it loads content.
+    pub fn probe(core_path: &Path, system_dir: &Path) -> Result<SystemInfo> {
+        let (core, _) = Self::open(core_path, None, system_dir, &BTreeMap::new())?;
+        Ok(core.system_info.clone())
+    }
+
+    /// The part of [`load`](Self::load) before the game: claims the process's core slot,
+    /// opens the library, reads its system info and the content, and runs `retro_init`.
+    /// Dropping the `Core` deinitializes it.
+    fn open(
+        core_path: &Path,
+        content_path: Option<&Path>,
+        system_dir: &Path,
+        options: &BTreeMap<String, String>,
+    ) -> Result<(Core, Setup)> {
         let claim = Claim::take()
             .ok_or_else(|| load_error(core_path, "another core is loaded in this process"))?;
         let system_dir = path_cstring(system_dir).ok_or_else(|| {
@@ -388,48 +453,7 @@ impl Core {
             (setup.init)();
         }
         core.initialized = true;
-
-        let game = core._content.as_ref().map(|(path, data)| retro_game_info {
-            path: path.as_ptr(),
-            data: if data.is_empty() {
-                std::ptr::null()
-            } else {
-                data.as_ptr().cast()
-            },
-            size: data.len(),
-            meta: std::ptr::null(),
-        });
-        let game_ptr = game.as_ref().map_or(std::ptr::null(), std::ptr::from_ref);
-        // SAFETY: `game_ptr` is NULL (no content) or points to `game`, whose strings and data
-        // live in `core._content` until the game is unloaded.
-        if !unsafe { (setup.load_game)(game_ptr) } {
-            return Err(load_error(core_path, "the core refused the content"));
-        }
-        core.game_loaded = true;
-        check_options(core_path, options)?;
-
-        let mut av = retro_system_av_info::default();
-        // SAFETY: `av` is writable; plain data.
-        unsafe { (setup.get_system_av_info)(&mut av) };
-        let geometry = av.geometry;
-        core.av_info = AvInfo {
-            base_width: geometry.base_width,
-            base_height: geometry.base_height,
-            max_width: geometry.max_width,
-            max_height: geometry.max_height,
-            aspect_ratio: if geometry.aspect_ratio > 0.0 {
-                geometry.aspect_ratio
-            } else {
-                geometry.base_width as f32 / geometry.base_height.max(1) as f32
-            },
-            fps: av.timing.fps,
-            sample_rate: av.timing.sample_rate,
-        };
-        // SAFETY: plain integers; port 0 is a joypad, which most cores assume anyway.
-        unsafe { (setup.set_controller_port_device)(0, RETRO_DEVICE_JOYPAD) };
-        core.load_state = core.serialize().ok();
-        core.clear_frame();
-        Ok(core)
+        Ok((core, setup))
     }
 
     pub fn path(&self) -> &Path {

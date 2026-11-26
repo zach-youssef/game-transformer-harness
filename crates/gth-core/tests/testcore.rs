@@ -588,3 +588,29 @@ fn tempdir(name: &str) -> std::path::PathBuf {
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
+
+#[test]
+fn probe_reports_the_system_info_and_unloads() {
+    let _serial = serial();
+    let path = gth_test_support::testcore_path();
+    let info = Core::probe(path, &std::env::temp_dir()).expect("probe the test core");
+    assert_eq!(info.library_name, "gth-testcore");
+    assert_eq!(info.library_version, env!("CARGO_PKG_VERSION"));
+
+    let mut core = load(None);
+    core.run_frames(1, 0);
+    assert_eq!(
+        pixels(&core)[WIDTH * 100],
+        0x0100,
+        "the probe left no state"
+    );
+    let error = Core::probe(path, Path::new(".")).expect_err("a core is loaded");
+    assert!(
+        error.to_string().contains("another core is loaded"),
+        "{error}"
+    );
+    drop(core);
+    let missing = Core::probe(Path::new("no/such/core.so"), Path::new("."));
+    assert!(matches!(missing, Err(Error::CoreLoad { .. })));
+    Core::probe(path, Path::new(".")).expect("the failed probe released the claim");
+}
