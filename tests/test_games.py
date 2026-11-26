@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from gtharness import _native
-from gtharness.env import GAMES_DIR, RetroEnv
+from gtharness.env import GAMES_DIR, RetroEnv, core_library
 from gtharness.errors import ConfigError, CoreLoadError
 from gtharness.rewards import score_delta
 
@@ -78,6 +78,16 @@ def test_rom_fixture_skips_without_the_rom(rom, monkeypatch, tmp_path: Path):
     (tmp_path / "no-config.toml").write_text(f'rom_dir = "{tmp_path.as_posix()}/elsewhere"\n')
     monkeypatch.delenv("GTH_ROM_DIR")
     assert _native.rom_dir() == tmp_path / "elsewhere", "from the user config"
+
+
+def test_core_fixture_skips_without_the_pinned_core(core, tmp_path: Path):
+    with pytest.raises(pytest.skip.Exception, match=r"gunhed: no mednafen_pce_fast_libretro"):
+        core("gunhed", tmp_path)
+    library = core_library(tmp_path, "mednafen_pce_fast")
+    library.parent.mkdir()
+    library.write_bytes(b"not the pinned build")
+    with pytest.raises(pytest.skip.Exception, match=r"isn.t the build cores\.lock pins"):
+        core("gunhed", tmp_path)
 
 
 def test_score_reward_matches_the_bcd_ram(testcore):

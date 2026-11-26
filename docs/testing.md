@@ -14,8 +14,8 @@ TheaterPC only.
 | The Python package: env, recording, shards, CLI, game configs | `tests/test_env.py`, `test_record.py`, `test_shards.py`, `test_cli.py`, `test_games.py` | pytest |
 
 Shared pytest fixtures are in `tests/conftest.py`: `testcore_path` (the built test core),
-`rom` (below) and `testcore_data` (the files `games/testcore/game.toml` names, written to a
-temporary directory). The test core is deterministic, so tests assert exact frames, RAM
+`rom` and `core` (below) and `testcore_data` (the files `games/testcore/game.toml` names,
+written to a temporary directory). The test core is deterministic, so tests assert exact frames, RAM
 values and hashes rather than ranges (docs/libretro.md, "Test core").
 
 - **One core per process** (architecture.md): pytest runs in one process, so every test that
@@ -55,10 +55,15 @@ A ROM directory that is set but doesn't exist is a misconfiguration, not a missi
 fixture raises `ConfigError` rather than skipping, so the mistake is seen. Never add a ROM,
 BIOS file or anything derived from one to `tests/` (docs/roms.md, "Rules").
 
-No test uses a real core yet. The first one adds a fixture like `rom` that finds the core
-(the build `cores.lock` pins, which `gth cores fetch` downloads, docs/cores.md) and the data
-directory with the game's BIOS files, and skips with a reason when either is missing, so a
-machine with ROMs but no fetched core skips rather than fails.
+A ROM test that runs the real core also takes the `core` fixture: `core(game_id)` returns
+the game's core library in the checkout's git-ignored `data/cores/` (where
+`uv run gth cores fetch data` puts it, docs/cores.md), whose parent is then the data
+directory for `RetroEnv.from_game`. It skips with a reason when the library is missing or
+isn't the build `cores.lock` pins for this platform, so a machine with ROMs but no fetched
+core skips rather than fails, and values a test pins (scores, frames) are always checked on
+the build they came from. `core(game_id, data_dir)` looks in another data directory. No
+game with BIOS files has a ROM test yet: `RetroEnv.from_game` raises naming any missing from
+`data/system/`, and the first such test adds a skip for them.
 
 ## GPU tests
 

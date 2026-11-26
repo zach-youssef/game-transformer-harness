@@ -1,5 +1,6 @@
 """Shared fixtures: the test core (docs/libretro.md, "Loading the test core in tests"), the
-`rom` lookup every ROM test uses (docs/roms.md) and the test core's game files."""
+`rom` lookup every ROM test uses (docs/roms.md), the `core` lookup of tests that run a real
+core (docs/testing.md, "ROM tests") and the test core's game files."""
 
 import json
 import os
@@ -11,10 +12,12 @@ from pathlib import Path
 
 import pytest
 
-from gtharness import _native
-from gtharness.env import GAMES_DIR
+from gtharness import _native, cores
+from gtharness.env import GAMES_DIR, core_library
 
 ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = ROOT / "data"
+"""The checkout's git-ignored data directory, where `gth cores fetch data` puts the cores."""
 LIBRARY = {"win32": "gth_testcore.dll", "darwin": "libgth_testcore.dylib"}.get(
     sys.platform, "libgth_testcore.so"
 )
@@ -58,6 +61,27 @@ def rom() -> Callable[[str], Path]:
         path = config.find_content(rom_dir)
         if path is None:
             pytest.skip(f"{game_id}: {config.content_file} isn't in {rom_dir}")
+        return path
+
+    return find
+
+
+@pytest.fixture
+def core() -> Callable[..., Path]:
+    """``core(game_id, data_dir=DATA_DIR)``: the game's core in ``data_dir/cores/``. Skips the
+    test when it is missing or isn't the build `cores.lock` pins for this platform (a ROM test
+    pins values that another build may not reproduce), so a machine with ROMs but no fetched
+    core skips rather than fails."""
+
+    def find(game_id: str, data_dir: Path = DATA_DIR) -> Path:
+        name = _native.GameConfig.load(GAMES_DIR / game_id / "game.toml").core
+        path = core_library(data_dir, name)
+        if not path.is_file():
+            pytest.skip(
+                f"{game_id}: no {path.name} in {path.parent} (gth cores fetch, docs/cores.md)"
+            )
+        if cores.pinned_lock(cores.LOCK, name, path) is None:
+            pytest.skip(f"{game_id}: {path} isn't the build cores.lock pins (gth cores fetch)")
         return path
 
     return find
