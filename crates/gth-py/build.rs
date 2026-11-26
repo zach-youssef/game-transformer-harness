@@ -16,7 +16,12 @@ fn git(args: &[&str]) -> Option<String> {
 }
 
 fn main() {
-    println!("cargo:rerun-if-changed=build.rs");
+    // gth-play runs this script too (`build = "../gth-py/build.rs"`), from its own directory,
+    // which has no build.rs: watch it only where it exists (a missing path reruns the script
+    // and rebuilds the package every time). `../../crates` below covers it everywhere.
+    if Path::new("build.rs").exists() {
+        println!("cargo:rerun-if-changed=build.rs");
+    }
 
     // Builds outside a git checkout (an sdist) have no commit to record.
     let sha = git(&["rev-parse", "HEAD"]).unwrap_or_else(|| "unknown".to_owned());

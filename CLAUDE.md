@@ -19,6 +19,8 @@ Headless libretro cores behind a Python gymnasium environment, with all per-fram
 - [docs/actions.md](docs/actions.md): the action space, slot convention and NitroGen mapping.
 - [docs/recording-format.md](docs/recording-format.md): recordings (`gth-record`), replay,
   desync checks and the training-shard spec.
+- [docs/human-play.md](docs/human-play.md): `gth-play`, the human-play recorder (window,
+  audio, gamepads, bindings, latency). Read before touching `crates/gth-play`.
 - [docs/roms.md](docs/roms.md): before touching ROMs, BIOS or cores, or tests that use them.
 
 Rules that apply everywhere:

@@ -15,6 +15,7 @@ native calls, and the reward function) and only orchestrates.
 | `gth-config` | Config types (serde + TOML): `game.toml`, `cores.lock`, the action space, RAM variables, RAM search scripts and their views and relations; finding and auditing the user's ROM and BIOS files by hash. | Emulation and frame data |
 | `gth-py` | The PyO3 extension module `gtharness._native`: glue that converts types and errors. | Logic: it goes in the crate it belongs to |
 | `gth-libretro-sys` | The FFI subset of `libretro.h` we use, hand-written (docs/libretro.md). | Logic, safe wrappers (those are `gth-core`'s) |
+| `gth-play` | The human-play recorder (docs/human-play.md): a library with the headless half (session and hotkeys, bindings, stick mapping, display scaling, audio rate control, latency probe, headless smoke) and the `gth-play` binary that adds the window (winit + softbuffer), audio (cpal) and gamepads (gilrs). The only crate with windowing, audio or controller dependencies. | Anything `gth-py` or Python uses; emulation (that's `gth-core`'s) |
 | `gth-testcore` | A tiny deterministic libretro core (a `cdylib`) that tests and CI load instead of real cores and ROMs. | Dependencies on the host crates (it may use `gth-libretro-sys`) |
 | `gth-test-support` | Helpers shared by Rust tests (a dev-dependency): building and locating the test core. | Anything non-test code uses |
 
@@ -33,11 +34,6 @@ The Python package `gtharness` (in `python/gtharness/`) orchestrates:
 
 The glue to policies and trainers comes with the tasks that need it (NitroGen bridge P9,
 training P10).
-
-Planned crates, added by the task that first needs them:
-
-- `gth-play`: the human-play binary (window, audio, gamepad). Its windowing dependencies stay
-  out of the workspace until then (P6).
 
 ## Data flow
 

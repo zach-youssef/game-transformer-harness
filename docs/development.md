@@ -47,6 +47,9 @@ uv run cargo test --workspace
   real cores. `astral-sh/setup-uv` publishes no major-version tag, so the workflow pins an
   exact release and bumping it is manual. It also pins uv itself to the version that wrote
   `uv.lock`; bump both together.
+- On Linux, `gth-play` (docs/human-play.md) needs the ALSA and udev headers to build:
+  `sudo apt-get install libasound2-dev libudev-dev` (CI installs them). macOS and Windows
+  need nothing extra.
 
 ## Build directory
 

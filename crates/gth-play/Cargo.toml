@@ -1,0 +1,31 @@
+[package]
+name = "gth-play"
+description = "Human play: a window, audio and gamepad around gth-core, recording through gth-record"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+# gth-py's build script sets the GTH_* build metadata for `meta.toml`'s [harness], so both
+# report a build the same way (it runs in this package's directory, at the same depth).
+build = "../gth-py/build.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+cpal = "0.18.2"
+ctrlc = { version = "3.5.2", features = ["termination"] }
+gilrs = { version = "0.11.2", features = ["serde-serialize"] }
+gth-config = { path = "../gth-config" }
+gth-core = { path = "../gth-core" }
+gth-frame = { path = "../gth-frame" }
+gth-record = { path = "../gth-record" }
+serde = { version = "1.0.229", features = ["derive"] }
+softbuffer = { version = "0.4.8", default-features = false, features = ["x11", "x11-dlopen", "wayland", "wayland-dlopen"] }
+toml = "1.2.3"
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen", "serde"] }
+
+[dev-dependencies]
+gth-test-support = { path = "../gth-test-support" }

@@ -33,6 +33,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # gth-play's audio (cpal: ALSA) and gamepads (gilrs: udev) need their headers on Linux.
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev
+
       - name: Install the pinned Rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install
 
