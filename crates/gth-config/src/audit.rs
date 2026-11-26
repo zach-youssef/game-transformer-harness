@@ -68,7 +68,8 @@ pub struct MemberAudit {
     pub name: String,
     pub status: Status,
     /// The archive member it was matched to, when that has another name (members are
-    /// matched by their hashes first: FBNeo finds them by CRC, whatever their name).
+    /// matched by their hashes first: FBNeo finds them by CRC, whatever their name), or the
+    /// `<set>/<name>` entry that makes it bad or unreadable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub found_as: Option<String>,
     /// What the archive holds under its name, when it differs.
@@ -313,8 +314,12 @@ fn archive_audit(
         Some(Ok(entries)) => entries,
     };
     let mut used = vec![false; entries.len()];
+    let set = spec
+        .file
+        .rsplit_once('.')
+        .map_or(&*spec.file, |(stem, _)| stem);
     for member in &spec.members {
-        let result = audit_member(member, entries, &mut used);
+        let result = audit_member(member, set, entries, &mut used);
         let status = match result.status {
             Status::Missing => Status::BadHash,
             status => status,
@@ -335,11 +340,17 @@ fn archive_audit(
 }
 
 /// Matches an expected member to an archive entry by size, CRC-32 and SHA-1, whatever its name
-/// (renamed, or in a merged set's `<clone>/`), preferring the entry with its name. Several
-/// members may match the same entry (a set that lists one ROM twice). With no match, the entry
-/// with its name, if any, makes it bad or unreadable; else it's missing. Marks the entries
-/// matched in `used`, so the others are reported as extras.
-fn audit_member(member: &Member, entries: &[EntryRead], used: &mut [bool]) -> MemberAudit {
+/// (renamed, or in a merged set's `<clone>/`), preferring the entry with its name:
+/// `<set>/<name>` (a merged set's clone `set`, the archive's file stem), else `<name>`.
+/// Several members may match the same entry (a set that lists one ROM twice). With no match,
+/// the entry with its name, if any, makes it bad or unreadable; else it's missing. Marks the
+/// entries matched in `used`, so the others are reported as extras.
+fn audit_member(
+    member: &Member,
+    set: &str,
+    entries: &[EntryRead],
+    used: &mut [bool],
+) -> MemberAudit {
     let mut audit = MemberAudit {
         name: member.name.clone(),
         status: Status::Ok,
@@ -351,12 +362,14 @@ fn audit_member(member: &Member, entries: &[EntryRead], used: &mut [bool]) -> Me
         (entry.found.as_ref())
             .is_ok_and(|found| found.matches(member.size, &member.crc32, &member.sha1))
     };
-    let by_name = entries.iter().position(|entry| entry.name == member.name);
+    let in_set = format!("{set}/{}", member.name);
+    let by_name = (entries.iter().position(|entry| entry.name == in_set))
+        .or_else(|| entries.iter().position(|entry| entry.name == member.name));
     let by_hash = (by_name.filter(|&index| matches(&entries[index])))
         .or_else(|| entries.iter().position(matches));
     if let Some(index) = by_hash {
         used[index] = true;
-        if by_name != Some(index) {
+        if entries[index].name != member.name {
             audit.found_as = Some(entries[index].name.clone());
         }
         return audit;
@@ -365,6 +378,9 @@ fn audit_member(member: &Member, entries: &[EntryRead], used: &mut [bool]) -> Me
         None => Status::Missing,
         Some(index) => {
             used[index] = true;
+            if entries[index].name != member.name {
+                audit.found_as = Some(entries[index].name.clone());
+            }
             match &entries[index].found {
                 Ok(found) => {
                     audit.found = Some(found.clone());
@@ -805,6 +821,26 @@ mod tests {
             (Status::Ok, 0),
             "{parent:#?}"
         );
+
+        // So is one in the clone's directory of a merged set, which is preferred to a file
+        // with its name at the top (the parent's file of the same name).
+        let parent = zip(&[
+            ("parent.bin", &data[1], true),
+            ("shared.bin", &data[2], true),
+            ("clone.bin", &data[3], true),
+            ("clone/clone.bin", &data[4], true),
+        ]);
+        std::fs::write(roms.join("arcade/parent.zip"), parent).unwrap();
+        let audit = game_toml.audit(&roms, &system).unwrap();
+        let (clone, parent) = (&audit.files[0], &audit.files[1]);
+        assert_eq!(clone.members[0].status, Status::BadHash);
+        assert_eq!(
+            clone.members[0].found_as.as_deref(),
+            Some("clone/clone.bin")
+        );
+        assert_eq!(clone.members[0].found, Some(found(&data[4])));
+        let extra: Vec<_> = parent.extra.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(extra, ["clone.bin"], "{parent:#?}");
     }
 
     #[test]

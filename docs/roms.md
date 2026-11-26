@@ -69,7 +69,9 @@ read-only:
   those, whatever its name (preferring its own name), since MAME's merged sets keep clone
   files in `<clone>/` and FBNeo finds members by CRC whatever their name; several members may
   match one entry (a ROM listed twice). With no match, the entry with its name, if any, is
-  reported as bad or unreadable. A clone `in_parent` is audited inside its parent's archive.
+  reported as bad or unreadable: `<set>/<name>` first, where `<set>` is the archive's name
+  without its extension, so a bad clone member in a merged set is `bad-hash`, not
+  `missing`; else `<name>`. A clone `in_parent` is audited inside its parent's archive.
 
 Each file and member is `ok`, `missing`, `bad-hash` (the size or a hash differs; for an
 archive, a member is missing or bad) or `unreadable` (an I/O error, also while searching the
