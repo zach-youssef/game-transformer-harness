@@ -259,3 +259,47 @@ architecture.md, "Observations and RAM"), so the trainer computes it from `ram`.
 
 An export writes to `<shard>.partial` and renames it when complete, so a shard that exists
 is whole; a desync or any error removes the partial file.
+
+### Exporting and reading
+
+`gth export-shards DATA_DIR RECORDING... --out DIR` (or `gtharness.shards.export_shards`)
+writes `DIR/<recording>.npz` for each recording. Every choice that shapes the samples is a
+required option: `--obs-size H W`, `--crop game|none|X Y W H`, `--orientation game|0|90|270`
+(`game` takes each recording's `game.toml`), `--frameskip N|recorded`, `--filter
+all|playing` and `--chunk-samples N`; only `--interpolation` defaults (`area`, as
+`RetroEnv`). Content, BIOS files and the core are found as `RetroEnv.from_game` finds them.
+Each recording exports in its own spawned process (one core per process, one process per
+recording), `--jobs` (default: the CPU count) at a time. A recording that fails, or whose
+process dies, leaves no shard (the parent removes a partial one) and doesn't stop the
+others; existing shards are never replaced. Options are checked before anything runs
+(`ConfigError`; the command exits 2). Scripts that call
+`export_shards` need the usual `if __name__ == "__main__":` guard of spawned processes.
+
+Shards go to `D:\research\gth\shards` on TheaterPC and under the git-ignored `runs/` on
+the Mac.
+
+`gtharness.shards.Shard(path)` reads one shard: `meta`, the per-sample arrays (`direction`,
+`buttons`, `ram`, `episode_frame`, `segment`, `confidence`), the per-frame arrays
+(`frame_direction`, `frame_buttons`, `frame_labelled`) and `frames(chunk)`. `batches(paths,
+batch_size, rng=..., buffer_chunks=...)` yields every sample once as dicts of numpy arrays:
+with a `numpy.random.Generator` it visits frame chunks in random order and shuffles within
+`buffer_chunks` decoded chunks; with `rng=None` it keeps the order. Batches hold `frame`,
+`direction`, `buttons`, `episode_frame`, `segment`, `confidence` and the `shard` and `sample`
+indices, but not `ram`: a reward reads `Shard.ram` at those indices, and the policy never
+sees RAM.
+
+### Export throughput
+
+Measured on the Mac (Apple M4, release build, one process) with the test core: one
+18,000-step episode at frameskip 4 (72,004 frames), crop and orientation from the game,
+`area`, 256 samples per chunk, timed around `export_shards` (process start included):
+
+| Observation | Samples/s | Frames replayed/s | Bytes/sample | Decoding (`Shard.frames`) |
+|---|---|---|---|---|
+| 128 x 128 | 6,150 | 24,600 | 162 | 337,000 samples/s |
+| 84 x 84 | 8,250 | 33,000 | 184 | 332,000 samples/s |
+
+The test core replays at 106,000 frames/s alone, so rendering and compressing cost about
+125 µs per 128 x 128 sample. A real core emulates at a few thousand frames/s or less, so an
+export runs at about the core's replay speed and scales with `--jobs`. The test core's flat
+frames compress far better than a game's: expect real shards to be much larger per sample.

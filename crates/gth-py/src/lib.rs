@@ -8,6 +8,7 @@ mod errors;
 mod frame;
 mod ramsearch;
 mod record;
+mod shard;
 mod testing;
 
 use std::collections::BTreeMap;
@@ -40,6 +41,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     frame::register(module)?;
     ramsearch::register(module)?;
     record::register(module)?;
+    shard::register(module)?;
     testing::register(module)?;
     Ok(())
 }

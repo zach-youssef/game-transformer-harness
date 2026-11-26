@@ -68,7 +68,7 @@ pub(crate) fn render<'py>(
     Ok(into_rgb8_array(py, buffer, height, width))
 }
 
-fn rotation(degrees: u32) -> errors::Result<gth_frame::Rotation> {
+pub(crate) fn rotation(degrees: u32) -> errors::Result<gth_frame::Rotation> {
     match degrees {
         0 => Ok(gth_frame::Rotation::None),
         90 => Ok(gth_frame::Rotation::Cw90),
@@ -79,7 +79,7 @@ fn rotation(degrees: u32) -> errors::Result<gth_frame::Rotation> {
     }
 }
 
-fn filter(name: &str) -> errors::Result<gth_frame::Filter> {
+pub(crate) fn filter(name: &str) -> errors::Result<gth_frame::Filter> {
     match name {
         "area" => Ok(gth_frame::Filter::Area),
         "bilinear" => Ok(gth_frame::Filter::Bilinear),

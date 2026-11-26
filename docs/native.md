@@ -13,8 +13,8 @@ Read this before adding or changing anything it exports.
 - Python code imports the exceptions from `gtharness.errors` and `Replayer` from
   `gtharness.record`, the modules that re-export them, never from `_native`. Classes and
   functions with no re-export (`Core`, `GameConfig`, `RamSearch`, `rom_dir`,
-  `user_config_path`) are used from `_native` directly, by the package's own modules
-  (`env.py`, `cli.py`, `ramsearch.py`) and tests.
+  `user_config_path`, `export_shard`, `decode_frames`) are used from `_native` directly, by
+  the package's own modules (`env.py`, `cli.py`, `ramsearch.py`, `shards.py`) and tests.
 - Test hooks, which let pytest drive a convention before a real binding uses it, have
   underscore names and live in `gth-py/src/testing.rs`. Only `tests/` calls them.
 
@@ -70,6 +70,9 @@ copy (`gth-py/src/frame.rs`):
 3. `into_rgb8_array` moves the `Vec` into the array (`IntoPyArray`): numpy views the Rust
    allocation, and the array's base object frees it when the last array or view of it goes.
 
+`decode_frames` returns a whole frame chunk as one `uint8[n, height, width, 3]` array the
+same way (`rgb8_frames_buffer`, `into_rgb8_frames`).
+
 The lifetime rule: an array `_native` returns owns its memory. Rust never writes to or frees
 a buffer after handing it over, so callers may keep, change and share frames across threads,
 for example in a replay buffer. `_native` never returns a view of memory that Rust keeps and
@@ -116,6 +119,16 @@ explicit arguments as `Core`'s. `step()` replays one agent step (GIL released) a
 `(joypad mask, frames, observation)`, or `None` at the end; `run_to_end()` verifies the rest without
 rendering. A desync raises `DesyncError`. Like `Core`, it holds the process's one core slot
 until `close()`.
+
+## Shards
+
+`_native.export_shard` (`gth-py/src/shard.rs`) opens a recording, loads its core, runs
+`gth_record::export` with the GIL released and returns the counts as a dict; the core is
+unloaded when it returns. Its arguments are the `Replayer`'s plus the output path, the
+frameskip (`None` for the recording's steps), the filter's name and the chunk size; nothing
+has a default. `_native.decode_frames(data, samples, height, width, path)` decodes one frame
+chunk (GIL released). `gtharness.shards` calls both: one spawned process per recording for
+the export, and `Shard`/`batches` for reading (docs/recording-format.md, "Training shards").
 
 ## GameConfig
 

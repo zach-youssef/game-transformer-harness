@@ -206,23 +206,7 @@ class RetroEnv(gym.Env[Observation, Action]):
         """
         data = Path(data_dir)
         config = _native.GameConfig.load(Path(games_dir) / game_id / "game.toml")
-        roms = Path(rom_dir) if rom_dir is not None else _native.rom_dir()
-        if roms is None:
-            raise ConfigError(
-                f"{game_id}: no ROM directory: set GTH_ROM_DIR or rom_dir in the user config"
-                f" ({_native.user_config_path()})"
-            )
-        content = config.find_content(roms)
-        if content is None:
-            if config.content_in_parent:
-                raise ConfigError(
-                    f"{game_id}: the parent archive holding {config.content_file}"
-                    f" (content.in_parent) isn't in {roms}"
-                )
-            raise ConfigError(f"{game_id}: {config.content_file} (by SHA-1) isn't in {roms}")
-        parents = config.missing_parents(content)
-        if parents:
-            raise ConfigError(f"{game_id}: parent sets missing from beside {content}: {parents}")
+        content = find_content(config, game_id, rom_dir)
         system = data / "system"
         missing = config.missing_bios(system)
         if missing:
@@ -236,7 +220,7 @@ class RetroEnv(gym.Env[Observation, Action]):
                 raise ConfigError(f"{game_id}: cannot read the reset state: {error}") from error
         return cls(
             config,
-            core_path=core_path or data / "cores" / f"{config.core}_libretro{_LIBRARY_SUFFIX}",
+            core_path=core_path or core_library(data, config.core),
             content_path=content,
             system_dir=system,
             frameskip=frameskip,
@@ -382,3 +366,34 @@ class RetroEnv(gym.Env[Observation, Action]):
 
     def _info(self) -> dict[str, Any]:
         return {"episode_frame": self._episode_frames, "ram": dict(self._ram)}
+
+
+def find_content(
+    config: _native.GameConfig, game_id: str, rom_dir: str | os.PathLike[str] | None
+) -> Path:
+    """``config``'s content file, found by SHA-1 under ``rom_dir`` (default: `GTH_ROM_DIR` or
+    the user config file's ``rom_dir``), with its parent sets beside it (docs/roms.md). Raises
+    `ConfigError` naming ``game_id`` and what is missing."""
+    roms = Path(rom_dir) if rom_dir is not None else _native.rom_dir()
+    if roms is None:
+        raise ConfigError(
+            f"{game_id}: no ROM directory: set GTH_ROM_DIR or rom_dir in the user config"
+            f" ({_native.user_config_path()})"
+        )
+    content = config.find_content(roms)
+    if content is None:
+        if config.content_in_parent:
+            raise ConfigError(
+                f"{game_id}: the parent archive holding {config.content_file}"
+                f" (content.in_parent) isn't in {roms}"
+            )
+        raise ConfigError(f"{game_id}: {config.content_file} (by SHA-1) isn't in {roms}")
+    parents = config.missing_parents(content)
+    if parents:
+        raise ConfigError(f"{game_id}: parent sets missing from beside {content}: {parents}")
+    return content
+
+
+def core_library(data_dir: str | os.PathLike[str], core: str) -> Path:
+    """Where a data directory keeps core ``core``: ``cores/<core>_libretro.<ext>``."""
+    return Path(data_dir) / "cores" / f"{core}_libretro{_LIBRARY_SUFFIX}"

@@ -14,6 +14,24 @@ __version__: str
 
 def build_info() -> dict[str, str]: ...
 def fill_test_pattern(height: int, width: int, seed: int) -> npt.NDArray[np.uint8]: ...
+def export_shard(
+    recording_dir: str | os.PathLike[str],
+    core_path: str | os.PathLike[str],
+    content_path: str | os.PathLike[str] | None,
+    system_dir: str | os.PathLike[str],
+    out_path: str | os.PathLike[str],
+    obs_height: int,
+    obs_width: int,
+    crop: tuple[int, int, int, int] | None,
+    rotate: int,
+    interpolation: str,
+    frameskip: int | None,
+    filter: str,
+    chunk_samples: int,
+) -> dict[str, Any]: ...
+def decode_frames(
+    data: bytes, samples: int, height: int, width: int, path: str | os.PathLike[str]
+) -> npt.NDArray[np.uint8]: ...
 
 class Core:
     def __new__(

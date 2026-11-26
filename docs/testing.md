@@ -11,7 +11,7 @@ TheaterPC only.
 | A crate's logic | Unit tests in the crate (`#[cfg(test)]` modules, or `src/tests.rs`) | `cargo test` |
 | A crate against a loaded core | `crates/<crate>/tests/testcore.rs`, loading `gth-testcore` through `gth_test_support::testcore_path()` | `cargo test` |
 | `_native` bindings (`gth-py`, which has no Rust tests) | `tests/test_native_*.py` | pytest |
-| The Python package: env, recording, CLI, game configs | `tests/test_env.py`, `test_record.py`, `test_cli.py`, `test_games.py` | pytest |
+| The Python package: env, recording, shards, CLI, game configs | `tests/test_env.py`, `test_record.py`, `test_shards.py`, `test_cli.py`, `test_games.py` | pytest |
 
 Shared pytest fixtures are in `tests/conftest.py`: `testcore_path` (the built test core),
 `rom` (below) and `testcore_data` (the files `games/testcore/game.toml` names, written to a
@@ -24,7 +24,10 @@ values and hashes rather than ranges (docs/libretro.md, "Test core").
   with "another core is loaded". Rust test binaries are separate processes, but the tests in
   one binary run on parallel threads of one process, so each core-loading test first takes
   the file's `SERIAL` mutex (`let _serial = serial();`, as in `crates/gth-core/tests/testcore.rs`)
-  and drops its `Core` before releasing it.
+  and drops its `Core` before releasing it. `gtharness.shards.export_shards` loads its cores
+  in spawned processes, so it holds none in pytest's; its test hook
+  `GTHARNESS_TEST_EXIT_IN_EXPORT` (a recording name) makes that recording's worker die, as a
+  crashing core would.
 - Don't rebuild the test core while a test has it loaded (Windows can't overwrite a loaded
   DLL); docs/libretro.md, "Loading the test core in tests".
 - `maturin develop` builds debug, so pytest timings are debug numbers. Measure speed after
