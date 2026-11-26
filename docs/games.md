@@ -3,7 +3,9 @@
 Each game the harness runs has `games/<game-id>/game.toml`, parsed and validated by
 `gth_config::GameConfig` (`crates/gth-config/src/game.rs`). A config that parses is one the
 harness can use: unknown fields, bad values and conditions on missing RAM variables are
-errors that name the field.
+errors that name the field. `games/testcore/game.toml` (gth-testcore as a game) uses every
+field, and `RetroEnv.from_game` (architecture.md, "Observations and RAM") builds an
+environment from a config.
 
 ## Fields
 
@@ -137,7 +139,19 @@ encoding = "le"
   meanings, so rewards and tools work across games; add others as needed.
 
 RAM variables are for rewards, episode ends and logging, never for the policy: game RAM is
-never part of an observation.
+never part of an observation (architecture.md, "Observations and RAM"). `RetroEnv` passes
+them, by name, to its reward function and in `info["ram"]`.
+
+When `RetroEnv` is made, it checks every variable against the core's memory: the memory
+exists, the bytes are inside it, an address lies in one memory map region. A config that
+fails is rejected then (`HarnessError` naming the variable), not mid-episode. After that a
+read can fail only on a `bcd` variable holding a byte that isn't BCD, and then `step()` or
+`reset()` raises `HarnessError` naming the variable and the byte. That ends a training run,
+so pick BCD variables (and reset script end points) where the game always keeps them valid:
+some games write garbage to the score during boot or attract screens.
+
+A game under discovery (RAM search, P4) can use a stub config: no `[ram]`, `terminate = "0"`
+and a reward function that doesn't read RAM.
 
 ### Episode
 

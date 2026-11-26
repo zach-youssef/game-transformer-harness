@@ -1,0 +1,75 @@
+# gth-testcore as a game (docs/libretro.md, "Test core"), using every game.toml field
+# (docs/games.md) so tests cover them all. Its files aren't ROMs: tests/conftest.py writes
+# the content and the stand-in BIOS files, whose hashes are below.
+
+core = "gth_testcore"
+orientation = 90          # turned like a vertical game
+crop = [0, 0, 320, 232]   # drops the bottom 8 rows
+
+[content]
+file = "testcore.gthc"    # its bytes seed the PRNG
+size = 49
+sha1 = "1a03ac5869e1d56cfd138db9790087dd926c18b3"
+crc32 = "5ca42140"
+parents = [               # a clone's parent set, checked beside the content (found by name)
+  { file = "gth_testcore_parent.zip", members = [
+    { name = "parent.bin", size = 53, sha1 = "4abec8a8f48e9105b1271f938a0df5f88cf2ce7c", crc32 = "2e66fc54" },
+  ] },
+]
+
+# The test core reads no BIOS: these exercise the BIOS check in RetroEnv.from_game.
+[[bios]]
+file = "gth_testcore_bios.bin"
+size = 53
+sha1 = "4abec8a8f48e9105b1271f938a0df5f88cf2ce7c"
+crc32 = "2e66fc54"
+
+[[bios]]
+file = "gth/gth_testcore_bios.zip"  # in system/gth/; an archive: found by name, members audited in P2
+members = [
+  { name = "bios.bin", size = 53, sha1 = "4abec8a8f48e9105b1271f938a0df5f88cf2ce7c", crc32 = "2e66fc54" },
+]
+
+[buttons]
+a = "shot"                # the test core scores while A is held
+r = "shot"                # two buttons on one slot
+b = "bomb"
+y = "aux1"
+x = "aux2"
+
+[reset]
+script = [
+  { press = ["start"], frames = 2 },  # start is for reset scripts, never an action
+  { press = ["a"], frames = 3 },      # score 3 when the episode starts
+  { press = [], frames = 1 },
+]
+
+[ram.score]
+memory = "system_ram"
+offset = 0
+size = 4
+encoding = "bcd"
+
+[ram.score_tens]          # the same bytes through the memory map, scaled
+address = 0
+size = 4
+encoding = "bcd"
+scale = 10
+
+[ram.prng]
+memory = "system_ram"
+offset = 4
+size = 4
+encoding = "le"
+
+[ram.prng_swapped]        # the same bytes swapped in pairs, then big-endian (FBNeo's 68k RAM)
+address = 4
+size = 4
+encoding = "be"
+swap16 = true
+
+[episode]
+terminate = "score >= 20 && prng != 0"
+
+[core_options]
+gth_testcore_step = "4"

@@ -2,7 +2,8 @@
 
 The harness runs libretro emulator cores headless behind a Python
 [gymnasium](https://gymnasium.farama.org/) environment. Everything that happens once per
-emulated frame is Rust; Python is called once per agent step and only orchestrates.
+emulated frame is Rust; Python runs once per agent step (the env's `step`, which makes two
+native calls, and the reward function) and only orchestrates.
 
 ## Crates
 
@@ -31,17 +32,19 @@ Planned crates, added by the task that first needs them:
 Python (gtharness: env, CLI)
   -> gtharness._native        (gth-py: glue)
     -> gth-core               (host)  + gth-frame, gth-config, gth-record
+         gth-config           (game.toml, action space, ROM lookup; also used by gth-py)
       -> libretro core        (.so / .dylib / .dll, loaded at runtime)
 ```
 
-One agent step is one call into `_native`: it holds the input for `frameskip` frames inside
+One agent step is two calls into `_native`: one holds the input for `frameskip` frames inside
 `gth-core`, converts and resizes only the last frame with `gth-frame`, and returns it to Python
-as an array.
+as an array; the other (`_native.Core.read_ram`) decodes the game's RAM variables for the
+reward and evaluates the episode end on them, returning both.
 
 ## Frame lifecycle
 
-One `RetroEnv.step(action)` (`python/gtharness/env.py`) is one call into `_native.Core.step`
-(`crates/gth-py/src/core.rs`), which releases the GIL and:
+The frame half of one `RetroEnv.step(action)` (`python/gtharness/env.py`) is one call into
+`_native.Core.step` (`crates/gth-py/src/core.rs`), which releases the GIL and:
 
 1. `gth_core::Core::run_frames(frameskip, buttons)` calls `retro_run` `frameskip` times with
    the same buttons held. This is where the frame skip happens: the intermediate frames never
@@ -56,13 +59,36 @@ One `RetroEnv.step(action)` (`python/gtharness/env.py`) is one call into `_nativ
    The pipeline keeps its scratch buffer and resizer, so the resize allocates nothing.
 4. `gth-py` moves the buffer into a numpy array without copying (native.md, "Arrays").
 
-`RetroEnv.reset()` restores the state right after loading (or loads `options["state"]`),
-then runs `frameskip` frames with no button held and returns the last one, through the same
-`step` path. A core draws only during `retro_run` and a savestate holds no frame, so without
+Before the step, `RetroEnv` turns the action (docs/actions.md) into a RetroPad mask with one
+lookup in the game's joypad table; after it, one `_native.Core.read_ram` call decodes the
+game's RAM variables in Rust and evaluates the episode condition on them, and the reward
+function (Python) gets the variables before and after the step. So a step is two native
+calls plus the reward call.
+
+`RetroEnv.reset()` loads the game's reset savestate, or restores the state right after
+loading and plays the game's reset script (`options["state"]` replaces both), then runs
+`frameskip` frames with no button held and returns the last one, through the same `step`
+path. A core draws only during `retro_run` and a savestate holds no frame, so without
 those frames the first observation would be black; they are deterministic, so every episode
 from the same start is identical, and `info["episode_frame"]` counts them. The host also
 clears its frame after load, reset and unserialize, so an observation never shows a frame
 from before them.
+
+## Observations and RAM
+
+The observation is the frame and nothing else. Game RAM is never part of it, so a policy
+learns from pixels as a player does and transfers across games whose RAM differs. The game's
+RAM variables (docs/games.md) feed only:
+
+- the reward function, `reward(previous_ram, current_ram)` (`gtharness.rewards`): a required
+  argument, so the choice of reward is always explicit (`score_delta` is the built-in);
+- the episode end, the game's `episode.terminate` condition;
+- `info["ram"]`, for logging and analysis. It must not be fed to a policy, and nothing in the
+  harness does.
+
+`RetroEnv.from_game(game_id, data_dir, ...)` builds the environment from
+`games/<game_id>/game.toml`: it finds the content by SHA-1 in the ROM directory and the rest
+in `data_dir` (docs/roms.md, "Data directory").
 
 ## One core per process
 

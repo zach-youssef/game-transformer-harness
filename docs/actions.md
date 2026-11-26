@@ -15,6 +15,11 @@ Every game has the same action space (`gth_config::ActionSpace`,
 The same space is also one flat integer, `direction * 16 + buttons`, in `0..144`, for
 policies with a single categorical head.
 
+`RetroEnv` takes a required `action_format`: `"dict"` gives the gymnasium space
+`Dict({"direction": Discrete(9), "buttons": MultiBinary(4)})`, `"flat"` gives
+`Discrete(144)`. `GameConfig.encode` and `decode` convert between the two, and
+`GameConfig.mapped_slots` lists the slots that do something in that game.
+
 Coin (`select`) and `start` are never in the action space: the harness presses them in reset
 scripts only (docs/games.md, "Reset"). Sticks, `select`/`start` and the d-pad as separate
 buttons are never exposed either.
