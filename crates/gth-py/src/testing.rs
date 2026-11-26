@@ -12,8 +12,24 @@ use crate::errors;
 #[pyfunction]
 fn _raise_core_error(kind: &str) -> errors::Result<()> {
     let error = match kind {
+        "config" => {
+            let error = gth_config::Error::Invalid {
+                what: "x.toml".into(),
+                reason: "test".into(),
+            };
+            return Err(error.into());
+        }
+        "ram" => gth_core::Error::Ram {
+            name: "score".into(),
+            reason: "test".into(),
+        },
         "core_load" => gth_core::Error::CoreLoad {
             path: "missing.so".into(),
+            reason: "test".into(),
+        },
+        "content" => gth_core::Error::Content {
+            core: "x.so".into(),
+            path: "c.zip".into(),
             reason: "test".into(),
         },
         "savestate" => gth_core::Error::Savestate {

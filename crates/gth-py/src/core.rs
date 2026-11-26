@@ -9,6 +9,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
+use crate::config::GameConfig;
 use crate::errors;
 use crate::frame::{into_rgb8_array, rgb8_buffer};
 
@@ -123,6 +124,30 @@ impl Core {
         py.detach(|| core.run_frames(frames, buttons));
         let core = this.core.as_ref().expect("checked above");
         Self::render(py, core, &mut this.pipeline)
+    }
+
+    /// Runs each `(buttons, frames)` pair in order, such as a reset script.
+    fn run_inputs(&mut self, py: Python<'_>, inputs: Vec<(u16, u32)>) -> errors::Result<()> {
+        let core = self.core()?;
+        py.detach(|| core.run_inputs(&inputs));
+        Ok(())
+    }
+
+    /// Every RAM variable of `config`, decoded, by name (for rewards and logs, never for the
+    /// policy), and whether they end the episode: one call per step for both.
+    fn read_ram(
+        &mut self,
+        config: PyRef<'_, GameConfig>,
+    ) -> errors::Result<(BTreeMap<String, i64>, bool)> {
+        let ram = self.core()?.read_ram_vars(&config.config.ram)?;
+        let terminated = config.config.terminated(&ram)?;
+        Ok((ram, terminated))
+    }
+
+    /// Raises `HarnessError` if a RAM variable of `config` isn't in the core's memory; after
+    /// this, `read_ram` can fail only on bytes that don't decode.
+    fn check_ram(&mut self, config: PyRef<'_, GameConfig>) -> errors::Result<()> {
+        Ok(self.core()?.check_ram_vars(&config.config.ram)?)
     }
 
     fn reset(&mut self, py: Python<'_>) -> errors::Result<()> {

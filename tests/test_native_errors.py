@@ -1,19 +1,20 @@
-"""gth_core::Error variants arrive in Python as the gtharness.errors hierarchy."""
+"""gth_core::Error and gth_config::Error variants arrive as the gtharness.errors hierarchy."""
 
 import pickle
 
 import pytest
 
 from gtharness import _native
-from gtharness.errors import CoreLoadError, DesyncError, HarnessError
+from gtharness.errors import ConfigError, CoreLoadError, DesyncError, HarnessError
 
 
 def test_hierarchy():
     assert issubclass(HarnessError, Exception)
     assert issubclass(CoreLoadError, HarnessError)
     assert issubclass(DesyncError, HarnessError)
+    assert issubclass(ConfigError, HarnessError)
     assert not issubclass(CoreLoadError, DesyncError)
-    for cls in (HarnessError, CoreLoadError, DesyncError):
+    for cls in (HarnessError, ConfigError, CoreLoadError, DesyncError):
         assert cls.__module__ == "gtharness.errors"
 
 
@@ -23,6 +24,9 @@ def test_hierarchy():
         ("core_load", CoreLoadError, "cannot load core missing.so: test"),
         ("desync", DesyncError, "replay desynced at frame 7: test"),
         ("savestate", HarnessError, "savestate error in core x: test"),
+        ("ram", HarnessError, "cannot read RAM variable score: test"),
+        ("content", ConfigError, "cannot read content c.zip for core x.so: test"),
+        ("config", ConfigError, "invalid x.toml: test"),
     ],
 )
 def test_core_errors_map_to_their_exception(kind, cls, message):

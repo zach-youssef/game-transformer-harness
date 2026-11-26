@@ -24,7 +24,7 @@ Read this before adding or changing anything it exports.
 
 ## Errors
 
-- Each crate has one `thiserror` error enum (`gth_core::Error`), with messages that name the
+- Each crate has one `thiserror` error enum (`gth_core::Error`, `gth_config::Error`), with messages that name the
   cause. Panics are for bugs only; PyO3 turns a panic into `pyo3_runtime.PanicException`.
 - A `#[pyfunction]` that can fail returns `errors::Result<T>` (`gth-py/src/errors.rs`). `?`
   converts both crate errors and `PyErr` into it, and PyO3 raises it as the mapped exception.
@@ -34,10 +34,12 @@ Read this before adding or changing anything it exports.
   | Crate error | Python exception |
   |---|---|
   | `gth_core::Error::CoreLoad` | `CoreLoadError` |
+  | `gth_core::Error::Content` (content file unreadable) | `ConfigError` |
   | `gth_core::Error::Desync` | `DesyncError` |
   | `gth_core::Error::Savestate` | `HarnessError` |
   | `gth_core::Error::Ram` | `HarnessError` |
   | `gth_frame::Error` (any) | `HarnessError` |
+  | `gth_config::Error` (any) | `ConfigError` |
 
 - Their `__module__` is `gtharness.errors`, so they pickle across the process boundary of
   parallel environments.
@@ -72,20 +74,36 @@ still holds. The cost is one allocation per returned frame, small next to emulat
 for its observations. `gtharness.env.RetroEnv` is its only user; it is the environment's hot
 path, so the env imports it from `_native` directly.
 
-- The constructor takes every pipeline choice explicitly (observation size, crop, rotation,
-  interpolation); `RetroEnv` requires the size and rotation and defaults only `crop` (none)
-  and `interpolation` ("area").
+- The constructor takes the core options and every pipeline choice explicitly (observation
+  size, crop, rotation, interpolation); `RetroEnv` takes the options, crop and rotation from
+  the game config, requires the size and defaults only `interpolation` ("area").
 - `reset()` returns to the state right after loading (gth-core's load snapshot, or
   `retro_reset` for cores that can't serialize then; docs/libretro.md, "Host").
   `resets_to_load_state` (also on `RetroEnv`) says which one the core gets.
 - `step(frames, buttons)` runs the frames and returns the last one as a new observation array,
   all with the GIL released (architecture.md, "Frame lifecycle").
+- `read_ram(config)` decodes the game's RAM variables into a `dict[str, int]` and evaluates
+  the episode condition on them, returning `(ram, terminated)`: one call per step for both.
+  `check_ram(config)` raises if a variable isn't in the core's memory (`RetroEnv` calls it
+  once after loading). `run_inputs(inputs)` plays a reset script.
 - `close()` drops the `gth_core::Core`, which unloads it and frees the process's one core slot
   (architecture.md, "One core per process"); later calls raise `ValueError`. Dropping the
   Python object does the same, but only when the garbage collector gets to it, so code that
   loads another core closes the first explicitly.
 - Methods take `&mut self`, so PyO3 raises `RuntimeError` (a borrow error) if two Python
   threads call one `Core` at once rather than calling into the core concurrently.
+
+## GameConfig
+
+`_native.GameConfig` (`gth-py/src/config.rs`) is a parsed `game.toml` (docs/games.md) and its
+action space (docs/actions.md), immutable (`frozen`). It exposes what `RetroEnv` needs as
+getters and methods: the frame and core settings, the reset and `check_reset_state(bytes)`
+(the savestate's SHA-1), `slots` (always the four) and `mapped_slots`, `encode`/`decode`
+between `(direction, buttons)` and flat actions, `joypad_table()` (the RetroPad mask of
+every flat action, so the env maps an action with one list lookup), `terminated(ram)`, and
+the file checks `find_content(rom_dir)`, `missing_parents(content)` and
+`missing_bios(system_dir)`. `rom_dir()` and
+`user_config_path()` are module functions (docs/roms.md).
 
 `tests/test_native_stubs.py` also checks classes: their public members and each method's
 parameter names must match the stub.

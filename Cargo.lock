@@ -124,6 +124,7 @@ version = "0.1.0"
 name = "gth-py"
 version = "0.1.0"
 dependencies = [
+ "gth-config",
  "gth-core",
  "gth-frame",
  "numpy",

@@ -17,6 +17,7 @@ test = false
 doctest = false
 
 [dependencies]
+gth-config = { path = "../gth-config" }
 gth-core = { path = "../gth-core" }
 gth-frame = { path = "../gth-frame" }
 numpy = "0.30.0"

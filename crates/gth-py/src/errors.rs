@@ -19,6 +19,12 @@ create_exception!(
 );
 create_exception!(
     gtharness.errors,
+    ConfigError,
+    HarnessError,
+    "A game config, the user config or a file it names is invalid or missing."
+);
+create_exception!(
+    gtharness.errors,
     DesyncError,
     HarnessError,
     "A replay produced a different state than its recording."
@@ -28,6 +34,7 @@ create_exception!(
 /// `PyErr` into it, and PyO3 raises it as the matching Python exception. It exists because the
 /// orphan rule forbids `impl From<gth_core::Error> for PyErr` in this crate.
 pub enum Error {
+    Config(gth_config::Error),
     Core(gth_core::Error),
     Frame(gth_frame::Error),
     Python(PyErr),
@@ -38,6 +45,12 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl From<gth_core::Error> for Error {
     fn from(error: gth_core::Error) -> Self {
         Self::Core(error)
+    }
+}
+
+impl From<gth_config::Error> for Error {
+    fn from(error: gth_config::Error) -> Self {
+        Self::Config(error)
     }
 }
 
@@ -57,6 +70,7 @@ impl From<Error> for PyErr {
     fn from(error: Error) -> Self {
         match error {
             Error::Python(error) => error,
+            Error::Config(error) => ConfigError::new_err(error.to_string()),
             // A bad crop or output size from the caller, or a frame the core shouldn't send.
             Error::Frame(error) => HarnessError::new_err(error.to_string()),
             Error::Core(error) => {
@@ -64,7 +78,8 @@ impl From<Error> for PyErr {
                 // No wildcard arm: a new gth_core::Error variant must pick its exception here.
                 match error {
                     gth_core::Error::CoreLoad { .. } => CoreLoadError::new_err(message),
-                    gth_core::Error::Content { .. } => HarnessError::new_err(message),
+                    // A file the caller (or a game config) names: a config problem.
+                    gth_core::Error::Content { .. } => ConfigError::new_err(message),
                     gth_core::Error::Desync { .. } => DesyncError::new_err(message),
                     gth_core::Error::Savestate { .. } => HarnessError::new_err(message),
                     gth_core::Error::Ram { .. } => HarnessError::new_err(message),
@@ -78,6 +93,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     let py = module.py();
     module.add("HarnessError", py.get_type::<HarnessError>())?;
     module.add("CoreLoadError", py.get_type::<CoreLoadError>())?;
+    module.add("ConfigError", py.get_type::<ConfigError>())?;
     module.add("DesyncError", py.get_type::<DesyncError>())?;
     Ok(())
 }

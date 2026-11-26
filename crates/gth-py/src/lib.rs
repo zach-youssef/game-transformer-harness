@@ -2,6 +2,7 @@
 //! The binding conventions are in docs/native.md; `python/gtharness/_native.pyi` mirrors this
 //! module.
 
+mod config;
 mod core;
 mod errors;
 mod frame;
@@ -31,6 +32,7 @@ fn build_info() -> BTreeMap<&'static str, &'static str> {
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
     module.add_function(wrap_pyfunction!(build_info, module)?)?;
+    config::register(module)?;
     core::register(module)?;
     errors::register(module)?;
     frame::register(module)?;
