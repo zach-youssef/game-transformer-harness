@@ -80,71 +80,69 @@ game's own `game.toml` is written. Actions are uniformly random flat actions
 
 ### Apple M4 Mac, 2026-11-26
 
-Machine: Apple M4, 10 CPUs (4 performance, 6 efficiency), macOS 26.6.2; harness 1180c3b
-(release; the run was on an earlier build of the same branch, with the same bench code).
-FBNeo was a local build of its pinned commit and patches (`scripts/build-core.sh`, the same
-library_version the release reports), measured before the cores workflow released it: its
-hash was put in `cores.lock` for the run only, so `gth cores fetch` would take it. Its row
-says so until the release's build is measured.
+Machine: Apple M4, 10 CPUs (4 performance, 6 efficiency), macOS 26.6.2; harness 7f81c13
+(release), with every core from the release `cores-afa730086cb24842` (`gth cores fetch`).
 
 | Target | Core | Version | Pinned build |
 |---|---|---|---|
 | gunhed | `mednafen_pce_fast` | `v1.31.0.0 2de1ce1` | yes |
 | zanac | `fceumm` | `(SVN) e0f3086` | yes |
 | lightening-force | `genesis_plus_gx` | `v1.7.4 b9c2316` | yes |
-| bgaregga | `fbneo` | `v1.0.0.03 261110 GIT0630faa` | no: local build, pending the release |
+| bgaregga | `fbneo` | `v1.0.0.03 261110 GIT0630faa` | yes |
 
 Single process, 256x256 observations: frames/s and the time of one step in µs.
 
 | Target | Frameskip | Frames/s | Env step | Native step | Emulate | Render | Python | Python share |
 |---|---|---|---|---|---|---|---|---|
-| gunhed | 1 | 3822 | 262 | 260 | 155 | 105 | 1.0 | 0.4% |
-| gunhed | 2 | 4659 | 429 | 429 | 322 | 107 | 1.1 | 0.3% |
-| gunhed | 4 | 5390 | 742 | 743 | 635 | 108 | 1.2 | 0.2% |
-| zanac | 1 | 5892 | 170 | 170 | 128 | 42 | 0.9 | 0.5% |
-| zanac | 2 | 6733 | 297 | 296 | 254 | 42 | 0.9 | 0.3% |
-| zanac | 4 | 7241 | 552 | 556 | 511 | 44 | 0.9 | 0.2% |
-| lightening-force | 1 | 1529 | 654 | 653 | 242 | 410 | 1.3 | 0.2% |
-| lightening-force | 2 | 2260 | 885 | 884 | 475 | 408 | 1.4 | 0.2% |
-| lightening-force | 4 | 2889 | 1385 | 1382 | 973 | 409 | 1.5 | 0.1% |
-| bgaregga | 1 | 1721 | 581 | 579 | 247 | 332 | 0.9 | 0.2% |
-| bgaregga | 2 | 2427 | 824 | 826 | 483 | 343 | 1.0 | 0.1% |
-| bgaregga | 4 | 2800 | 1429 | 1432 | 1106 | 326 | 1.0 | 0.1% |
+| gunhed | 1 | 4060 | 246 | 245 | 146 | 99 | 0.9 | 0.4% |
+| gunhed | 2 | 4944 | 405 | 404 | 307 | 97 | 1.0 | 0.3% |
+| gunhed | 4 | 5685 | 704 | 703 | 607 | 96 | 1.2 | 0.2% |
+| zanac | 1 | 5957 | 168 | 168 | 127 | 41 | 0.9 | 0.5% |
+| zanac | 2 | 6756 | 296 | 295 | 254 | 42 | 0.9 | 0.3% |
+| zanac | 4 | 7377 | 542 | 545 | 505 | 40 | 0.9 | 0.2% |
+| lightening-force | 1 | 1551 | 645 | 645 | 237 | 408 | 1.3 | 0.2% |
+| lightening-force | 2 | 2287 | 874 | 870 | 467 | 402 | 1.4 | 0.2% |
+| lightening-force | 4 | 2953 | 1355 | 1354 | 950 | 403 | 1.5 | 0.1% |
+| bgaregga | 1 | 1725 | 580 | 576 | 247 | 329 | 0.9 | 0.2% |
+| bgaregga | 2 | 2450 | 816 | 820 | 483 | 337 | 0.9 | 0.1% |
+| bgaregga | 4 | 2839 | 1409 | 1413 | 1084 | 329 | 1.1 | 0.1% |
 
 Processes at once, 256x256 observations: total frames/s (and per process).
 
 | Target | Frameskip | N = 1 | N = 2 | N = 4 | N = 9 |
 |---|---|---|---|---|---|
-| gunhed | 1 | 3619 (3619) | 7623 (3811) | 14363 (3591) | 21795 (2422) |
-| gunhed | 2 | 5227 (5227) | 10075 (5038) | 19181 (4795) | 28216 (3135) |
-| gunhed | 4 | 6347 (6347) | 12508 (6254) | 22804 (5701) | 33601 (3733) |
-| zanac | 1 | 5892 (5892) | 11574 (5787) | 20947 (5237) | 30604 (3400) |
-| zanac | 2 | 6671 (6671) | 13253 (6626) | 24209 (6052) | 35432 (3937) |
-| zanac | 4 | 7206 (7206) | 14250 (7125) | 26030 (6507) | 38464 (4274) |
-| lightening-force | 1 | 1626 (1626) | 3219 (1609) | 5897 (1474) | 9563 (1063) |
-| lightening-force | 2 | 2332 (2332) | 4600 (2300) | 8772 (2193) | 13639 (1515) |
-| lightening-force | 4 | 2933 (2933) | 5808 (2904) | 11317 (2829) | 17510 (1946) |
-| bgaregga | 1 | 1555 (1555) | 3107 (1553) | 5490 (1373) | 8718 (969) |
-| bgaregga | 2 | 2125 (2125) | 4197 (2099) | 7475 (1869) | 11862 (1318) |
-| bgaregga | 4 | 2530 (2530) | 4963 (2482) | 9240 (2310) | 14371 (1597) |
+| gunhed | 1 | 3842 (3842) | 7948 (3974) | 14510 (3628) | 22367 (2485) |
+| gunhed | 2 | 5384 (5384) | 10280 (5140) | 19617 (4904) | 29177 (3242) |
+| gunhed | 4 | 6427 (6427) | 12598 (6299) | 23408 (5852) | 34709 (3857) |
+| zanac | 1 | 5981 (5981) | 11679 (5840) | 21371 (5343) | 31988 (3554) |
+| zanac | 2 | 6737 (6737) | 13147 (6573) | 24839 (6210) | 36971 (4108) |
+| zanac | 4 | 7170 (7170) | 14360 (7180) | 27112 (6778) | 40012 (4446) |
+| lightening-force | 1 | 1643 (1643) | 3245 (1623) | 6016 (1504) | 9845 (1094) |
+| lightening-force | 2 | 2345 (2345) | 4606 (2303) | 8925 (2231) | 13962 (1551) |
+| lightening-force | 4 | 2944 (2944) | 5799 (2899) | 11384 (2846) | 17945 (1994) |
+| bgaregga | 1 | 1594 (1594) | 3127 (1564) | 5644 (1411) | 9016 (1002) |
+| bgaregga | 2 | 2128 (2128) | 4179 (2090) | 7699 (1925) | 12403 (1378) |
+| bgaregga | 4 | 2537 (2537) | 4993 (2496) | 9414 (2354) | 14955 (1662) |
 
 | Target | Savestate bytes | Save µs | Load µs | Reload matches |
 |---|---|---|---|---|
-| gunhed | 80586 | 10 | 74 | yes, 600 frames |
+| gunhed | 80586 | 10 | 73 | yes, 600 frames |
 | zanac | 21976 | 2 | 9 | yes, 600 frames |
-| lightening-force | 1036288 | 36 | 15 | yes, 600 frames |
-| bgaregga | 158836 | 16 | 245 | yes, 600 frames |
+| lightening-force | 1036288 | 35 | 14 | yes, 600 frames |
+| bgaregga | 158836 | 16 | 244 | yes, 600 frames |
 
 | Target | Frames recorded | Replayed | Desync | Record s | Replay s |
 |---|---|---|---|---|---|
-| gunhed | 36004 | 36004 | none | 7.6 | 6.5 |
-| zanac | 36004 | 36004 | none | 8.1 | 7.5 |
-| lightening-force | 36004 | 36004 | none | 12.8 | 11.6 |
-| bgaregga | 36004 | 36004 | none | 17.1 | 16.6 |
+| gunhed | 36004 | 36004 | none | 7.5 | 6.3 |
+| zanac | 36004 | 36004 | none | 7.9 | 7.3 |
+| lightening-force | 36004 | 36004 | none | 12.6 | 11.3 |
+| bgaregga | 36004 | 36004 | none | 17.0 | 16.2 |
 
 The numbers are from one run with no builds running (`pgrep -f '[c]argo|[r]ustc'` logged
-every second). Earlier runs on the same machine agreed within about 1.5% for frames/s; save
-and load times vary by a few µs between runs. What they show:
+every second). An earlier run the same day, with a local build of the same patched FBNeo
+before its release, agreed within about 2% for single-process frames/s (Battle Garegga
+included), except Gunhed, about 6% slower then; its 9-process totals were 2-5% lower for
+every target. Save and load times vary by a few µs between runs. What they show:
 
 - Rendering the 256x256 observation costs a fixed amount per step (40-410 µs, depending on
   the core's frame size and pixel format), while emulating scales with the frames run, so
@@ -152,13 +150,13 @@ and load times vary by a few µs between runs. What they show:
   frameskip 1 to 4, Lightening Force gains 1.9x, Battle Garegga 1.6x, Gunhed 1.4x and Zanac
   1.2x.
 - Processes scale nearly linearly up to the four performance cores (each process keeps
-  88-99% of its single-process rate at N = 4). From 4 to 9 processes the total rises by
-  46-62%: each of the five extra processes, on efficiency cores, adds 37-50% of a
+  88-97% of its single-process rate at N = 4). From 4 to 9 processes the total rises by
+  48-64%: each of the five extra processes, on efficiency cores, adds 38-51% of a
   performance core's rate. The parallel runs play on from the reset without restoring a
   state, so their scenes differ from the single-process table's (Gunhed at frameskip 4 runs
-  6347 frames/s there against 5390 here).
-- Savestates are small (22 KB to 1 MB) and take 2-74 µs to save or load, so per-step
-  checkpoints for resets or branching are cheap. Battle Garegga's load takes 245 µs because
+  6427 frames/s there against 5685 here).
+- Savestates are small (22 KB to 1 MB) and take 2-73 µs to save or load, so per-step
+  checkpoints for resets or branching are cheap. Battle Garegga's load takes 244 µs because
   it includes its settle frame, one emulated frame (247 µs at frameskip 1 above); see
   "FBNeo and savestates" below.
 
@@ -178,7 +176,7 @@ multiprocessing vector env with shared-memory observations.
 
 **Outcome: below the trigger, so P5 stays a multiprocessing vector env with
 shared-memory observations.** On the Mac the overhead is 0.9-1.5 µs per step, 0.2-0.5% of the
-step at frameskip 1 (and less at higher frameskip); even Zanac, the cheapest step at 170 µs,
+step at frameskip 1 (and less at higher frameskip); even Zanac, the cheapest step at 168 µs,
 would need 17 µs of overhead to reach 10%. Recheck when TheaterPC's numbers are in, or when
 `env.step` gains per-step Python work (RAM variables and a reward, which the benchmark config
 leaves out, add `read_ram` work proportional to the variables read).
@@ -187,12 +185,13 @@ leaves out, add `read_ram` work proportional to the variables read).
 
 ### FBNeo and savestates
 
-Battle Garegga (`fbneo`) first recorded fine but didn't replay in a fresh process: a loaded
-state went on differently depending on what the process had run before the load. Four pieces
-of state outside FBNeo's savestates caused it, each found by running the same inputs live
-and from a loaded state in a fresh process, comparing the frame, the RAM and the whole
-savestate after every frame, and naming the first differing savestate bytes by the scan
-area that wrote them (a diagnostic build logging each `BurnArea`):
+Battle Garegga (`fbneo`) replays in a fresh process on the pinned build: FBNeo's savestates
+left out four pieces of state, so a loaded state went on differently depending on what the
+process had run before the load. Settling after a load and three core patches deal with
+them. Each was found by running the same inputs live and from a loaded state in a fresh
+process, comparing the frame, the RAM and the whole savestate after every frame, and naming
+the first differing savestate bytes by the scan area that wrote them (a diagnostic build
+logging each `BurnArea`):
 
 | What the state left out | Symptom without it | Fix |
 |---|---|---|
@@ -201,11 +200,13 @@ area that wrote them (a diagnostic build logging each `BurnArea`):
 | The scanline the Toaplan scanline register last returned (`toaplan.h`), which sets its new-line bit | The 68000 polls for a different number of cycles: play desyncs at frame 870, one row of the raster split off, with RAM identical | patch `0002-toaplan-scan-previous-scanline.patch` |
 | The MSM6295's render position and interpolated samples (`msm6295.cpp`) | Samples end at other points, changing the status the Z80 reads: play desyncs in the Z80 RAM at about frame 3340 | patch `0003-msm6295-scan-render-position.patch` |
 
-The patches are applied to our FBNeo build (docs/cores.md, "Patches") until upstream has
-them. With them and settling, the 36004-frame recording above replays fully (as do two more
-input seeds checked by hand), and `tests/test_bgaregga.py` checks attract mode and play on
-the user's ROM. The costs: the state grows from 126 KB to 159 KB (almost all of it the YM2151's
-carried samples), and a load takes about 245 µs instead of 6, since it runs the settle frame.
+The patches are in the pinned FBNeo build (release `cores-afa730086cb24842`, docs/cores.md,
+"Patches") until upstream has them. On it, with settling, the 36004-frame recording above
+replays fully (as did two more input seeds checked by hand on a local build of the same
+patches), and `tests/test_bgaregga.py` checks that attract mode and play replay and that
+loaded states match on the user's ROM. The costs: the state grows from 126 KB to 159 KB
+(almost all of it the YM2151's carried samples), and a load takes about 244 µs instead of 6,
+since it runs the settle frame.
 
 Still open: Psikyo games (`gunbird`, `s1945`) differ after a load even with 1 to 4 settle
 frames, so they leave out more state, not traced yet. Other sound chips' wrappers may share
