@@ -27,6 +27,15 @@ buttons are never exposed either.
 The mapping to the libretro joypad mask is Rust: `ActionSpace::joypad_table` gives the mask
 of every flat action, so a step maps its action with one lookup.
 
+## Labels from masks
+
+`ActionSpace::action_of(mask)` is the inverse mapping, used to label training shards from
+recordings (docs/recording-format.md, "Training shards"): the d-pad bits give the direction,
+opposites cancelling on their axis, and a slot is held when any RetroPad button mapped to it
+is. A mask holding a button no slot maps (start, select, a button the game doesn't map) has
+no label (`None`): no action presses it. A slot the game doesn't map never comes back set,
+so `action_of(joypad(a))` is `a` with its unmapped slots cleared.
+
 ## Slots across games
 
 Slots name a role, not a button: `shot` is the main fire button in every game, `bomb` the

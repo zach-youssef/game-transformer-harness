@@ -141,6 +141,33 @@ impl ActionSpace {
             .fold(action.direction.joypad(), |mask, (_, bits)| mask | bits)
     }
 
+    /// The action label of a RetroPad mask, the inverse of [`joypad`](Self::joypad) for
+    /// training shards (docs/recording-format.md): the d-pad bits give the direction
+    /// (opposites cancel on their axis) and a slot is held when any button mapped to it is.
+    /// `None` when the mask holds a button no slot maps (start, select, an unmapped button),
+    /// which no action can press.
+    pub fn action_of(&self, joypad: u16) -> Option<Action> {
+        let dpad = Direction::ALL
+            .iter()
+            .fold(0, |mask, direction| mask | direction.joypad());
+        let mapped = self.slot_joypad.iter().fold(dpad, |mask, bits| mask | bits);
+        if joypad & !mapped != 0 {
+            return None;
+        }
+        let held = |button: RetroButton| joypad & button.bit() != 0;
+        Some(Action {
+            direction: Direction::from_dpad(
+                held(RetroButton::Up),
+                held(RetroButton::Down),
+                held(RetroButton::Left),
+                held(RetroButton::Right),
+            ),
+            buttons: (self.slot_joypad.iter().enumerate())
+                .filter(|&(_, &bits)| joypad & bits != 0)
+                .fold(0, |buttons, (i, _)| buttons | 1 << i),
+        })
+    }
+
     /// The RetroPad mask of every flat action, indexed by the flat integer, so a caller can
     /// map actions with one lookup.
     pub fn joypad_table(&self) -> Vec<u16> {
@@ -259,6 +286,27 @@ mod tests {
                 assert_eq!(mask & (1 << 2 | 1 << 3), 0, "never select or start");
             }
         }
+    }
+
+    #[test]
+    fn action_of_inverts_joypad_and_rejects_unmapped_buttons() {
+        for space in spaces() {
+            for flat in 0..ActionSpace::LEN {
+                let action = space.decode(flat).unwrap();
+                let label = space.action_of(space.joypad(action)).unwrap();
+                assert_eq!(label.direction, action.direction);
+                // An unmapped slot presses nothing, so its bit can't come back.
+                let mapped = (space.mapped_slots().iter()).fold(0, |m, &s| m | 1 << s as u8);
+                assert_eq!(label.buttons, action.buttons & mapped);
+            }
+            assert_eq!(space.action_of(1 << 3), None, "start");
+            assert_eq!(space.action_of(1 << 2 | 1 << 4), None, "select with up");
+            assert_eq!(space.action_of(1 << 10), None, "L, mapped in no space here");
+        }
+        let all = space(&Slot::ALL);
+        let label = all.action_of(UP_DOWN | 1 << 7 | 1 << 8).unwrap();
+        assert_eq!(label.direction, Direction::Right, "up and down cancel");
+        assert_eq!(label.buttons, 1, "A is shot");
     }
 
     #[test]
