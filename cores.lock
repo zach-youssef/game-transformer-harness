@@ -1,0 +1,29 @@
+# Pinned libretro core builds. docs/cores.md says how to bump a pin.
+
+[cores.fbneo]
+repo = "https://github.com/libretro/FBNeo"
+commit = "a836e52198aa5ce1f54be7b050e44872a1223797"
+library_version = "v1.0.0.03 261110 GITa836e52"
+
+[cores.fbneo.artifacts]
+
+[cores.fceumm]
+repo = "https://github.com/libretro/libretro-fceumm"
+commit = "e0f3086a8104f8fbbe49a2615b10401504a9533f"
+library_version = "(SVN) e0f3086"
+
+[cores.fceumm.artifacts]
+
+[cores.genesis_plus_gx]
+repo = "https://github.com/libretro/Genesis-Plus-GX"
+commit = "b9c2316441978d4015ba30e9a95d9b0e6f8ee981"
+library_version = "v1.7.4 b9c2316"
+
+[cores.genesis_plus_gx.artifacts]
+
+[cores.mednafen_pce_fast]
+repo = "https://github.com/libretro/beetle-pce-fast-libretro"
+commit = "2de1ce1c3f237b161c126c54ba407990bb86d1e9"
+library_version = "v1.31.0.0 2de1ce1"
+
+[cores.mednafen_pce_fast.artifacts]

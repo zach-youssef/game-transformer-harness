@@ -1,0 +1,2 @@
+# Shell scripts run under bash on Windows runners too (MSYS2), which rejects CRLF.
+*.sh text eol=lf

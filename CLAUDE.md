@@ -22,10 +22,13 @@ Headless libretro cores behind a Python gymnasium environment, with all per-fram
 - [docs/human-play.md](docs/human-play.md): `gth-play`, the human-play recorder (window,
   audio, gamepads, bindings, latency). Read before touching `crates/gth-play`.
 - [docs/roms.md](docs/roms.md): before touching ROMs, BIOS or cores, or tests that use them.
+- [docs/cores.md](docs/cores.md): the pinned core builds (`cores.lock`, `gth cores`, the cores
+  workflow) and how to bump a pin.
 
 Rules that apply everywhere:
 
-- Never download, commit or upload ROMs, BIOS files or core binaries.
+- Never download, commit or upload ROMs or BIOS files. Core binaries never enter git: only the
+  cores workflow publishes them and `gth cores fetch` downloads them (docs/cores.md).
 - Per-frame work is Rust; Python only orchestrates. `gth-py` is glue with no logic.
 - Every `unsafe` block has a `// SAFETY:` comment.
 - Run what CI runs before committing (docs/development.md).

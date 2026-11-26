@@ -56,9 +56,9 @@ fixture raises `ConfigError` rather than skipping, so the mistake is seen. Never
 BIOS file or anything derived from one to `tests/` (docs/roms.md, "Rules").
 
 No test uses a real core yet. The first one adds a fixture like `rom` that finds the core
-(pinned in `cores.lock`, docs/cores.md, coming with P1) and the data directory with the game's
-BIOS files, and skips with a reason when either is missing, so a machine with ROMs but no
-built core skips rather than fails.
+(the build `cores.lock` pins, which `gth cores fetch` downloads, docs/cores.md) and the data
+directory with the game's BIOS files, and skips with a reason when either is missing, so a
+machine with ROMs but no fetched core skips rather than fails.
 
 ## GPU tests
 

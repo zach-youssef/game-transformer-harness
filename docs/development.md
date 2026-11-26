@@ -50,6 +50,10 @@ uv run cargo test --workspace
 - On Linux, `gth-play` (docs/human-play.md) needs the ALSA and udev headers to build:
   `sudo apt-get install libasound2-dev libudev-dev` (CI installs them). macOS and Windows
   need nothing extra.
+- The cores workflow (`.github/workflows/cores.yml`) builds the real cores in `cores.lock`
+  when the lock or the build script changes, and publishes them from main only
+  (docs/cores.md). Its harness setup (`.github/actions/harness`) repeats CI's setup-uv and uv
+  versions, with third-party actions pinned by commit: bump them in both.
 
 ## Build directory
 

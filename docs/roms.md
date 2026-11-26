@@ -8,6 +8,8 @@ The harness runs games from ROM and BIOS files that the user supplies from their
 - Never commit, upload or share them. That includes test fixtures, CI caches, release assets and
   logs that quote their contents.
 - Core binaries (`.so`, `.dylib`, `.dll`) are build outputs and are never committed either.
+  The cores workflow builds and publishes them; get them with `gth cores fetch`
+  (docs/cores.md).
 - Tests that need a ROM skip with a reason when it isn't there. CI has no ROMs and runs every
   test against `gth-testcore` instead.
 
@@ -100,7 +102,7 @@ The work is `GameConfig::audit` in `gth-config` (`audit.rs`); the CLI is
 | Game | `games/<id>` | Hashes from |
 |---|---|---|
 | Gunhed, Zanac, Lightening Force | `gunhed`, `zanac`, `lightening-force` | the user's dumps (`~/roms/manifest.md`); only `[content]` is final until G1-G3 |
-| Arcade sets | not yet | FBNeo's driver tables list names, sizes and CRC-32s but no SHA-1, which `members` needs: to do once `cores.lock` pins FBNeo |
+| Arcade sets | not yet | FBNeo's driver tables list names, sizes and CRC-32s but no SHA-1, which `members` needs; `cores.lock` pins FBNeo `a836e52` (docs/cores.md), whose tables the sets follow |
 
 ## Data directory
 
@@ -111,7 +113,8 @@ directory (the git-ignored `data/` in a checkout, or anywhere else):
 <data_dir>/
   system/                 BIOS files at their game.toml paths, checked by name and SHA-1
                           (an archive by name); e.g. fbneo/pgm.zip
-  cores/                  <core>_libretro.<so|dylib|dll>, unless core_path is given
+  cores/                  <core>_libretro.<so|dylib|dll>, unless core_path is given;
+                          `gth cores fetch <data_dir>` puts the pinned builds here
   states/<game-id>/       reset savestates (game.toml `reset.state`, checked by SHA-1)
 ```
 

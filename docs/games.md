@@ -25,7 +25,7 @@ table and RAM variable key (the other forms of `reset` and `content`, a savestat
    BIOS files under `<data_dir>/system`, archive members by hash. Add the game to the content
    table in docs/roms.md, saying where its hashes came from.
 4. **Core, frame, buttons and reset**: `core` is the core's name in `cores.lock`
-   (docs/cores.md, coming with P1) and, now and after, the stem of its library's file name,
+   (docs/cores.md, "Adding a core") and the stem of its library's file name,
    `<core>_libretro.<so|dylib|dll>` (docs/roms.md, "Data directory"), so use the libretro
    build's real name (`mednafen_pce_fast`); `orientation` and `crop` give the picture a policy sees;
    `[buttons]` maps the game's controls onto the four slots (docs/actions.md); `[reset]` gets
@@ -309,10 +309,8 @@ game's ROM skip without it (docs/testing.md).
 
 ## `cores.lock`
 
-The pinned build of each core, parsed by `gth_config::CoresLock`. The schema is ready, but
-nothing reads a lock yet: there is no `cores.lock` file, `RetroEnv` takes the core from
-`core_path` or `<data_dir>/cores/` (docs/roms.md, "Data directory"), and recordings carry no
-`[core.lock]`. P1 adds the file, `cores fetch` and the wiring (docs/cores.md, coming with P1):
+The pinned build of each core, parsed by `gth_config::CoresLock`. The cores workflow builds
+and releases it, and `gth cores fetch` checks this platform's build against it (docs/cores.md):
 
 ```toml
 [cores.fbneo]
