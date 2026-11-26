@@ -1,5 +1,6 @@
 //! [`Recording`] (a recording read and validated) and [`Replayer`] (re-runs it on a core).
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use gth_config::GameConfig;
@@ -210,21 +211,34 @@ impl Replayer {
     /// Replays the next agent step and returns its buttons and frame count, or `None` at the
     /// end of the recording.
     pub fn step(&mut self) -> Result<Option<(u16, u32)>> {
-        let start = self.frame as usize;
-        let Some(input) = self.recording.inputs.get(start).copied() else {
-            return Ok(None);
-        };
+        let mut first = None;
         let mut frames = 0;
-        loop {
-            let input_now = self.recording.inputs[self.frame as usize];
-            self.core.run_frames(1, input_now.buttons);
-            self.frame += 1;
+        while let Some(input) = self.run_frame()? {
+            first.get_or_insert(input.buttons);
             frames += 1;
-            self.verify_check()?;
-            if input_now.step_end {
-                return Ok(Some((input.buttons, frames)));
+            if input.step_end {
+                break;
             }
         }
+        Ok(first.map(|buttons| (buttons, frames)))
+    }
+
+    /// Replays the next frame and returns its input, or `None` at the end of the recording.
+    /// Step boundaries are the caller's to track (`Input::step_end`).
+    pub fn run_frame(&mut self) -> Result<Option<Input>> {
+        let Some(input) = self.recording.inputs.get(self.frame as usize).copied() else {
+            return Ok(None);
+        };
+        self.core.run_frames(1, input.buttons);
+        self.frame += 1;
+        self.verify_check()?;
+        Ok(Some(input))
+    }
+
+    /// Decodes the recording's RAM variables (its `game.toml`'s) from the core now, by name.
+    /// For rewards, labels and validation, never a policy's input.
+    pub fn read_ram_vars(&mut self) -> Result<BTreeMap<String, i64>> {
+        Ok(self.core.read_ram_vars(&self.recording.game.ram)?)
     }
 
     /// Replays the rest of the recording; returns the number of frames replayed in all.

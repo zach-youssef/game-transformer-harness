@@ -11,7 +11,7 @@ native calls, and the reward function) and only orchestrates.
 |---|---|---|
 | `gth-core` | The libretro host: load a core dynamic library, answer its callbacks, run frames (including frame skip), savestates, RAM and memory-map reads, RAM search (`ramsearch.rs`). | Python, windowing, audio output |
 | `gth-frame` | Per-frame pixel ops: pixel format to RGB8, crop, tate rotation, resize to the model size, all into caller-provided buffers. | Anything core-specific |
-| `gth-record` | The recording format (docs/recording-format.md): `Recorder` writes the start state, per-frame joypad masks and desync checks; `Recording` and `Replayer` read and re-run them. | Frame storage (frames are re-rendered by replaying); writing training shards (spec only, P7) |
+| `gth-record` | The recording format (docs/recording-format.md): `Recorder` writes the start state, per-frame joypad masks and desync checks; `Recording` and `Replayer` read and re-run them; `export` renders a recording into a training shard (`shard.rs`). | Frame storage in recordings (frames are re-rendered by replaying) |
 | `gth-config` | Config types (serde + TOML): `game.toml`, `cores.lock`, the action space, RAM variables, RAM search scripts and their views and relations; finding and auditing the user's ROM and BIOS files by hash. | Emulation and frame data |
 | `gth-py` | The PyO3 extension module `gtharness._native`: glue that converts types and errors. | Logic: it goes in the crate it belongs to |
 | `gth-libretro-sys` | The FFI subset of `libretro.h` we use, hand-written (docs/libretro.md). | Logic, safe wrappers (those are `gth-core`'s) |
@@ -148,5 +148,5 @@ data/              user-supplied ROMs and BIOS, git-ignored (docs/roms.md)
 ## Native code
 
 Hot paths (callbacks, pixel conversion, resize, the frame-skip loop, recording, replay
-checks, ROM hashing, RAM search) are Rust. The only C or C++ involved is third-party: the
+checks, shard export and frame decoding, ROM hashing, RAM search) are Rust. The only C or C++ involved is third-party: the
 cores we load and libraries bundled by crates (for example libzstd).

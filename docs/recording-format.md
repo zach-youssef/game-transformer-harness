@@ -136,32 +136,126 @@ so ratio matters more than the speed lz4 offers, which replay (emulation) never 
 is a middle ground: higher levels gain little on these files and slow the start state at each
 episode start.
 
-## Training shards (spec; P7 writes them)
+## Training shards
 
 Training reads shards rendered from recordings, not recordings. A shard is a sequence of
 samples at the model's rate and size; the same format serves video labelled by an inverse
-dynamics model (IDM, separate plan), so both sources train one model.
+dynamics model (IDM, separate plan), so both sources train one model. `gth_record::export`
+(`crates/gth-record/src/shard.rs`) writes one shard per recording by replaying it.
 
-Per sample (one agent step):
+### Container
+
+One shard is one `.npz` file: a zip archive whose members are stored uncompressed, so
+`np.load(path)` opens it with nothing but numpy. Its members:
+
+| Member | Holds |
+|---|---|
+| `frames_00000.zst`, `frames_00001.zst`, ... | The frames, `chunk_samples` samples per member (the last holds the rest): one zstd frame (level 3) of the raw `uint8[n, H, W, 3]` pixels, RGB, row-major. `np.load` returns a member that isn't `.npy` as bytes; `_native.decode_frames` decodes it. |
+| `direction.npy`, `buttons.npy`, `ram.npy`, `episode_frame.npy`, `segment.npy`, `confidence.npy` | The per-sample arrays (below). |
+| `frame_direction.npy`, `frame_buttons.npy`, `frame_labelled.npy` | The per-frame arrays (below). |
+| `meta.json` | The per-shard fields (below). |
+
+Frames are chunked rather than stored one per member, because consecutive frames of a game
+are nearly identical and zstd compresses a run of them far better than each alone; the chunk
+size is the trade-off between that ratio and how much a reader decodes to reach one sample.
+The labels are tiny and stored as plain `.npy`, so tools read them (to count actions, sum
+returns, pick episodes by score) without touching a frame.
+
+| | npz (zip of `.npy` and zstd members) | WebDataset (tar, one member per sample and field) |
+|---|---|---|
+| Sequential read speed | Same: stored members are plain file reads; zstd decoding dominates either way | Same |
+| Random access | The zip's central directory locates any member directly: one chunk or the labels alone | A tar has no index: reaching a member scans the headers before it, or needs a separate index |
+| Streaming from disk | Needs a seekable file (the directory is at the end); fine on local disks, where shards live (Mac `runs/`, TheaterPC `D:`) | Built for it: reads front to back, also from pipes and object stores |
+| Dependencies | numpy and the stdlib (`zipfile`) to read; `rawzip` (already a `gth-config` dependency, no dependencies of its own) to write | stdlib `tarfile` to read, or the `webdataset` package for its pipeline; a tar writer (`tar` crate) to write |
+| Windows | Native (`zipfile`, Explorer) | Native (`tarfile`, `tar.exe`) |
+| Fit with chunked frames | Any member layout | Its per-sample grouping (`<key>.<field>`) fights chunks spanning many samples |
+
+npz: shards live on local disks next to the trainer, where random access to a chunk or to the
+labels matters more than streaming, and it adds no dependency.
+
+### Per sample (one agent step)
+
+A sample is an observation and the action the player chose after seeing it (below, "Labels
+and samples").
 
 | Field | Type | Meaning |
 |---|---|---|
-| `frame` | `uint8[H, W, 3]` | The step's observation at the model size, RGB. |
-| `direction` | `uint8` | 0 neutral, 1-8 clockwise from up (docs/actions.md). |
+| `frame` | `uint8[H, W, 3]` | The observation at the model size, RGB (in the frame chunks). |
+| `direction` | `uint8` | The action after it: 0 neutral, 1-8 clockwise from up (docs/actions.md). |
 | `buttons` | `uint8` | Bit i = slot i held (`shot`, `bomb`, `aux1`, `aux2`). |
-| `ram` | `int64[V]` | The game's RAM variables (shard metadata names them), for rewards and analysis only; absent for video. |
-| `episode_frame` | `uint64` | The step-end frame's index in its episode. |
+| `ram` | `int64[V]` | The game's RAM variables at the observation (`ram_names` names the columns), for rewards, validation and analysis only, never a policy's input; absent for video. |
+| `episode_frame` | `uint64` | Frames replayed since the recording's start state at the observation (1-based, like `checks.bin`'s frames; `RetroEnv`'s `info["episode_frame"]` also counts the reset script's frames, which come before a recording starts). The label is frame `episode_frame + 1`'s action. |
+| `segment` | `uint32` | Consecutive samples share a segment; it goes up at every gap (a sample dropped as unlabelled or by the filter), so a sequence model never pairs samples across one. Starts at 0. |
+| `confidence` | `float32` | The label's confidence: 1 for `replay`. |
 
-Per shard: `shard_version` (the shard format's own version, starting at 1), `source_id` (the
-recording's directory name, or the video's id), `episode_id`, `game_id`, `fps`, `frameskip` (or
-the step-end frames, if it varies), `obs_size`, `crop` and `orientation` used, the RAM variable
-names, `label_source` (`replay` or `idm`) and, for `idm`, the model's id and a per-sample
-`confidence` (`float32`, 1 for `replay`). A per-slot confidence (direction and each button) may
-replace it if the IDM can give one; that is a new `shard_version`.
+### Per frame
 
-Labels from a recording come from the mask with the recording's `game.toml`: the d-pad bits
-give the direction (opposites cancel, as in docs/actions.md), and a slot is held when any
-RetroPad button mapped to it is. A step's label is its last frame's mask (the mask is held
-for the whole step when `RetroEnv` records). Masks with buttons that map to no slot (start,
-select in a reset script) have no action label; the exporter skips those steps. The container
-(one file per shard, e.g. npz or a WebDataset tar) is chosen by P7.
+Every replayed frame's action, `frames` long (index f - 1 is frame f), for models that
+work at the emulator's rate or need the presses between observations; sample i's label is
+`frame_*[episode_frame[i]]`.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `frame_direction`, `frame_buttons` | `uint8` | The frame's action, as `direction` and `buttons`; neutral when unlabelled. |
+| `frame_labelled` | `bool` | False when the frame's mask holds a button no slot maps (start, select). |
+
+### Per shard (`meta.json`)
+
+| Field | Meaning |
+|---|---|
+| `shard_version` | `gth_record::SHARD_VERSION` (1). |
+| `source_id` | The recording's directory name, or the video's id. |
+| `episode_id` | The episode's index in its source: 0 for a recording, which holds one episode. |
+| `game_id`, `fps` | From the recording. |
+| `frameskip` | Frames per sample, or `null` when the recorded steps it follows vary in length (`episode_frame` then gives the step ends). |
+| `obs_size`, `crop`, `orientation`, `interpolation` | The observation pipeline: `[height, width]`, `[x, y, width, height]` or `null`, degrees clockwise, `area` or `bilinear`. |
+| `ram_names` | The names of `ram`'s columns (the recording's `game.toml` variables, in name order). |
+| `label_source`, `idm_model` | `replay` or `idm`, and for `idm` the model's id (`null` otherwise). |
+| `filter` | The sample filter (below). |
+| `samples`, `frames` | Sample count, and frames replayed (the per-frame arrays' length). |
+| `chunk_samples`, `frame_chunks` | Samples per frame chunk, and chunk count. |
+| `terminated` | Whether `episode.terminate` holds at the last sample's observation: the shard ends at game over. |
+| `recording` | The recording's `meta.toml` as JSON (license, player, core, content, the recording harness build). |
+| `harness` | The exporting harness build (`_native.build_info()`). |
+
+A per-slot confidence (direction and each button) may replace `confidence` if the IDM can
+give one; that is a new `shard_version`.
+
+### Labels and samples
+
+Observations are taken at the recording's own step ends (`Steps::Recorded`) or every k
+frames from the start state (`Steps::Every(k)`, the model's rate whatever the recording's;
+`frameskip` in `meta.json`). Each observation is the frame the core showed at that point,
+and its sample's label is the action held during the next frame: the first thing the player
+did after seeing it. That's the same at every rate, so a label never comes from frames
+after the decision: the policy learns `frame -> action` from each sample alone, with no
+shifting. The last observation has no next frame and isn't a sample.
+
+A frame's action comes from its mask with the recording's `game.toml`
+(`ActionSpace::action_of`, docs/actions.md): the d-pad bits give the direction (opposites
+cancel), and a slot is held when any RetroPad button mapped to it is. When `RetroEnv`
+records, a step holds one mask for all its frames, so at the recorded rate the label is the
+next step's action. At a coarser rate, presses that start and end between two observations
+appear only in the per-frame arrays.
+
+A sample whose next frame's mask holds a button that maps to no slot (start, select) has no
+label and is dropped (`unlabelled`). A sample filter (`gth_record::SampleFilter`) then
+chooses which labelled samples a shard keeps (`filtered` counts the rest):
+
+- `all` keeps every one.
+- `playing` keeps from the observation before the first non-neutral action (the one the
+  first input answers) through game over, and drops the attract mode or idle start before
+  and anything after. Game over is the first observation where `episode.terminate` holds
+  after it hasn't held at least once from the start (the observation before the first input
+  included), so a title screen whose RAM looks like game over (`lives == 0` until the game
+  sets them) doesn't end the episode at once; the game-over observation is kept.
+
+A filter sees each sample's action (`None` when unlabelled), whether it terminates, and its
+`episode_frame`, so new ones are a small trait implementation. Every gap a drop leaves bumps
+`segment`. Dropped observations are rendered but never written.
+
+Episode returns aren't stored: the reward is a choice made at training time (docs/
+architecture.md, "Observations and RAM"), so the trainer computes it from `ram`.
+
+An export writes to `<shard>.partial` and renames it when complete, so a shard that exists
+is whole; a desync or any error removes the partial file.

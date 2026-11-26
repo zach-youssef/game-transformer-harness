@@ -1,12 +1,14 @@
 //! The recording format (docs/recording-format.md): a recording is a replay, the start
 //! savestate plus the joypad mask of every emulated frame, with periodic hashes and RAM
 //! values to detect desyncs. Frames aren't stored: [`Replayer`] re-runs the core to render
-//! them, which needs the same core build the recording was made with.
+//! them, which needs the same core build the recording was made with. [`export`] renders a
+//! recording into a training shard.
 
 mod format;
 mod meta;
 mod recorder;
 mod replay;
+mod shard;
 
 use std::path::{Path, PathBuf};
 
@@ -14,6 +16,10 @@ pub use format::{Check, Input};
 pub use meta::{ContentMeta, CoreMeta, FORMAT_VERSION, Meta, RecorderKind, StartMeta};
 pub use recorder::{Recorder, RecordingInfo};
 pub use replay::{Recording, Replayer};
+pub use shard::{
+    FRAME_ZSTD_LEVEL, KeepAll, Playing, SHARD_VERSION, SampleFilter, ShardMeta, ShardOptions,
+    ShardSummary, StepInfo, Steps, chunk_name, decode_frames, export, filter_by_name,
+};
 
 /// Everything that can go wrong writing, reading or replaying a recording. Not
 /// `#[non_exhaustive]`: `gth-py` maps every variant to a Python exception.
