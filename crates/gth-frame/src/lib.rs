@@ -1,5 +1,37 @@
 //! Per-frame pixel ops into caller buffers: format conversion, crop, rotate, resize.
 
+/// A source frame's pixel format: the three libretro formats, each a native-endian integer per
+/// pixel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PixelFormat {
+    /// 16 bits, `0RRRRRGGGGGBBBBB` (libretro's default until a core sets another).
+    Rgb1555,
+    /// 32 bits, `0x00RRGGBB`.
+    Xrgb8888,
+    /// 16 bits, `RRRRRGGGGGGBBBBB`.
+    Rgb565,
+}
+
+impl PixelFormat {
+    pub const fn bytes_per_pixel(self) -> usize {
+        match self {
+            Self::Rgb1555 | Self::Rgb565 => 2,
+            Self::Xrgb8888 => 4,
+        }
+    }
+}
+
+/// A frame as a core drew it: `height` rows of `width` pixels, each row starting `pitch` bytes
+/// after the previous one.
+#[derive(Debug, Clone, Copy)]
+pub struct FrameRef<'a> {
+    pub data: &'a [u8],
+    pub width: usize,
+    pub height: usize,
+    pub pitch: usize,
+    pub format: PixelFormat,
+}
+
 /// Bytes per pixel of RGB8, the format frames reach Python in.
 pub const RGB8_BYTES_PER_PIXEL: usize = 3;
 

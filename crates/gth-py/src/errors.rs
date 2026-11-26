@@ -56,6 +56,7 @@ impl From<Error> for PyErr {
                 match error {
                     gth_core::Error::CoreLoad { .. } => CoreLoadError::new_err(message),
                     gth_core::Error::Desync { .. } => DesyncError::new_err(message),
+                    gth_core::Error::Savestate { .. } => HarnessError::new_err(message),
                 }
             }
         }

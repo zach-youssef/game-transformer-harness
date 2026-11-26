@@ -35,6 +35,34 @@ C-variadic functions (the log callback) can be called from Rust but not defined,
 that wants core logs needs a small C shim; until then it answers `GET_LOG_INTERFACE` with
 `false`.
 
+## Host
+
+`gth-core` (`src/host.rs`) answers these environment commands and declines the rest (`false`,
+which cores read as "not supported"):
+
+| Command | Answer |
+|---|---|
+| `GET_CAN_DUPE` | `true`: a `NULL` frame keeps the last one |
+| `SET_PIXEL_FORMAT` | accepts `0RGB1555`, `XRGB8888` and `RGB565` |
+| `GET_SYSTEM_DIRECTORY` | the `system_dir` given to `Core::load` (BIOS files, read-only in practice) |
+| `GET_SAVE_DIRECTORY` | a fresh temporary directory per `Core`, removed when it drops, so NVRAM, high scores and memory cards never carry over between loads or race between processes |
+| `SET_VARIABLES`, `GET_VARIABLE`, `SET_VARIABLE` | keeps the options at their defaults (the first listed value) unless the core sets one |
+| `GET_VARIABLE_UPDATE` | always `false`: the host never changes options |
+| `GET_CORE_OPTIONS_VERSION` | 0 |
+| `SET_MEMORY_MAPS` | copies the descriptors; `read_mapped` reads a region as contiguous from `start` (mirrors aren't resolved) |
+| `SET_INPUT_DESCRIPTORS`, `SET_SUPPORT_NO_GAME` | `true`, ignored |
+| `GET_LOG_INTERFACE` | `false` (no C shim, see above) |
+
+Input is port 0's joypad only, answered per button and for `RETRO_DEVICE_ID_JOYPAD_MASK`.
+Audio is counted and dropped. Content is read into memory unless the core sets
+`need_fullpath`, and stays alive until the game is unloaded.
+
+`Core::reset` restores a savestate taken right after loading, so every reset starts from the
+same state. `retro_reset` is the console's reset button, and many cores keep RAM or NVRAM
+through it, so it is only the fallback for cores that can't serialize at load time (some
+report a savestate size of 0 until their first frame) or that refuse that state on a reset
+(the snapshot is then dropped); `Core::resets_to_load_state` says which one a core gets.
+
 ## Test core
 
 `crates/gth-testcore` is a deterministic libretro core (a `cdylib`) that stands in for real
@@ -58,7 +86,8 @@ cores in tests and CI: video, input, RAM, core options and savestates, with no R
   without content). The rest stays zero. No save RAM.
 - **Savestates**: 276 bytes, the frame number, square position, PRNG state and system RAM. The
   step option is not saved, and a state that is short or puts the square off screen is
-  refused. `retro_reset` returns to the state right after loading.
+  refused. `retro_reset` is a soft reset, like a console's reset button: the frame number and
+  the square start over, but RAM (so the score) and the PRNG keep their values.
 
 - **One instance per process**: like real cores, it keeps its state in process-globals
   (libretro callbacks carry no user pointer), so one process can't run two instances of the

@@ -74,7 +74,6 @@ struct Game {
     y: i32,
     /// xorshift32 state seeded from the content; 0 means no PRNG (loaded without content).
     rng: u32,
-    seed: u32,
     /// Boxed so the pointer handed to the host stays put until `retro_unload_game`.
     ram: Box<[u8; RAM_SIZE]>,
     /// Core option `gth_testcore_step`: pixels the square moves per frame. Not saved, as
@@ -90,7 +89,6 @@ impl Game {
             x: 0,
             y: 0,
             rng: seed,
-            seed,
             ram: Box::new([0; RAM_SIZE]),
             step,
             pixels: vec![0; WIDTH * HEIGHT],
@@ -99,13 +97,12 @@ impl Game {
         game
     }
 
-    /// Back to the state right after loading, keeping the RAM's address.
+    /// A soft reset, like a console's reset button: the frame number and the square start
+    /// over, but the RAM (score) and the PRNG keep their values.
     fn reset(&mut self) {
         self.frame = 0;
         self.x = ((WIDTH - SQUARE) / 2) as i32;
         self.y = ((HEIGHT - SQUARE) / 2) as i32;
-        self.rng = self.seed;
-        self.ram.fill(0);
     }
 
     fn update(&mut self, buttons: u16) {

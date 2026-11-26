@@ -22,6 +22,10 @@ version = "0.1.0"
 name = "gth-core"
 version = "0.1.0"
 dependencies = [
+ "gth-frame",
+ "gth-libretro-sys",
+ "gth-test-support",
+ "libloading",
  "thiserror",
 ]
 

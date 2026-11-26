@@ -47,6 +47,21 @@ A process loads at most one libretro core, and a second load is an error:
 - Cores keep their own global state, so two instances of a core in one process would share it.
 - Parallel environments are separate processes.
 
+How `gth-core` keeps that safe (`crates/gth-core/src/host.rs`, `core.rs`):
+
+- `Core::load` takes a claim (an atomic flag) before touching the global, and fails with
+  `CoreLoad` if another `Core` holds it. Dropping the `Core` unloads the game, deinits,
+  removes its temporary save directory and closes the library, then clears the global and
+  releases the claim, so a later load starts fresh.
+- The global host state (last frame, held buttons, core options, memory map, audio count)
+  sits in a `Mutex`. Each callback locks it for its own duration and never panics (a panic in
+  an `extern "C"` function aborts). `Core` never holds the lock while it calls into the core,
+  so callbacks can't deadlock against it.
+- Every method that calls into the core takes `&mut self`, so the borrow checker enforces
+  libretro's one-call-at-a-time rule. A `Core` may move between threads between calls.
+- Slices of core memory (`memory`, `read_mapped`) borrow the `Core`, so no frame can run, and
+  change them, while one is alive.
+
 ## Repository layout
 
 ```

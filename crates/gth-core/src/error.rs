@@ -9,6 +9,9 @@ pub enum Error {
     /// A libretro core couldn't be loaded or initialized.
     #[error("cannot load core {path}: {reason}")]
     CoreLoad { path: PathBuf, reason: String },
+    /// A core couldn't save or load a savestate.
+    #[error("savestate error in core {core}: {reason}")]
+    Savestate { core: String, reason: String },
     /// A replay produced a different state than its recording.
     #[error("replay desynced at frame {frame}: {detail}")]
     Desync { frame: u64, detail: String },

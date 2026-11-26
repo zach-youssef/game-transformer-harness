@@ -22,6 +22,7 @@ def test_hierarchy():
     [
         ("core_load", CoreLoadError, "cannot load core missing.so: test"),
         ("desync", DesyncError, "replay desynced at frame 7: test"),
+        ("savestate", HarnessError, "savestate error in core x: test"),
     ],
 )
 def test_core_errors_map_to_their_exception(kind, cls, message):

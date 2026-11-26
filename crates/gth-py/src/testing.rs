@@ -8,12 +8,16 @@ use pyo3::prelude::*;
 
 use crate::errors;
 
-/// Raises the exception that `kind` ("core_load" or "desync") of `gth_core::Error` maps to.
+/// Raises the exception that `kind` ("core_load", "savestate" or "desync") of `gth_core::Error` maps to.
 #[pyfunction]
 fn _raise_core_error(kind: &str) -> errors::Result<()> {
     let error = match kind {
         "core_load" => gth_core::Error::CoreLoad {
             path: "missing.so".into(),
+            reason: "test".into(),
+        },
+        "savestate" => gth_core::Error::Savestate {
+            core: "x".into(),
             reason: "test".into(),
         },
         "desync" => gth_core::Error::Desync {

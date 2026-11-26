@@ -329,13 +329,23 @@ fn corrupted_savestate_is_refused() {
 }
 
 #[test]
-fn reset_returns_to_the_loaded_state() {
+fn reset_is_soft_and_keeps_ram() {
     let session = Session::start(Some(b"content"));
     let ram_ptr = retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM);
-    let first = (session.run(A | RIGHT), session.ram());
+    let first = session.run(RIGHT);
     session.run(A);
+    session.run(A);
+    let ram = session.ram();
     retro_reset();
-    assert!(first == (session.run(A | RIGHT), session.ram()));
+    assert_eq!(session.ram(), ram, "reset keeps RAM");
+    assert_eq!(&ram[..4], &[0, 0, 0, 2]);
+    let after = session.run(RIGHT);
+    assert_eq!(square(&after), square(&first), "the square starts over");
+    assert_eq!(
+        (after[WIDTH * 100] >> 8) & 0xFF,
+        1,
+        "the frame number starts over"
+    );
     assert_eq!(
         retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM),
         ram_ptr,

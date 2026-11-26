@@ -12,4 +12,10 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+gth-frame = { path = "../gth-frame" }
+gth-libretro-sys = { path = "../gth-libretro-sys" }
+libloading = "0.9.1"
 thiserror = "2.0.21"
+
+[dev-dependencies]
+gth-test-support = { path = "../gth-test-support" }
