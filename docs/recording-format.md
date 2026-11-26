@@ -38,7 +38,7 @@ and `start.state` against their SHA-1s in `meta.toml`, the frame and step counts
 | `fps` | The core's frame rate (`retro_get_system_av_info`). |
 | `frames`, `steps` | Emulated frames and agent steps in `inputs.bin`. |
 | `checks_every` | Frames between two checks. |
-| `[core]` | `name` (game.toml's `core`), `library_name` and `library_version` (`retro_get_system_info`; a replay refuses a core that reports others), and `lock`, the core's `cores.lock` entry, when the recorder has one (kept as a plain table that replays don't read, so it survives changes to the lock's schema). |
+| `[core]` | `name` (game.toml's `core`), `library_name` and `library_version` (`retro_get_system_info`; a replay refuses a core that reports others), and `lock`, the core's `cores.lock` entry, when the recorder has one (`RetroEnv`'s recordings don't until P1 wires up `cores.lock`; kept as a plain table that replays don't read, so it survives changes to the lock's schema). |
 | `[content]` | `file` and `sha1` of what identifies the content the core loaded: the content file, or for a clone `in_parent` (docs/games.md), whose path doesn't exist, the parent archive holding it. A replay refuses content with another SHA-1, no content when the recording has some, and content when it has none. Absent when the core loaded none. Not checked: an `in_parent` clone's own files (the archive's SHA-1 covers them, with every other set in it), the other `parents`, and BIOS files, whose hashes are in the stored `game.toml` for the ROM audit (P2). |
 | `[start]` | `sha1` and `size` of the uncompressed start state. |
 | `[harness]` | The harness build, `_native.build_info()`: version, git commit and dirty flag, target, profile, rustc. |

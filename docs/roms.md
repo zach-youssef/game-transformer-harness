@@ -56,8 +56,9 @@ merged set) it finds the first parent instead and returns the clone's path besid
 
 ## Auditing
 
-`gth audit <data_dir>` checks every game in `games/` (but the test core's, unless named
-with `--game`) against the user's files, read-only:
+`gth audit <data_dir>` checks every game in `games/` (`--games-dir` for another directory),
+but those whose `core` is the test core unless named with `--game`, against the user's files,
+read-only:
 
 - the content, found as above under the ROM directory (`--rom-dir`, else `GTH_ROM_DIR` or
   `rom_dir`), and its parents beside it;
@@ -90,8 +91,9 @@ prints a table, or with `--json` the report as JSON:
 
 Optional keys appear only when they apply; the table counts the other members and how many
 of them are unreadable. The exit status is 0 when every audited game is ok, 1 otherwise and 2
-on a usage or config error (no ROM directory, or no game to audit). The work is
-`GameConfig::audit` in `gth-config` (`audit.rs`); the CLI is `python/gtharness/cli.py`.
+on a usage or config error (no ROM directory, one that doesn't exist, or no game to audit).
+The work is `GameConfig::audit` in `gth-config` (`audit.rs`); the CLI is
+`python/gtharness/cli.py`.
 
 ### Content tables
 

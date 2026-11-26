@@ -18,8 +18,19 @@ native calls, and the reward function) and only orchestrates.
 | `gth-testcore` | A tiny deterministic libretro core (a `cdylib`) that tests and CI load instead of real cores and ROMs. | Dependencies on the host crates (it may use `gth-libretro-sys`) |
 | `gth-test-support` | Helpers shared by Rust tests (a dev-dependency): building and locating the test core. | Anything non-test code uses |
 
-The Python package `gtharness` (in `python/gtharness/`) holds the environment API, the CLI and
-the glue to policies and trainers.
+The Python package `gtharness` (in `python/gtharness/`) orchestrates:
+
+| Module | Holds |
+|---|---|
+| `env.py` | `RetroEnv`, the gymnasium environment, and `RetroEnv.from_game` (below) |
+| `rewards.py` | Reward functions on RAM variables (`score_delta`), and `REQUIRED_RAM`, the variables each built-in one reads, checked when an env is made |
+| `record.py` | `Record` (where and how `RetroEnv` records) and `Replayer` (docs/recording-format.md) |
+| `cli.py` | The `gth` command (`gth audit`, docs/roms.md) |
+| `errors.py` | The exceptions, re-exported from `_native` (docs/native.md, "Errors") |
+| `_native.pyi` | Type stubs of the extension module (docs/native.md) |
+
+The glue to policies and trainers comes with the tasks that need it (NitroGen bridge P9,
+training P10).
 
 Planned crates, added by the task that first needs them:
 
@@ -59,7 +70,9 @@ The frame half of one `RetroEnv.step(action)` (`python/gtharness/env.py`) is one
 3. After the last frame, `Core::with_frame` lends that buffer, under the host lock, to
    `gth_frame::Pipeline::render`, which crops, converts to RGB8 and rotates in one pass, then
    resizes (`fast_image_resize`, area or bilinear) into a newly allocated observation buffer.
-   The pipeline keeps its scratch buffer and resizer, so the resize allocates nothing.
+   The pipeline keeps its scratch buffer and resizer, so the resize allocates nothing. The
+   area resize is the largest host-side cost of a step (about 0.35 ms per observation in a
+   release build, measured during S4); profiling it is an open follow-up.
 4. `gth-py` moves the buffer into a numpy array without copying (native.md, "Arrays").
 
 Before the step, `RetroEnv` turns the action (docs/actions.md) into a RetroPad mask with one
@@ -121,7 +134,8 @@ How `gth-core` keeps that safe (`crates/gth-core/src/host.rs`, `core.rs`):
 
 ```
 crates/            Rust workspace members (gth-*)
-python/gtharness/  Python package; maturin puts _native next to it
+python/gtharness/  Python package; maturin builds _native into it
+games/             one directory per game with its game.toml (docs/games.md)
 tests/             Python tests (pytest); Rust tests live in their crates
 docs/              focused docs, indexed from CLAUDE.md
 data/              user-supplied ROMs and BIOS, git-ignored (docs/roms.md)

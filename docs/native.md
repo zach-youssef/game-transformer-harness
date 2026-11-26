@@ -10,8 +10,10 @@ Read this before adding or changing anything it exports.
   anything beyond that belongs in a crate, where Rust tests cover it.
 - Every export is in `python/gtharness/_native.pyi`. `tests/test_native_stubs.py` fails when a
   name or a function's parameter names differ between the stub and the module.
-- Python code imports what `_native` exports from the package modules that re-export it (such
-  as `gtharness.errors`), not from `_native` directly, except for the environment's hot path.
+- Python code imports the exceptions from `gtharness.errors` and `Replayer` from
+  `gtharness.record`, the modules that re-export them, never from `_native`. Classes and
+  functions with no re-export (`Core`, `GameConfig`, `rom_dir`, `user_config_path`) are used
+  from `_native` directly, by the package's own modules (`env.py`, `cli.py`) and tests.
 - Test hooks, which let pytest drive a convention before a real binding uses it, have
   underscore names and live in `gth-py/src/testing.rs`. Only `tests/` calls them.
 

@@ -1,5 +1,6 @@
-# gth-testcore as a game (docs/libretro.md, "Test core"), using every game.toml field
-# (docs/games.md) so tests cover them all. Its files aren't ROMs: tests/conftest.py writes
+# gth-testcore as a game (docs/libretro.md, "Test core"), using every game.toml table and RAM
+# variable key (docs/games.md) so tests cover them all; tests/test_games.py writes variants for
+# a reset savestate and content in_parent. Its files aren't ROMs: tests/conftest.py writes
 # the content and the stand-in BIOS files, whose hashes are below.
 
 core = "gth_testcore"

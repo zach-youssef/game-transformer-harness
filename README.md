@@ -5,8 +5,10 @@ Headless [libretro](https://www.libretro.com/) emulator cores behind a Python
 callbacks, pixel conversion, resize, frame skip, recording) in Rust. It is built to run game
 policies such as NitroGen and to record human play as exact training data.
 
-Status: scaffolding. The crates are empty; see [docs/architecture.md](docs/architecture.md) for
-what goes where.
+Status: the scaffold is done: the Rust host, frame pipeline, game configs, ROM audit and
+recordings work behind `gtharness.env.RetroEnv`, tested against a bundled test core. Real
+cores, games and training come next. See [docs/architecture.md](docs/architecture.md) for what
+goes where.
 
 ## Build
 

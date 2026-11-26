@@ -217,6 +217,7 @@ impl Core {
                 .into_iter()
                 .map(|(key, value)| (key.to_owned(), value.to_owned()))
                 .collect(),
+            // No cores.lock exists until P1 (docs/games.md, "cores.lock").
             core_lock: None,
             checks_every,
         };

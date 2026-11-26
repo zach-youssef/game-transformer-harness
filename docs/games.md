@@ -4,8 +4,9 @@ Each game the harness runs has `games/<game-id>/game.toml`, parsed and validated
 `gth_config::GameConfig` (`crates/gth-config/src/game.rs`). A config that parses is one the
 harness can use: unknown fields, bad values and conditions on missing RAM variables are
 errors that name the field. `games/testcore/game.toml` (gth-testcore as a game) uses every
-field, and `RetroEnv.from_game` (architecture.md, "Observations and RAM") builds an
-environment from a config.
+table and RAM variable key (the other forms of `reset` and `content`, a savestate and
+`in_parent`, are tested with configs the tests write), and `RetroEnv.from_game`
+(architecture.md, "Observations and RAM") builds an environment from a config.
 
 ## Adding a game
 
@@ -224,8 +225,10 @@ parentheses at most 32 deep.
 
 ## `cores.lock`
 
-The pinned build of each core, parsed by `gth_config::CoresLock` and filled by `cores fetch`
-(P1):
+The pinned build of each core, parsed by `gth_config::CoresLock`. The schema is ready, but
+nothing reads a lock yet: there is no `cores.lock` file, `RetroEnv` takes the core from
+`core_path` or `<data_dir>/cores/` (docs/roms.md, "Data directory"), and recordings carry no
+`[core.lock]`. P1 adds the file, `cores fetch` and the wiring (docs/cores.md, coming with P1):
 
 ```toml
 [cores.fbneo]
