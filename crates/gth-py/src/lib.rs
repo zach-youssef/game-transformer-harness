@@ -4,6 +4,7 @@
 
 mod config;
 mod core;
+mod cores;
 mod errors;
 mod frame;
 mod ramsearch;
@@ -37,6 +38,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(build_info, module)?)?;
     config::register(module)?;
     core::register(module)?;
+    cores::register(module)?;
     errors::register(module)?;
     frame::register(module)?;
     ramsearch::register(module)?;

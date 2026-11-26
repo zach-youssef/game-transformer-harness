@@ -155,6 +155,17 @@ location, size, encoding, swap16, value), and `ram_search_views()` lists the vie
 expands to. `gtharness.ramsearch` wraps it for environments and is its only user besides
 tests.
 
+## Cores lock
+
+`_native.CoresLock` (`gth-py/src/cores.rs`) is a parsed `cores.lock` (docs/cores.md),
+immutable: the core `names`, each core's source (`core(name)`) and hashes
+(`artifacts(name)`), the `release_tag`, `with_builds(dir, targets)` (a copy with the hashes of
+the builds in `dir/<target>/`), and the checks `check_artifact(name, target, path)` and
+`check_library_version(name, reported)`, which raise `ConfigError`. `library_file` and
+`asset_name` name a core's files per target triple. `probe_core(core_path, system_dir)` is
+`gth_core::Core::probe`: it loads a core without a game and unloads it, so it raises
+`CoreLoadError` while a `Core` is open in the process. `gtharness.cores` moves the files.
+
 `tests/test_native_stubs.py` also checks classes: their public members and each method's
 parameter names must match the stub, and special methods the stub lists (`__len__`) must
 exist.
