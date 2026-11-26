@@ -61,4 +61,8 @@ cores in tests and CI: video, input, RAM, core options and savestates, with no R
   refused. `retro_reset` returns to the state right after loading.
 
 Its unit tests (`src/tests.rs`) call the exported functions directly with a fake host behind
-the callbacks.
+the callbacks. `tests/cdylib.rs` loads the built library by path, as the host will, to check
+the file name and the exports on each OS. `cargo test` doesn't build a cdylib-only package's
+library, so that test runs `cargo build -p gth-testcore` itself (with `--release` when the
+tests are optimized; not `--target`) and takes the path from cargo's JSON output, which also
+works with any `CARGO_TARGET_DIR`. Host tests that load the core can copy that helper.
