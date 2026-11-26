@@ -12,6 +12,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
 use crate::config::GameConfig;
+use crate::cores::CoresLock;
 use crate::errors;
 use crate::frame::{into_rgb8_array, rgb8_buffer};
 
@@ -185,8 +186,10 @@ impl Core {
 
     /// Starts recording (docs/recording-format.md) into the new directory `directory`, from
     /// the core's current state, until `finish_recording`. `config` is the game the core
-    /// runs; `recorder` is "human", "policy", "scripted" or "converted"; a check follows
-    /// every `checks_every` frames. Until then, every frame must run through `step` or
+    /// runs; `core_lock` is a lock that pins this core's build, whose entry for the game's
+    /// core goes into the recording (raises `ConfigError` if it has none), or None;
+    /// `recorder` is "human", "policy", "scripted" or "converted"; a check follows every
+    /// `checks_every` frames. Until then, every frame must run through `step` or
     /// `run_inputs`, and `reset` and `unserialize` raise `ValueError`.
     #[allow(clippy::too_many_arguments)]
     fn start_recording(
@@ -195,6 +198,7 @@ impl Core {
         directory: PathBuf,
         config: PyRef<'_, GameConfig>,
         game_id: String,
+        core_lock: Option<PyRef<'_, CoresLock>>,
         recorder: &str,
         player: String,
         license: String,
@@ -209,6 +213,10 @@ impl Core {
         let checks_every = NonZeroU32::new(checks_every)
             .ok_or_else(|| PyValueError::new_err("checks_every must be at least 1"))?;
         self.core_not_recording()?;
+        let core_lock = match core_lock {
+            Some(lock) => Some(lock.lock.core(&config.config.core)?.clone()),
+            None => None,
+        };
         let info = gth_record::RecordingInfo {
             game_id,
             recorder: kind,
@@ -218,8 +226,7 @@ impl Core {
                 .into_iter()
                 .map(|(key, value)| (key.to_owned(), value.to_owned()))
                 .collect(),
-            // No cores.lock exists until P1 (docs/games.md, "cores.lock").
-            core_lock: None,
+            core_lock,
             checks_every,
         };
         let game = &config.config;

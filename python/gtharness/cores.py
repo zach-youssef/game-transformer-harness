@@ -18,10 +18,9 @@ from pathlib import Path
 from typing import Any
 
 from gtharness import _native
-from gtharness.env import GAMES_DIR
 from gtharness.errors import ConfigError, HarnessError
 
-LOCK = GAMES_DIR.parent / "cores.lock"
+LOCK = Path(__file__).resolve().parents[2] / "cores.lock"
 """The checkout's ``cores.lock``."""
 
 RELEASES = "https://github.com/zach-youssef/game-transformer-harness/releases/download"
@@ -125,6 +124,18 @@ def release(
     (out / "cores.lock").write_text(filled.to_toml(), encoding="utf-8")
     (out / "SHA256SUMS").write_text("".join(sums), encoding="utf-8")
     return filled
+
+
+def pinned_lock(lock_path: Path, name: str, core_path: Path) -> _native.CoresLock | None:
+    """The lock at ``lock_path`` if it pins ``core_path`` as this platform's build of core
+    ``name`` (by SHA-256), else None: what a recording keeps as its core's lock entry, which
+    then says exactly which build made it. None, too, when there is no lock there."""
+    if not lock_path.is_file():
+        return None
+    lock = _native.CoresLock.load(lock_path)
+    if name not in lock.names or not _pinned(lock, name, core_path):
+        return None
+    return lock
 
 
 def _pinned(lock: _native.CoresLock, name: str, path: Path) -> bool:

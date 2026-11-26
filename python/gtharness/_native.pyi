@@ -53,6 +53,7 @@ class Core:
         directory: str | os.PathLike[str],
         config: GameConfig,
         game_id: str,
+        core_lock: CoresLock | None,
         recorder: str,
         player: str,
         license: str,

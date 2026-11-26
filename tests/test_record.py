@@ -223,11 +223,13 @@ def test_recording_needs_its_choices(testcore_path: Path, testcore_data: Path, t
     core = _native.Core(testcore_path, None, tmp_path, {}, 60, 80, None, 0, "area")
     try:
         with pytest.raises(ValueError, match="recorder must be one of"):
-            core.start_recording(tmp_path / "a.gthrec", game, "testcore", "bot", "p", "l", 60)
+            core.start_recording(tmp_path / "a.gthrec", game, "testcore", None, "bot", "p", "l", 60)
         with pytest.raises(ValueError, match="checks_every"):
-            core.start_recording(tmp_path / "a.gthrec", game, "testcore", "policy", "p", "l", 0)
+            core.start_recording(
+                tmp_path / "a.gthrec", game, "testcore", None, "policy", "p", "l", 0
+            )
         assert core.finish_recording() is None
-        core.start_recording(tmp_path / "a.gthrec", game, "testcore", "policy", "p", "l", 60)
+        core.start_recording(tmp_path / "a.gthrec", game, "testcore", None, "policy", "p", "l", 60)
         assert core.recording == tmp_path / "a.gthrec"
         with pytest.raises(ValueError, match="finish the recording first"):
             core.reset()

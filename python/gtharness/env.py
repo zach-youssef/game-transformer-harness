@@ -21,7 +21,7 @@ import gymnasium as gym
 import numpy as np
 import numpy.typing as npt
 
-from gtharness import _native
+from gtharness import _native, cores
 from gtharness.errors import ConfigError
 from gtharness.record import Record
 from gtharness.rewards import REQUIRED_RAM, Reward
@@ -63,7 +63,9 @@ class RetroEnv(gym.Env[Observation, Action]):
 
     With ``record``, every episode is recorded (docs/recording-format.md): from the end of
     its reset's script or state load, so the first observation's frames are in it, to the
-    next reset or `close`. `recordings` lists the finished ones. Starting a recording reloads
+    next reset or `close`. `recordings` lists the finished ones. When ``core_path`` is the
+    build the checkout's ``cores.lock`` pins (by SHA-256, docs/cores.md), each recording keeps
+    the core's lock entry. Starting a recording reloads
     the state, so the first frames match the replay rather than an unrecorded run (a core that
     repeats its frame shows a blank first observation).
 
@@ -139,6 +141,8 @@ class RetroEnv(gym.Env[Observation, Action]):
         self._ram: dict[str, int] = {}
         self._record = record
         self._game_id = game_id
+        self._core_path = Path(core_path)
+        self._core_lock: _native.CoresLock | Literal[False] | None = False
         self.recordings: list[Path] = []
         """The episodes recorded and finished so far, oldest first."""
         height, width = obs_size
@@ -349,10 +353,13 @@ class RetroEnv(gym.Env[Observation, Action]):
         stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
         number = next(_RECORDING_NUMBERS)
         name = f"{self._game_id}-{stamp}-{os.getpid()}-{number:04d}.gthrec"
+        if self._core_lock is False:
+            self._core_lock = cores.pinned_lock(cores.LOCK, self._config.core, self._core_path)
         self._core.start_recording(
             Path(record.directory) / name,
             self._config,
             self._game_id,
+            self._core_lock,
             record.recorder,
             record.player,
             record.license,

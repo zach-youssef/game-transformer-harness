@@ -10,7 +10,7 @@ use crate::errors;
 
 #[pyclass(module = "gtharness._native", frozen)]
 pub struct CoresLock {
-    lock: gth_config::CoresLock,
+    pub(crate) lock: gth_config::CoresLock,
 }
 
 #[pymethods]

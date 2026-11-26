@@ -101,8 +101,11 @@ path, so the env imports it from `_native` directly.
   (architecture.md, "One core per process"); later calls raise `ValueError`. Dropping the
   Python object does the same, but only when the garbage collector gets to it, so code that
   loads another core closes the first explicitly.
-- `start_recording(directory, config, game_id, recorder, player, license, checks_every)` and
-  `finish_recording()` wrap a `gth_record::Recorder` (docs/recording-format.md): while one is
+- `start_recording(directory, config, game_id, core_lock, recorder, player, license,
+  checks_every)` and `finish_recording()` wrap a `gth_record::Recorder`
+  (docs/recording-format.md). `core_lock` is a `CoresLock` whose entry for the game's core
+  goes into `meta.toml`, or None; `RetroEnv` passes the checkout's lock only when it pins the
+  loaded core file (`gtharness.cores.pinned_lock`). While a recording is
   in progress, `step` and `run_inputs` run through it (each pair is one recorded step), and
   `reset` and `unserialize` raise `ValueError`, since a state load would break the replay.
   `close()` leaves an unfinished recording incomplete. A failed write raises from the call

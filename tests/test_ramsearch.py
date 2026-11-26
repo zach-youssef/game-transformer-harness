@@ -213,7 +213,7 @@ def test_playing_waits_for_the_recording(core: _native.Core, tmp_path: Path):
     search = _native.RamSearch(core, "system_ram", ["bcd4"])
     script = tmp_path / "s.toml"
     script.write_text('space = "system_ram"\nviews = ["le1"]\n[[step]]\n', encoding="utf-8")
-    core.start_recording(tmp_path / "a.gthrec", game, "testcore", "policy", "p", "l", 60)
+    core.start_recording(tmp_path / "a.gthrec", game, "testcore", None, "policy", "p", "l", 60)
     with pytest.raises(ValueError, match="finish the recording first"):
         search.watch(core, [(A, 1)], 1)
     with pytest.raises(ValueError, match="finish the recording first"):
