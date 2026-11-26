@@ -12,6 +12,7 @@ TheaterPC only.
 | A crate against a loaded core | `crates/<crate>/tests/testcore.rs`, loading `gth-testcore` through `gth_test_support::testcore_path()` | `cargo test` |
 | `_native` bindings (`gth-py`, which has no Rust tests) | `tests/test_native_*.py` | pytest |
 | The Python package: env, recording, shards, CLI, game configs | `tests/test_env.py`, `test_record.py`, `test_shards.py`, `test_cli.py`, `test_games.py` | pytest |
+| A game on its real core and the user's ROM (skips without them) | `tests/test_<game-id>.py`, e.g. `test_gunhed.py` | pytest |
 
 Shared pytest fixtures are in `tests/conftest.py`: `testcore_path` (the built test core),
 `rom` and `core` (below) and `testcore_data` (the files `games/testcore/game.toml` names,
@@ -64,6 +65,11 @@ core skips rather than fails, and values a test pins (scores, frames) are always
 the build they came from. `core(game_id, data_dir)` looks in another data directory. No
 game with BIOS files has a ROM test yet: `RetroEnv.from_game` raises naming any missing from
 `data/system/`, and the first such test adds a skip for them.
+`tests/test_gunhed.py` is the example (docs/games.md, "Adding a game"):
+
+```sh
+GTH_ROM_DIR=~/roms uv run pytest tests/test_gunhed.py -rs   # -rs prints why a test skipped
+```
 
 ## GPU tests
 

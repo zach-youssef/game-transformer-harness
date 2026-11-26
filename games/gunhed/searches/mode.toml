@@ -1,0 +1,39 @@
+# The mode byte, which `terminate` reads for GAME OVER: sit still from the reset (as in
+# lives.toml). It holds through two lost ships and changes when the last one is lost and
+# GAME OVER is shown (~1940 frames in), clears when CONTINUE starts a new game, and comes
+# back, with the same value (0x40), at the next GAME OVER. Sprite and timer bytes that also
+# change at the first GAME OVER drop out there. It is also 0x80 during an area clear, which
+# this script doesn't reach: tests/test_gunhed.py checks that from a savestate (README.md).
+# gth ram-search gunhed data games/gunhed/searches/mode.toml
+space = "system_ram"
+views = ["le1"]
+
+[[step]]
+expect = "equals"
+value = 0
+
+[[step]]                  # two ships lost, still playing
+frames = 1600
+expect = "equal"
+
+[[step]]                  # GAME OVER on screen
+frames = 600
+expect = "changed"
+
+[[step]]                  # the score screen ("CONTINUE / GAME OVER") waits: the flag holds
+frames = 600
+expect = "equal"
+
+[[step]]                  # CONTINUE (Run): a new game from Area 1, the flag clears
+press = ["start"]
+frames = 4
+
+[[step]]
+frames = 300
+expect = "equals"
+value = 0
+
+[[step]]                  # three more ships lost: GAME OVER again
+frames = 2200
+expect = "equals"
+value = 64

@@ -1,0 +1,26 @@
+# The ships in reserve: sit still from the reset and let the enemies hit the ship. The HUD
+# (ship icon at the bottom right) shows 2, then 1 after the first death (~440 frames in),
+# then 0 after the second (~1160); the third (~1940) ends the game.
+# gth ram-search gunhed data games/gunhed/searches/lives.toml
+space = "system_ram"
+views = ["le1", "bcd1"]
+
+[[step]]
+expect = "equals"
+value = 2
+
+[[step]]
+frames = 1000
+expect = "decreased"
+
+[[step]]
+expect = "equals"
+value = 1
+
+[[step]]
+frames = 600
+expect = "decreased"
+
+[[step]]
+expect = "equals"
+value = 0

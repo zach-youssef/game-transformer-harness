@@ -1,0 +1,42 @@
+# The score: shoot from the reset, then compare with the HUD ("SC" at the top left).
+# gth ram-search gunhed data games/gunhed/searches/score.toml
+space = "system_ram"
+views = ["all"]
+
+[[step]]                  # shoot the first wave
+press = ["b"]
+frames = 480
+expect = "increased"
+
+[[step]]                  # stop shooting, so the HUD has caught up: it shows 1300
+frames = 90
+expect = "equals"
+value = 1300
+
+[[step]]                  # shoot the next wave
+press = ["b"]
+frames = 600
+expect = "increased"
+
+[[step]]                  # the HUD shows 2300
+frames = 90
+expect = "equals"
+value = 2300
+
+[[step]]                  # keep shooting
+press = ["b"]
+frames = 3000
+
+[[step]]                  # the HUD shows 8210
+frames = 90
+expect = "equals"
+value = 8210
+
+[[step]]
+press = ["b"]
+frames = 3000
+
+[[step]]                  # the HUD shows 18750: five digits, so the 2-byte view drops out
+frames = 90
+expect = "equals"
+value = 18750

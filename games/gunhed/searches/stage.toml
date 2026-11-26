@@ -1,0 +1,27 @@
+# The area: savestates taken just after the "AREA-n" banner of areas 1-4. They are made
+# from the user's ROM, so they are never committed (*.state is git-ignored): record them
+# with gth-play (key 1, docs/human-play.md) into states/ beside this script. README.md says
+# how the ones used here were made.
+# gth ram-search gunhed data games/gunhed/searches/stage.toml
+space = "system_ram"
+views = ["le1", "bcd1"]
+
+[[step]]
+state = "states/area1.state"
+expect = "equals"
+value = 1
+
+[[step]]
+state = "states/area2.state"
+expect = "equals"
+value = 2
+
+[[step]]
+state = "states/area3.state"
+expect = "equals"
+value = 3
+
+[[step]]
+state = "states/area4.state"
+expect = "equals"
+value = 4

@@ -33,3 +33,6 @@ __pycache__/
 *.gen
 *.smd
 *.inp
+
+# Savestates are made from a user's ROM (docs/roms.md), wherever they end up.
+*.state

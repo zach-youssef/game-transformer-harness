@@ -1,0 +1,26 @@
+# The bombs: the HUD (bomb icon at the bottom right) shows 3 at the start and 2 after one
+# is used (button I, RetroPad A). The count goes back to 3 when a ship is lost.
+# gth ram-search gunhed data games/gunhed/searches/bombs.toml
+space = "system_ram"
+views = ["le1", "bcd1"]
+
+[[step]]
+expect = "equals"
+value = 3
+
+[[step]]                  # nothing pressed: unchanged
+frames = 60
+expect = "equal"
+
+[[step]]                  # bomb: the count drops as the button goes down
+press = ["a"]
+frames = 4
+expect = "decreased"
+
+[[step]]                  # the blast plays out; nothing else changes the count
+frames = 300
+expect = "equal"
+
+[[step]]
+expect = "equals"
+value = 2

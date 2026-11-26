@@ -46,15 +46,49 @@ table and RAM variable key (the other forms of `reset` and `content`, a savestat
      clear), from the end of the reset script on, where a BCD variable must already hold
      valid digits. Pin those checks in a ROM test (docs/testing.md, "ROM tests"), which
      skips on CI. Finding the addresses in the first place is RAM search (below).
-6. **Test**: at least a ROM test that makes the game's `RetroEnv` from reset and checks the
-   RAM variables and episode end as above. Besides `rom` it needs the real core and the data
-   directory: the first such test adds the fixture that finds them and skips with a reason
-   when either is missing (docs/testing.md, "ROM tests").
+6. **Evidence**: commit each variable's search script in `games/<id>/searches/<variable>.toml`,
+   and write `games/<id>/README.md`: where each part of the config came from (buttons, reset,
+   each address and its source, what its values mean), scoring notes, and how to make any
+   savestate a script needs (savestates are never committed: `*.state` is git-ignored).
+7. **Test**: `tests/test_<id>.py`, ROM tests taking the `rom` and `core` fixtures, so they skip
+   with a reason without the ROM or the pinned core (docs/testing.md, "ROM tests"): a scripted
+   session from the reset, recorded, that checks with `assert_ram` that the score rises, the
+   lives fall and the episode ends where it should, then replays the recording to the end
+   (a desync raises); and one test per search script that it still narrows to the config's
+   address.
 
 A game can land in stages: until its RAM variables are found, a stub with only `[content]`
 final (one button, a one-frame reset script, no `[ram]`, `terminate = "0"`) parses and lets
-the audit check the content, as `games/gunhed` does. Say in the file's header comment what is
+the audit check the content, as `games/zanac` does. Say in the file's header comment what is
 still a stub.
+
+### Example: Gunhed
+
+`games/gunhed` is the worked example; copy its layout for a new game.
+
+- **Content** (steps 1-3): the id `gunhed`, the hashes from `~/roms/manifest.md`, no BIOS.
+- **Buttons**: which RetroPad button reaches which console button is the core's mapping
+  (`mednafen_pce_fast`: B is II, A is I), and which one fires is the game's, so try each with
+  a scripted `RetroEnv` and look at the frames. Note controls the slots can't reach (Gunhed's
+  speed change is on Select) in the README.
+- **Reset**: find the earliest frames that accept Start by stepping the core from power-on
+  with Start held over different windows and saving frames; then find where the d-pad and a
+  button first change the picture (two runs from the same savestate, one pressing, one not).
+  End the script there (`RetroEnv.reset` then runs `frameskip` more frames before the
+  first action), so a policy's first action counts.
+- **RAM**: confirm the published addresses and find the rest with one script each, against
+  the HUD, from the reset where possible (`score.toml`, `lives.toml`, `bombs.toml`,
+  `mode.toml`), else from savestates (`stage.toml`). Each must end with the variable
+  alone (the BCD and plain views of the same byte count as one); "RAM search" below has the
+  tricks that get there.
+- **Episode end**: check `terminate` across a stage clear, not only across deaths. Gunhed's
+  byte 0x375 looked like a game-over flag in every run that only died, but it is a mode
+  byte that is also 0x80 during each area clear, so `!= 0` would have ended every episode
+  at the first boss; `terminate = "mode == 64"` names the GAME OVER value.
+- **Test**: `tests/test_gunhed.py` shoots for 150 steps from the reset (the score reaches
+  1300), then flies up into the enemies until GAME OVER, pinning the steps where ships are
+  lost, and replays the recording; from a savestate before the Area 1 clear it plays into
+  Area 2 and checks the episode goes on. The pinned numbers hold on the pinned core.
 
 ### Changing the schema
 
@@ -286,6 +320,18 @@ filters by `expect` (and `value`, for `equals` only). A step without `expect` ta
 snapshot without comparing (it drops only BCD candidates that stopped being BCD). For
 lives, use pairs of savestates made just before and just after a death: a `state` step with
 the first, then one with the second and `expect = "decreased"`, once per pair.
+
+What narrows a search fastest (from `games/gunhed/searches/`):
+
+- Put `expect` on the step that presses: a step without one rebases, so a change it causes
+  (a bomb spent as the button goes down) is lost from the next comparison.
+- `equals` with the value on screen beats `changed`: sprite and timer bytes also change at
+  the moment a flag does, but rarely hold the same value at two such moments
+  (Gunhed's `mode.toml` reaches its byte only at the second GAME OVER).
+- A value with more digits than a smaller view can hold rules that view out: the score
+  past 9999 drops the 2-byte BCD view of its low bytes.
+- A game that plays on without input (enemies kill the ship) gives lives and game-over
+  scripts from the reset with no savestates.
 
 ### Running a search
 

@@ -1,7 +1,6 @@
-# Gunhed (PC Engine HuCard, Japan, English), Compile/Hudson.
-# Only [content] is final: the hashes of the user's dump (~/roms/manifest.md: size and
-# SHA-1 from the manifest, CRC-32 from the file). The rest is a stub, so the config parses
-# and the ROM audit can check the content, until G1 sets the buttons, reset and RAM variables.
+# Gunhed (PC Engine HuCard, Japan, English), Compile/Hudson; the Japanese Blazing Lazers.
+# Hashes of the user's dump (~/roms/manifest.md: size and SHA-1 from the manifest, CRC-32
+# from the file). Where the buttons, reset and RAM variables come from: README.md here.
 
 core = "mednafen_pce_fast"
 orientation = 0
@@ -12,11 +11,51 @@ size = 393216
 sha1 = "0107d93ff5d10325092d45e6bfd21e8130efeed7"
 crc32 = "a17d4d7e"
 
+# The core maps RetroPad B to the PC Engine's button II and A to button I.
 [buttons]
-a = "shot"                # stub until G1
+b = "shot"                # II: fire (held: the game's own autofire)
+a = "bomb"                # I: bomb
 
+# From power-on to just after the first frame the ship answers the d-pad and buttons, 484
+# frames; RetroEnv.reset then runs `frameskip` more before the first action.
 [reset]
-script = [{ press = [], frames = 1 }]   # stub until G1
+script = [
+  { press = ["start"], frames = 20 },   # held from power-on: skips the intro to the title
+  { press = [], frames = 110 },         # the title fades in; Run is ignored until then
+  { press = ["start"], frames = 4 },    # Run on the title: start the game
+  { press = [], frames = 350 },         # Area 1 fades in; d-pad and bomb work from here
+]
+
+# Offsets in the 8 KB work RAM (CPU $2000-$3FFF); searches/ holds the scripts that find them.
+[ram.score]
+memory = "system_ram"
+offset = 0x36a
+size = 4                  # 8 BCD digits, most significant first; the ones digit is always 0
+encoding = "bcd"
+
+[ram.lives]
+memory = "system_ram"
+offset = 0x37d
+size = 1                  # ships in reserve: 2 at the start, 0 while the last ship plays
+encoding = "le"
+
+[ram.bombs]
+memory = "system_ram"
+offset = 0x381
+size = 1
+encoding = "le"
+
+[ram.stage]
+memory = "system_ram"
+offset = 0x90
+size = 1                  # the area, from 1
+encoding = "le"
+
+[ram.mode]
+memory = "system_ram"
+offset = 0x375
+size = 1                  # 0 playing, 0x80 during an area clear, 0x40 from GAME OVER on
+encoding = "le"
 
 [episode]
-terminate = "0"           # stub until G1: never ends
+terminate = "mode == 64"   # GAME OVER; not "!= 0", which an area clear also is
