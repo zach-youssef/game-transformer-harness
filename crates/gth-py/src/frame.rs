@@ -9,7 +9,7 @@ use crate::errors;
 
 /// A zeroed buffer for a `height` x `width` RGB8 frame. Python's size arguments are untrusted,
 /// so a size that overflows or can't be allocated raises instead of aborting the process.
-fn rgb8_buffer(height: usize, width: usize) -> errors::Result<Vec<u8>> {
+pub(crate) fn rgb8_buffer(height: usize, width: usize) -> errors::Result<Vec<u8>> {
     let len = gth_frame::rgb8_len(height, width)
         .filter(|&len| isize::try_from(len).is_ok())
         .ok_or_else(|| PyValueError::new_err(format!("frame {height}x{width} is too large")))?;
@@ -23,7 +23,7 @@ fn rgb8_buffer(height: usize, width: usize) -> errors::Result<Vec<u8>> {
 
 /// Moves a filled RGB8 buffer into a numpy `uint8[height, width, 3]` array without copying.
 /// The array owns the buffer from then on (docs/native.md, "Arrays").
-fn into_rgb8_array(
+pub(crate) fn into_rgb8_array(
     py: Python<'_>,
     buffer: Vec<u8>,
     height: usize,

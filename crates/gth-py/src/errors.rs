@@ -29,6 +29,7 @@ create_exception!(
 /// orphan rule forbids `impl From<gth_core::Error> for PyErr` in this crate.
 pub enum Error {
     Core(gth_core::Error),
+    Frame(gth_frame::Error),
     Python(PyErr),
 }
 
@@ -37,6 +38,12 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl From<gth_core::Error> for Error {
     fn from(error: gth_core::Error) -> Self {
         Self::Core(error)
+    }
+}
+
+impl From<gth_frame::Error> for Error {
+    fn from(error: gth_frame::Error) -> Self {
+        Self::Frame(error)
     }
 }
 
@@ -50,6 +57,8 @@ impl From<Error> for PyErr {
     fn from(error: Error) -> Self {
         match error {
             Error::Python(error) => error,
+            // A bad crop or output size from the caller, or a frame the core shouldn't send.
+            Error::Frame(error) => HarnessError::new_err(error.to_string()),
             Error::Core(error) => {
                 let message = error.to_string();
                 // No wildcard arm: a new gth_core::Error variant must pick its exception here.

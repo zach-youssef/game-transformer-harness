@@ -105,6 +105,14 @@ package's library, so the helper runs `cargo build -p gth-testcore` itself (with
 when the tests are optimized; not `--target`) and takes the path from cargo's JSON output,
 which also works with any `CARGO_TARGET_DIR`.
 
+Python tests use the session fixture `testcore_path` (`tests/conftest.py`), which follows the
+same rule (`cargo build -p gth-testcore --message-format=json`, path from the JSON) before any
+test loads the core. It runs cargo directly rather than through a Rust helper under
+`cargo run`, whose nested build could wait on the outer cargo's lock on Windows. pytest runs
+in one process, so every test that loads the core closes it, even when it fails (the `env`
+fixture or the `retro_env` context manager in `tests/test_env.py`): a leaked core makes every
+later load fail with "another core is loaded".
+
 On Windows a DLL that a process has loaded can't be overwritten, so nothing may rebuild the
 core while a test has it loaded. The helper builds once per process, before the first load,
 and `cargo test` runs test binaries one at a time, each finding the build fresh (a no-op).

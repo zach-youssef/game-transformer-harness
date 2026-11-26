@@ -29,9 +29,33 @@ def test_stub_names_match_module():
     assert set(stub_definitions()) == module_names()
 
 
+def parameters(node: ast.FunctionDef) -> list[str]:
+    return [a.arg for a in node.args.posonlyargs + node.args.args]
+
+
 def test_stub_parameters_match_module():
     for name, node in stub_definitions().items():
         if isinstance(node, ast.FunctionDef):
-            stub_params = [a.arg for a in node.args.posonlyargs + node.args.args]
             native_params = list(inspect.signature(getattr(_native, name)).parameters)
-            assert stub_params == native_params, name
+            assert parameters(node) == native_params, name
+
+
+def test_stub_classes_match_module():
+    """Classes with members (not the exceptions): the same public members and parameters."""
+    for name, node in stub_definitions().items():
+        members = [m for m in getattr(node, "body", []) if isinstance(m, ast.FunctionDef)]
+        if not members:
+            continue
+        cls = getattr(_native, name)
+        stub = {m.name: m for m in members if m.name != "__new__"}
+        native = {n for n in dir(cls) if not n.startswith("_")}
+        assert set(stub) == native, name
+        for member, method in stub.items():
+            if any(ast.unparse(d) == "property" for d in method.decorator_list):
+                assert inspect.isdatadescriptor(getattr(cls, member)), f"{name}.{member}"
+                continue
+            native_params = list(inspect.signature(getattr(cls, member)).parameters)
+            assert parameters(method) == native_params, f"{name}.{member}"
+        new = next((m for m in members if m.name == "__new__"), None)
+        if new is not None:
+            assert parameters(new)[1:] == list(inspect.signature(cls).parameters), name

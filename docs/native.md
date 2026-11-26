@@ -36,6 +36,7 @@ Read this before adding or changing anything it exports.
   | `gth_core::Error::CoreLoad` | `CoreLoadError` |
   | `gth_core::Error::Desync` | `DesyncError` |
   | `gth_core::Error::Savestate` | `HarnessError` |
+  | `gth_frame::Error` (any) | `HarnessError` |
 
 - Their `__module__` is `gtharness.errors`, so they pickle across the process boundary of
   parallel environments.
@@ -63,6 +64,30 @@ a buffer after handing it over, so callers may keep, change and share frames acr
 for example in a replay buffer. `_native` never returns a view of memory that Rust keeps and
 reuses (`PyArray::borrow_from_array`): a later step would silently change frames the caller
 still holds. The cost is one allocation per returned frame, small next to emulating it.
+
+## Core
+
+`_native.Core` (`gth-py/src/core.rs`) owns a `gth_core::Core` and the `gth_frame::Pipeline`
+for its observations. `gtharness.env.RetroEnv` is its only user; it is the environment's hot
+path, so the env imports it from `_native` directly.
+
+- The constructor takes every pipeline choice explicitly (observation size, crop, rotation,
+  interpolation); `RetroEnv` requires the size and rotation and defaults only `crop` (none)
+  and `interpolation` ("area").
+- `reset()` returns to the state right after loading (gth-core's load snapshot, or
+  `retro_reset` for cores that can't serialize then; docs/libretro.md, "Host").
+  `resets_to_load_state` (also on `RetroEnv`) says which one the core gets.
+- `step(frames, buttons)` runs the frames and returns the last one as a new observation array,
+  all with the GIL released (architecture.md, "Frame lifecycle").
+- `close()` drops the `gth_core::Core`, which unloads it and frees the process's one core slot
+  (architecture.md, "One core per process"); later calls raise `ValueError`. Dropping the
+  Python object does the same, but only when the garbage collector gets to it, so code that
+  loads another core closes the first explicitly.
+- Methods take `&mut self`, so PyO3 raises `RuntimeError` (a borrow error) if two Python
+  threads call one `Core` at once rather than calling into the core concurrently.
+
+`tests/test_native_stubs.py` also checks classes: their public members and each method's
+parameter names must match the stub.
 
 ## GIL
 

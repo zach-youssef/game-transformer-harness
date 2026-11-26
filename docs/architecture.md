@@ -38,6 +38,32 @@ One agent step is one call into `_native`: it holds the input for `frameskip` fr
 `gth-core`, converts and resizes only the last frame with `gth-frame`, and returns it to Python
 as an array.
 
+## Frame lifecycle
+
+One `RetroEnv.step(action)` (`python/gtharness/env.py`) is one call into `_native.Core.step`
+(`crates/gth-py/src/core.rs`), which releases the GIL and:
+
+1. `gth_core::Core::run_frames(frameskip, buttons)` calls `retro_run` `frameskip` times with
+   the same buttons held. This is where the frame skip happens: the intermediate frames never
+   leave Rust. `frameskip` is an argument of every call, so `RetroEnv.frameskip` can change
+   between steps.
+2. During each `retro_run`, the core's video callback copies its frame into the host's frame
+   buffer (packed rows, in the core's pixel format), reusing the allocation. A duplicate frame
+   (`NULL` data, `GET_CAN_DUPE`) keeps the previous one. Audio is counted and dropped.
+3. After the last frame, `Core::with_frame` lends that buffer, under the host lock, to
+   `gth_frame::Pipeline::render`, which crops, converts to RGB8 and rotates in one pass, then
+   resizes (`fast_image_resize`, area or bilinear) into a newly allocated observation buffer.
+   The pipeline keeps its scratch buffer and resizer, so the resize allocates nothing.
+4. `gth-py` moves the buffer into a numpy array without copying (native.md, "Arrays").
+
+`RetroEnv.reset()` restores the state right after loading (or loads `options["state"]`),
+then runs `frameskip` frames with no button held and returns the last one, through the same
+`step` path. A core draws only during `retro_run` and a savestate holds no frame, so without
+those frames the first observation would be black; they are deterministic, so every episode
+from the same start is identical, and `info["episode_frame"]` counts them. The host also
+clears its frame after load, reset and unserialize, so an observation never shows a frame
+from before them.
+
 ## One core per process
 
 A process loads at most one libretro core, and a second load is an error:
