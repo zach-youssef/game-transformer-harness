@@ -132,6 +132,27 @@ fn run_frames_advances_n_frames_and_keeps_the_last() {
 }
 
 #[test]
+fn audio_is_kept_only_while_captured() {
+    let _serial = serial();
+    let mut core = load(None);
+    let mut audio = Vec::new();
+    core.run_frames(1, 0);
+    core.take_audio(&mut audio);
+    assert!(audio.is_empty(), "headless drops audio");
+    core.set_audio_capture(true);
+    core.run_frames(2, 0);
+    core.take_audio(&mut audio);
+    assert_eq!(audio, vec![0; 2 * 2 * 800], "two frames of silent stereo");
+    core.take_audio(&mut audio);
+    assert_eq!(audio.len(), 2 * 2 * 800, "taken once");
+    core.set_audio_capture(false);
+    core.run_frames(1, 0);
+    core.take_audio(&mut audio);
+    assert_eq!(audio.len(), 2 * 2 * 800);
+    assert_eq!(core.audio_frames(), 4 * 800, "counted either way");
+}
+
+#[test]
 fn savestate_round_trip_reproduces_frames_and_ram() {
     let _serial = serial();
     let content = std::env::temp_dir().join(format!("gth-core-test-{}.gthc", std::process::id()));

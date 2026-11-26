@@ -461,9 +461,27 @@ impl Core {
         self.frames_run
     }
 
-    /// Audio frames the core produced since loading. Headless, they are counted and dropped.
+    /// Audio frames the core produced since loading. Headless, they are counted and dropped;
+    /// see [`set_audio_capture`](Self::set_audio_capture) to play them.
     pub fn audio_frames(&self) -> u64 {
         host::host().audio_frames
+    }
+
+    /// Whether to keep the core's audio samples for [`take_audio`](Self::take_audio) (a
+    /// player that plays them) or drop them (headless, the state after loading). Turning
+    /// capture on or off discards the samples kept so far.
+    pub fn set_audio_capture(&mut self, capture: bool) {
+        host::host().audio = capture.then(Vec::new);
+    }
+
+    /// Appends the samples the core produced since the last call to `out`, interleaved
+    /// stereo at [`AvInfo::sample_rate`], and forgets them. Appends nothing unless capture is
+    /// on ([`set_audio_capture`](Self::set_audio_capture)).
+    pub fn take_audio(&mut self, out: &mut Vec<i16>) {
+        if let Some(audio) = &mut host::host().audio {
+            out.extend_from_slice(audio);
+            audio.clear();
+        }
     }
 
     /// Runs `frames` frames with port 0's joypad `buttons` (bit n = button id n) held for all

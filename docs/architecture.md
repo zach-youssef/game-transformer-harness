@@ -68,7 +68,8 @@ The frame half of one `RetroEnv.step(action)` (`python/gtharness/env.py`) is one
    between steps.
 2. During each `retro_run`, the core's video callback copies its frame into the host's frame
    buffer (packed rows, in the core's pixel format), reusing the allocation. A duplicate frame
-   (`NULL` data, `GET_CAN_DUPE`) keeps the previous one. Audio is counted and dropped.
+   (`NULL` data, `GET_CAN_DUPE`) keeps the previous one. Audio is counted and dropped (a
+   player keeps it instead, `Core::set_audio_capture`).
 3. After the last frame, `Core::with_frame` lends that buffer, under the host lock, to
    `gth_frame::Pipeline::render`, which crops, converts to RGB8 and rotates in one pass, then
    resizes (`fast_image_resize`, area or bilinear) into a newly allocated observation buffer.
@@ -126,9 +127,9 @@ How `gth-core` keeps that safe (`crates/gth-core/src/host.rs`, `core.rs`):
   `CoreLoad` if another `Core` holds it. Dropping the `Core` unloads the game, deinits,
   removes its temporary save directory and closes the library, then clears the global and
   releases the claim, so a later load starts fresh.
-- The global host state (last frame, held buttons, core options, memory map, audio count)
-  sits in a `Mutex`. Each callback locks it for its own duration and never panics (a panic in
-  an `extern "C"` function aborts). `Core` never holds the lock while it calls into the core,
+- The global host state (last frame, held buttons, core options, memory map, audio count and
+  captured samples) sits in a `Mutex`. Each callback locks it for its own duration and never
+  panics (a panic in an `extern "C"` function aborts). `Core` never holds the lock while it calls into the core,
   so callbacks can't deadlock against it.
 - Every method that calls into the core takes `&mut self`, so the borrow checker enforces
   libretro's one-call-at-a-time rule. A `Core` may move between threads between calls.

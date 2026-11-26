@@ -26,8 +26,11 @@ pub(crate) struct Host {
     pub height: usize,
     /// Port 0 joypad buttons, bit n = button id n.
     pub buttons: u16,
-    /// Audio frames the core produced since loading, counted and dropped (headless).
+    /// Audio frames the core produced since loading.
     pub audio_frames: u64,
+    /// The samples since the last `Core::take_audio`, interleaved stereo, when the caller
+    /// plays them (`Core::set_audio_capture`); `None` (headless) counts and drops them.
+    pub audio: Option<Vec<i16>>,
     /// Core options from `SET_VARIABLES` with their current values.
     pub options: Vec<CoreOption>,
     /// Values the caller chose (`Core::load`), applied when the core declares its options.
@@ -63,6 +66,7 @@ impl Host {
         height: 0,
         buttons: 0,
         audio_frames: 0,
+        audio: None,
         options: Vec::new(),
         option_overrides: Vec::new(),
         regions: Vec::new(),
@@ -313,14 +317,26 @@ pub(crate) unsafe extern "C" fn video_refresh(
     (host.width, host.height) = (width, height);
 }
 
-pub(crate) extern "C" fn audio_sample(_left: i16, _right: i16) {
-    host().audio_frames += 1;
+pub(crate) extern "C" fn audio_sample(left: i16, right: i16) {
+    let mut host = host();
+    host.audio_frames += 1;
+    if let Some(audio) = &mut host.audio {
+        audio.extend_from_slice(&[left, right]);
+    }
 }
 
 /// # Safety
-/// No requirement: the samples are counted, not read.
-pub(crate) unsafe extern "C" fn audio_sample_batch(_data: *const i16, frames: usize) -> usize {
-    host().audio_frames += frames as u64;
+/// `data` is NULL or holds `frames` interleaved stereo frames (`2 * frames` samples), valid
+/// for the call. It is read only while audio is captured.
+pub(crate) unsafe extern "C" fn audio_sample_batch(data: *const i16, frames: usize) -> usize {
+    let mut host = host();
+    host.audio_frames += frames as u64;
+    if let Some(audio) = &mut host.audio
+        && !data.is_null()
+    {
+        // SAFETY: the caller guarantees `2 * frames` samples at `data`.
+        audio.extend_from_slice(unsafe { std::slice::from_raw_parts(data, 2 * frames) });
+    }
     frames
 }
 
@@ -415,6 +431,24 @@ mod tests {
         // SAFETY: the call returns before reading `data`.
         unsafe { video_refresh([0u8; 8].as_ptr().cast(), 2, 2, 2) };
         assert_eq!(host().frame, [0, 0]);
+    }
+
+    #[test]
+    fn audio_is_counted_and_kept_only_while_captured() {
+        let _claim = claim();
+        let samples: [i16; 4] = [1, -1, 2, -2];
+        // SAFETY: `samples` holds 2 stereo frames.
+        unsafe { audio_sample_batch(samples.as_ptr(), 2) };
+        assert_eq!(host().audio, None);
+        host().audio = Some(Vec::new());
+        // SAFETY: as above.
+        unsafe { audio_sample_batch(samples.as_ptr(), 2) };
+        audio_sample(7, 8);
+        // SAFETY: a NULL batch is counted, not read.
+        unsafe { audio_sample_batch(std::ptr::null(), 1) };
+        let host = host();
+        assert_eq!(host.audio.as_deref(), Some(&[1, -1, 2, -2, 7, 8][..]));
+        assert_eq!(host.audio_frames, 6);
     }
 
     #[test]

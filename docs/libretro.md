@@ -61,7 +61,8 @@ after that check a read can fail only on bytes that don't decode. `Core::run_inp
 game's reset script.
 
 Input is port 0's joypad only, answered per button and for `RETRO_DEVICE_ID_JOYPAD_MASK`.
-Audio is counted and dropped. Content is read into memory unless the core sets
+Audio is counted and dropped, unless `Core::set_audio_capture(true)` keeps the interleaved
+stereo samples for `Core::take_audio` (gth-play plays them). Content is read into memory unless the core sets
 `need_fullpath`, and stays alive until the game is unloaded; an unreadable file is
 `Error::Content`. A `need_fullpath` core gets only the path, which needn't exist: FBNeo
 loads a clone in a merged set from `<dir>/<clone>.zip` through its parent's zip.
