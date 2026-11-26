@@ -31,7 +31,8 @@ uv run cargo test --workspace
   so cargo never links libpython (which Linux runners don't have).
 
 - uv doesn't build the package (`package = false` in `pyproject.toml`); `maturin develop` does.
-  Rerun it after changing Rust code. Add `--release` when measuring speed.
+  Rerun it after changing Rust code. It builds debug, so pytest timings are debug numbers:
+  add `--release` when measuring speed.
 - `uv sync` removes packages it didn't install, including the one `maturin develop` installed,
   so rerun `maturin develop` after it. `uv run` doesn't remove anything.
 - CI passes `--locked`, so after adding or changing a Rust dependency, update `Cargo.lock`
@@ -49,7 +50,29 @@ uv run cargo test --workspace
 
 ## Build directory
 
-Rust builds are large. On a machine with several checkouts or worktrees of this repo, share one
-build directory between them by setting `CARGO_TARGET_DIR` (cargo's lock serializes builds that
-share it), and run `cargo clean` when a task is done if disk is short. `maturin develop` uses
-the same directory.
+Rust builds are large, and `maturin develop` uses the same directory as cargo
+(`CARGO_TARGET_DIR`, default `target/`). Give each checkout or worktree its own: cargo decides
+what to rebuild for path crates by file times, so a worktree sharing a target directory with
+another can get a stale build of a crate the other last built. If disk forces sharing, touch a
+source file of the changed crate before trusting a rebuild. Run `cargo clean` when a task is
+done if disk is short.
+
+## Commits and stacks
+
+Every commit passes the CI checks on its own (docs/testing.md, "Per-commit checks"). In a
+stack of commits:
+
+- A crate commit that adds a `gth_core` or `gth_record` error variant before the `gth-py`
+  commit that maps it maps it to `HarnessError` (docs/native.md, "Errors"), since the mapping
+  has no wildcard arm and the crate's commit must build; the `gth-py` commit then gives it its
+  own exception if it needs one.
+- Fixups to a list every commit touches, such as the rustfmt-wrapped `pub use` list in
+  `crates/gth-config/src/lib.rs`, conflict at every later commit during
+  `git rebase --autosquash`. Fold such a fixup into the last commit that touches the list, or
+  resolve the conflict once and keep the result.
+
+## Clippy
+
+CI runs clippy with `-D warnings` on the pinned toolchain (`rust-toolchain.toml`), whose
+lints may be newer than you expect. Rust 1.100's clippy flags `slice.chunks_exact(N)` with a
+constant `N` (use `as_chunks`) and `x % n == 0` (use `x.is_multiple_of(n)`).

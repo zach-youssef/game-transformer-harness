@@ -5,8 +5,8 @@ Headless libretro cores behind a Python gymnasium environment, with all per-fram
 
 - [docs/architecture.md](docs/architecture.md): crate map, data flow, one core per process,
   where hot code lives. Read before adding code anywhere.
-- [docs/development.md](docs/development.md): uv, maturin and cargo commands, CI, the shared
-  `CARGO_TARGET_DIR`.
+- [docs/development.md](docs/development.md): uv, maturin and cargo commands, CI, build
+  directories, commit stacks and clippy gotchas.
 - [docs/testing.md](docs/testing.md): where tests go, CPU tests in CI, ROM tests that skip,
   GPU tests on TheaterPC, per-commit checks. Read before writing a test.
 - [docs/native.md](docs/native.md): the `_native` binding conventions and type stubs. Read
