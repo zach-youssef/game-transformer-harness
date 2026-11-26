@@ -1,4 +1,8 @@
 //! Calls the exported entry points directly, with a fake host behind the callbacks.
+//!
+//! The fake host's callbacks are `extern "C"`, so a panic can't unwind out of them: a failing
+//! `assert!` inside one aborts the whole test binary instead of failing one test. Look for
+//! the panic message above the abort.
 
 use super::*;
 

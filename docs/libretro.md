@@ -60,9 +60,24 @@ cores in tests and CI: video, input, RAM, core options and savestates, with no R
   step option is not saved, and a state that is short or puts the square off screen is
   refused. `retro_reset` returns to the state right after loading.
 
+- **One instance per process**: like real cores, it keeps its state in process-globals
+  (libretro callbacks carry no user pointer), so one process can't run two instances of the
+  same core file. The host enforces one core per process anyway (architecture.md).
+
 Its unit tests (`src/tests.rs`) call the exported functions directly with a fake host behind
 the callbacks. `tests/cdylib.rs` loads the built library by path, as the host will, to check
-the file name and the exports on each OS. `cargo test` doesn't build a cdylib-only package's
-library, so that test runs `cargo build -p gth-testcore` itself (with `--release` when the
-tests are optimized; not `--target`) and takes the path from cargo's JSON output, which also
-works with any `CARGO_TARGET_DIR`. Host tests that load the core can copy that helper.
+the file name and the exports on each OS.
+
+### Loading the test core in tests
+
+Tests that load the core as a library get its path from `gth_test_support::testcore_path()`
+(`crates/gth-test-support`, a dev-dependency). `cargo test` doesn't build a cdylib-only
+package's library, so the helper runs `cargo build -p gth-testcore` itself (with `--release`
+when the tests are optimized; not `--target`) and takes the path from cargo's JSON output,
+which also works with any `CARGO_TARGET_DIR`.
+
+On Windows a DLL that a process has loaded can't be overwritten, so nothing may rebuild the
+core while a test has it loaded. The helper builds once per process, before the first load,
+and `cargo test` runs test binaries one at a time, each finding the build fresh (a no-op).
+Don't run core-loading test binaries in parallel processes (as `cargo nextest` does) while
+the core's sources change.

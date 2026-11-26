@@ -2,7 +2,8 @@
 //!
 //! What it draws, where the score lives and what a savestate holds: docs/libretro.md,
 //! "Test core". libretro calls a core from one thread at a time, and the core keeps its
-//! state in process-globals because the callbacks carry no user pointer.
+//! state in process-globals because the callbacks carry no user pointer. Like a real core, it
+//! is a singleton: one process can't run two instances of the same core file.
 
 use std::ffi::{CStr, c_char, c_uint, c_void};
 use std::sync::{Mutex, MutexGuard, PoisonError};

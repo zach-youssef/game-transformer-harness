@@ -34,6 +34,8 @@ uv run cargo test --workspace
   Rerun it after changing Rust code. Add `--release` when measuring speed.
 - `uv sync` removes packages it didn't install, including the one `maturin develop` installed,
   so rerun `maturin develop` after it. `uv run` doesn't remove anything.
+- CI passes `--locked`, so after adding or changing a Rust dependency, update `Cargo.lock`
+  (any plain `cargo build`, `cargo metadata` or `cargo fetch`) and commit it with the change.
 - `gth-py` has no Rust tests (`test = false`): it is glue, and pytest tests it through Python.
 - CI (`.github/workflows/ci.yml`) runs the commands above on Linux, macOS (arm64) and
   Windows, on every pushed branch (a PR shows its branch's push run). CI has no ROMs and no

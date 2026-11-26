@@ -1,0 +1,15 @@
+[package]
+name = "gth-test-support"
+description = "Helpers shared by the workspace's tests: building the test core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde_json = "1.0.154"
+
+[lints]
+workspace = true

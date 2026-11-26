@@ -18,4 +18,5 @@ workspace = true
 gth-libretro-sys = { path = "../gth-libretro-sys" }
 
 [dev-dependencies]
+gth-test-support = { path = "../gth-test-support" }
 libloading = "0.9.1"

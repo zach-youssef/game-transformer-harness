@@ -15,6 +15,7 @@ emulated frame is Rust; Python is called once per agent step and only orchestrat
 | `gth-py` | The PyO3 extension module `gtharness._native`: glue that converts types and errors. | Logic: it goes in the crate it belongs to |
 | `gth-libretro-sys` | The FFI subset of `libretro.h` we use, hand-written (docs/libretro.md). | Logic, safe wrappers (those are `gth-core`'s) |
 | `gth-testcore` | A tiny deterministic libretro core (a `cdylib`) that tests and CI load instead of real cores and ROMs. | Dependencies on the host crates (it may use `gth-libretro-sys`) |
+| `gth-test-support` | Helpers shared by Rust tests (a dev-dependency): building and locating the test core. | Anything non-test code uses |
 
 The Python package `gtharness` (in `python/gtharness/`) holds the environment API, the CLI and
 the glue to policies and trainers.
