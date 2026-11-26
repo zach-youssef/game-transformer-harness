@@ -1,0 +1,24 @@
+[package]
+name = "gth-py"
+description = "PyO3 glue for the gtharness._native extension module"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+# maturin requires the library name to match the module's last component.
+name = "_native"
+crate-type = ["cdylib"]
+# Glue only, tested from Python (pytest). A Rust test binary would need libpython at link time.
+test = false
+doctest = false
+
+[dependencies]
+# abi3: one wheel per OS for every CPython from 3.12 on.
+pyo3 = { version = "0.30.1", features = ["abi3-py312"] }
+
+[lints]
+workspace = true

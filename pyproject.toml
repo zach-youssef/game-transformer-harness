@@ -1,0 +1,41 @@
+[build-system]
+requires = ["maturin>=1.16,<2"]
+build-backend = "maturin"
+
+[project]
+name = "game-transformer-harness"
+version = "0.1.0"
+description = "Headless libretro cores behind a gymnasium environment, with the per-frame work in Rust"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "maturin>=1.16,<2",
+    "pytest>=9.2",
+    "ruff>=0.17.6",
+]
+
+[tool.uv]
+# uv doesn't build the package: `maturin develop --uv` does (docs/development.md).
+package = false
+
+[tool.maturin]
+manifest-path = "crates/gth-py/Cargo.toml"
+python-source = "python"
+module-name = "gtharness._native"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers", "--import-mode=importlib"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["python", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
