@@ -1,0 +1,35 @@
+# Build outputs and environments
+/target/
+/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Native libraries: built extension modules and libretro core binaries
+*.so
+*.pyd
+*.dylib
+*.dll
+
+# User-supplied content is never committed (docs/roms.md). The directories are
+# anchored at the repo root so that source modules with the same names stay tracked.
+/data/
+/roms/
+/system/
+/cores/
+/runs/
+
+# ROM, BIOS, disc image and MAME input files, wherever they end up.
+# Genesis `.md` ROMs can't be ignored by extension (Markdown); keep them under data/.
+*.zip
+*.7z
+*.chd
+*.cue
+*.bin
+*.iso
+*.pce
+*.nes
+*.gen
+*.smd
+*.inp
