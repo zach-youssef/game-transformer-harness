@@ -85,9 +85,10 @@ still holds. The cost is one allocation per returned frame, small next to emulat
 for its observations. `gtharness.env.RetroEnv` is its only user; it is the environment's hot
 path, so the env imports it from `_native` directly.
 
-- The constructor takes the core options and every pipeline choice explicitly (observation
-  size, crop, rotation, interpolation); `RetroEnv` takes the options, crop and rotation from
-  the game config, requires the size and defaults only `interpolation` ("area").
+- The constructor takes the core options, the settle frames after savestate loads
+  (docs/games.md, `settle_frames`) and every pipeline choice explicitly (observation size,
+  crop, rotation, interpolation); `RetroEnv` takes the options, settle frames, crop and
+  rotation from the game config, requires the size and defaults only `interpolation` ("area").
 - `reset()` returns to the state right after loading (gth-core's load snapshot, or
   `retro_reset` for cores that can't serialize then; docs/libretro.md, "Host").
   `resets_to_load_state` (also on `RetroEnv`) says which one the core gets.

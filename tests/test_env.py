@@ -42,6 +42,7 @@ def config(
     script and its score."""
     text = f"""
 core = "gth_testcore"
+settle_frames = 0
 orientation = {orientation}
 {crop}
 content = {{ file = "none.gthc", size = 0, sha1 = "{"0" * 40}", crc32 = "00000000" }}
@@ -320,7 +321,7 @@ def test_gymnasium_check_env(testcore_path: Path, tmp_path: Path, action_format:
 
 
 def test_native_core_info(testcore_path: Path, tmp_path: Path):
-    core = _native.Core(testcore_path, None, tmp_path, {}, 8, 8, None, 0, "area")
+    core = _native.Core(testcore_path, None, tmp_path, {}, 0, 8, 8, None, 0, "area")
     try:
         assert core.system_info()["library_name"] == "gth-testcore"
         av = core.av_info()

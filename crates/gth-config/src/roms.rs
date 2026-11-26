@@ -337,6 +337,7 @@ pub(crate) mod tests {
         let mut config = crate::GameConfig::parse(
             r#"
 core = "c"
+settle_frames = 0
 orientation = 0
 content = { file = "c.bin", size = 3, sha1 = "a9993e364706816aba3e25717850c26c9cd0d89d", crc32 = "352441c2" }
 buttons = { a = "shot" }

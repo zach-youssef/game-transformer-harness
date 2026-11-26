@@ -1,8 +1,8 @@
 """``gth bench``: speed, savestate and determinism benchmarks of real cores (docs/performance.md).
 
 A target is a core and its content. The benchmark gives it its own game config, made from
-the core, the content and (for a game in ``games/``) the game's core options and
-orientation: no RAM variables, the four action slots on B, A, Y and X, and a reset script
+the core, the content and (for a game in ``games/``) the game's core options, settle frames,
+orientation and crop: no RAM variables, the four action slots on B, A, Y and X, and a reset script
 that coins and presses start a few times (`START_SCRIPT`), so play leaves the title screen
 in most games. So it measures the same thing before and after a game's own config exists.
 
@@ -83,13 +83,18 @@ def target_config(
     core: str,
     content: Path,
     *,
+    settle_frames: int,
     orientation: int,
     crop: tuple[int, int, int, int] | None,
     core_options: dict[str, str],
 ) -> str:
     """The benchmark's game config for ``core`` running ``content`` (module docstring)."""
     data = content.read_bytes()
-    lines = [f"core = {json.dumps(core)}", f"orientation = {orientation}"]
+    lines = [
+        f"core = {json.dumps(core)}",
+        f"settle_frames = {settle_frames}",
+        f"orientation = {orientation}",
+    ]
     if crop is not None:
         lines.append(f"crop = [{', '.join(str(value) for value in crop)}]")
     lines += [
@@ -125,12 +130,14 @@ def game_target(
     games_dir: Path = GAMES_DIR,
 ) -> Target:
     """The core and content of ``games_dir/<game_id>/game.toml``, found as
-    `RetroEnv.from_game` finds them, with the game's core options, orientation and crop."""
+    `RetroEnv.from_game` finds them, with the game's core options, settle frames, orientation
+    and crop."""
     game = _native.GameConfig.load(games_dir / game_id / "game.toml")
     content = find_content(game, game_id, rom_dir)
     toml = target_config(
         game.core,
         content,
+        settle_frames=game.settle_frames,
         orientation=game.orientation,
         crop=game.crop,
         core_options=game.core_options,
@@ -141,10 +148,11 @@ def game_target(
 
 def content_target(core: str, content: Path, data_dir: Path) -> Target:
     """``core`` from ``data_dir/cores`` running ``content``, which has no game config yet,
-    with the core's default options and no turn or crop."""
+    with the core's default options, no turn or crop, and savestates loaded as they are (no
+    settle frames, docs/games.md)."""
     if not content.is_file():
         raise ConfigError(f"{content} isn't a file")
-    toml = target_config(core, content, orientation=0, crop=None, core_options={})
+    toml = target_config(core, content, settle_frames=0, orientation=0, crop=None, core_options={})
     path = _core_path(data_dir, core)
     return Target(content.stem, core, path, content, data_dir / "system", toml)
 

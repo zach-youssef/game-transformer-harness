@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 
 pub use format::{Check, Input};
 pub use meta::{
-    BranchMeta, ContentMeta, CoreMeta, FORMAT_VERSION, Meta, RecorderKind, RewindCause, RewindMeta,
-    StartMeta,
+    BranchMeta, ContentMeta, CoreMeta, FORMAT_VERSION, Meta, OLDEST_FORMAT_VERSION, RecorderKind,
+    RewindCause, RewindMeta, StartMeta,
 };
 pub use recorder::{Recorder, RecordingInfo};
 pub use replay::{Recording, Replayer};

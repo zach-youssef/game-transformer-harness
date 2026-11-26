@@ -4,6 +4,7 @@
 # and the ROM audit can check the content, until G3 sets the buttons, reset and RAM variables.
 
 core = "genesis_plus_gx"
+settle_frames = 0
 orientation = 0
 
 [content]

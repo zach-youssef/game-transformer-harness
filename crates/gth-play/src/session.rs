@@ -296,9 +296,12 @@ impl Session {
             .ring
             .front()
             .map_or(death, |(frame, _)| *frame);
-        // Past frame 0, one frame after the oldest savestate: `seek` must replay a frame to
-        // land on the picture there (a loaded savestate has none, docs/human-play.md).
-        let reachable = if oldest == 0 { 0 } else { oldest + 1 };
+        // Past frame 0, the oldest savestate's frame plus what `seek` must replay after it.
+        let reachable = if oldest == 0 {
+            0
+        } else {
+            oldest + self.seek_frames()
+        };
         let branch = death
             .saturating_sub(self.settings.rewind_frames)
             .max(reachable);
@@ -355,17 +358,28 @@ impl Session {
         })
     }
 
+    /// Frames `seek` replays after a savestate at least: one, so the core has drawn the
+    /// frame shown (a loaded savestate clears the picture), plus the game's settle frames.
+    /// The first frame after a settled load shows what settling ran, not the frame before
+    /// the state (docs/games.md, `settle_frames`); the frames after it are the recording's.
+    fn seek_frames(&self) -> u64 {
+        1 + u64::from(self.core.settle_frames())
+    }
+
     /// Puts the core in the recording's state after `frame` frames: loads the ring's latest
-    /// savestate before it and replays the logged inputs from there. Before, not at, so the
-    /// core has drawn the frame shown at `frame` (a loaded savestate clears the picture);
-    /// only frame 0 loads its own savestate, as the replayer starts with no picture too.
+    /// savestate at least [`seek_frames`](Self::seek_frames) before it and replays the
+    /// logged inputs from there, so the core draws the frame shown at `frame` as the
+    /// recording did. The start savestate (frame 0) serves any frame, with no margin: the
+    /// recording began from that same settled load, as the replayer does, so the frames
+    /// after it are the recording's (and at frame 0 itself, neither has a picture yet).
     fn seek(&mut self, frame: u64) -> Result<()> {
+        let seek_frames = self.seek_frames();
         let rewinding = self.rewind.as_ref().expect("seeking while rewinding");
         let (from, state) = rewinding
             .ring
             .iter()
             .rev()
-            .find(|(at, _)| *at < frame || *at == 0 && frame == 0)
+            .find(|(at, _)| *at == 0 || *at + seek_frames <= frame)
             .ok_or_else(|| format!("no savestate before frame {frame}"))?;
         self.core.unserialize(state).map_err(|e| e.to_string())?;
         let recorder = self.recorder.as_ref().expect("seeking while recording");

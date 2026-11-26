@@ -213,7 +213,9 @@ def test_recording_needs_its_choices(testcore_path: Path, testcore_data: Path, t
     with pytest.raises(ValueError, match="game_id"):
         RetroEnv(game, record=record(tmp_path), **options)
 
-    core = _native.Core(testcore_path, None, tmp_path, {}, 60, 80, None, 0, "area")
+    core = _native.Core(
+        testcore_path, None, tmp_path, {}, game.settle_frames, 60, 80, None, 0, "area"
+    )
     try:
         with pytest.raises(ValueError, match="recorder must be one of"):
             core.start_recording(tmp_path / "a.gthrec", game, "testcore", None, "bot", "p", "l", 60)

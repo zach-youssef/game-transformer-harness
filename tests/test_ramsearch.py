@@ -19,7 +19,7 @@ A = 1 << 8  # RETRO_DEVICE_ID_JOYPAD_A
 
 @pytest.fixture
 def core(testcore_path: Path, tmp_path: Path) -> Iterator[_native.Core]:
-    core = _native.Core(testcore_path, None, tmp_path, {}, 16, 16, None, 0, "area")
+    core = _native.Core(testcore_path, None, tmp_path, {}, 0, 16, 16, None, 0, "area")
     try:
         yield core
     finally:
@@ -209,7 +209,10 @@ def test_assert_ram_checks_a_game_s_variables(testcore_path: Path, testcore_data
 
 def test_playing_waits_for_the_recording(core: _native.Core, tmp_path: Path):
     # watch and scripts run frames (and load states) outside the recorder; filters only read.
-    game = _native.GameConfig.load(GAMES_DIR / "testcore" / "game.toml")
+    # The fixture's core loads states as they are, so the recording's game must too.
+    text = (GAMES_DIR / "testcore" / "game.toml").read_text(encoding="utf-8")
+    game = _native.GameConfig.parse(text.replace("settle_frames = 1", "settle_frames = 0"), "t")
+    assert game.settle_frames == 0
     search = _native.RamSearch(core, "system_ram", ["bcd4"])
     script = tmp_path / "s.toml"
     script.write_text('space = "system_ram"\nviews = ["le1"]\n[[step]]\n', encoding="utf-8")

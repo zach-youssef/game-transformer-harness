@@ -30,7 +30,8 @@ table and RAM variable key (the other forms of `reset` and `content`, a savestat
 4. **Core, frame, buttons and reset**: `core` is the core's name in `cores.lock`
    (docs/cores.md, "Adding a core") and the stem of its library's file name,
    `<core>_libretro.<so|dylib|dll>` (docs/roms.md, "Data directory"), so use the libretro
-   build's real name (`mednafen_pce_fast`); `orientation` and `crop` give the picture a policy sees;
+   build's real name (`mednafen_pce_fast`); `settle_frames` (below, "Settle frames") is 0
+   unless the core keeps state outside its savestates; `orientation` and `crop` give the picture a policy sees;
    `[buttons]` maps the game's controls onto the four slots (docs/actions.md); `[reset]` gets
    from power-on to the first controllable frame with a script, or names a savestate.
 5. **RAM variables and the episode end** (below). Each is validated in three stages:
@@ -105,6 +106,7 @@ change (docs/recording-format.md, "Versioning").
 | Field | Required | Meaning |
 |---|---|---|
 | `core` | yes | The core's name in `cores.lock` (below). |
+| `settle_frames` | yes | Frames the core runs after each savestate load before loading it again (below, "Settle frames"): 0 for most cores. |
 | `orientation` | yes | Clockwise degrees to turn the frame: 0, or 90 / 270 for vertical (tate) games. |
 | `crop` | no | `[x, y, width, height]` of the core's frame to keep, before rotation, in core pixels. Omitted: the whole frame. |
 | `[content]` | yes | The file the core loads, its `parents` and `in_parent` (below). |
@@ -114,6 +116,32 @@ change (docs/recording-format.md, "Versioning").
 | `[ram.<name>]` | no | Named RAM variables (below). |
 | `[episode]` | yes | `terminate`: when an episode ends (below). |
 | `[core_options]` | no | `key = "value"` core options (`SET_VARIABLES` keys). Others keep the core's defaults. |
+
+### Settle frames
+
+Some cores keep state they derive while running outside their savestates, so the first frame
+after a load shows what the process ran before it, and a recording doesn't replay in a fresh
+process (its first frame hash differs while RAM matches). FBNeo's Toaplan GP9001 drivers
+(`bgaregga`) draw each frame with the palette computed after the previous one, which is
+outside the state, and nothing recomputes it on load; its CAVE drivers (`ket`, `ddp3`) do
+the same (docs/performance.md, "FBNeo frames after a savestate load"). With
+`settle_frames = n`, every load (`Core::unserialize`, `Core::reset`, the replayer's and the
+recorder's start, `RetroEnv.reset`) runs `n` frames with no button held, unseen, and loads
+the state again, so the next frame depends only on the state. It isn't quite the frame the
+original run showed: that one used the palette from the frame before the state, which the
+state doesn't hold, so on a frame where the palette changes the two differ. The frames after
+it are exact, which is why gth-play's rewind seek (docs/human-play.md) replays 1 +
+`settle_frames` frames past a savestate. Recordings and replays settle alike, so recordings
+replay with no desync.
+
+Set it to the fewest frames that make the first frame after a load the same whatever ran
+before (1 for the FBNeo games above), checked on the game's ROM as
+`tests/test_bgaregga.py` does; 0 loads states as they are, the right value for a core whose
+savestates hold everything. A game's value is stored with its recordings (in their
+`game.toml`), and a replay refuses a core loaded with another one. Psikyo games (`gunbird`,
+`s1945`) keep more outside their states, and settling doesn't make their first frames
+reproducible (docs/performance.md); their value is a placeholder until their games are set
+up.
 
 ### Content and BIOS files
 

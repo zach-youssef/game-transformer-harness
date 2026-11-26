@@ -526,7 +526,7 @@ mod tests {
 
     fn config(content: &str, bios: &str) -> GameConfig {
         let text = format!(
-            "core = \"c\"\norientation = 0\nbuttons = {{ a = \"shot\" }}\n\
+            "core = \"c\"\nsettle_frames = 0\norientation = 0\nbuttons = {{ a = \"shot\" }}\n\
              reset = {{ script = [{{ press = [], frames = 1 }}] }}\n\
              episode = {{ terminate = \"0\" }}\n[content]\n{content}\n{bios}"
         );

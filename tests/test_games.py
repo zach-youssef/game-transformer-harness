@@ -46,7 +46,8 @@ def bcd(data: bytes) -> int:
 
 def test_testcore_config_uses_every_field():
     raw = tomllib.loads(TESTCORE_TOML.read_text(encoding="utf-8"))
-    every = {"core", "orientation", "crop", "content", "bios", "buttons", "reset", "ram"}
+    every = {"core", "settle_frames", "orientation", "crop", "content", "bios", "buttons"}
+    every |= {"reset", "ram"}
     assert set(raw) == every | {"episode", "core_options"}, "games/testcore covers every field"
     assert {"memory", "address", "scale", "swap16"} <= {k for v in raw["ram"].values() for k in v}
     assert {"bcd", "le", "be"} == {v["encoding"] for v in raw["ram"].values()}
@@ -54,11 +55,12 @@ def test_testcore_config_uses_every_field():
     assert any("/" in bios["file"] for bios in raw["bios"]) and raw["content"]["parents"]
     config = _native.GameConfig.load(TESTCORE_TOML)
     assert (config.core, config.orientation, config.crop) == ("gth_testcore", 90, (0, 0, 320, 232))
+    assert config.settle_frames == 1
     assert config.slots == ["shot", "bomb", "aux1", "aux2"] and config.n_actions == 9 * 16
     assert config.mapped_slots == config.slots
     assert config.reset_inputs == [(START, 2), (A, 3), (0, 1)] and config.reset_state is None
     assert config.ram_names == ["prng", "prng_swapped", "score", "score_tens"]
-    assert config.core_options == {"gth_testcore_step": "4"}
+    assert config.core_options == {"gth_testcore_step": "4", "gth_testcore_lag": "on"}
     again = _native.GameConfig.parse(config.to_toml(), "round trip")
     assert again.to_toml() == config.to_toml()
 

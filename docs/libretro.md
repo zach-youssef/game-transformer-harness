@@ -73,6 +73,14 @@ through it, so it is only the fallback for cores that can't serialize at load ti
 report a savestate size of 0 until their first frame) or that refuse that state on a reset
 (the snapshot is then dropped); `Core::resets_to_load_state` says which one a core gets.
 
+`Core::load` takes the game's `settle_frames` (docs/games.md, "Settle frames"): after every
+savestate load, the load snapshot's included, the core runs that many frames with no button
+held and loads the state again, for cores whose first frame after a load would otherwise
+depend on what ran before it. Settle frames aren't counted in `frames_run` or
+`audio_frames`, their audio is dropped, and the frame is cleared after them as after any
+load. `settle_frames_run_unseen_after_every_load` (crates/gth-core/tests/testcore.rs) checks
+this on the test core's lag option, at load, on reset and on `unserialize`.
+
 ## Test core
 
 `crates/gth-testcore` is a deterministic libretro core (a `cdylib`) that stands in for real

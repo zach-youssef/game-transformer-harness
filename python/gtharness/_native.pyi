@@ -40,6 +40,7 @@ class Core:
         content_path: str | os.PathLike[str] | None,
         system_dir: str | os.PathLike[str],
         core_options: dict[str, str],
+        settle_frames: int,
         obs_height: int,
         obs_width: int,
         crop: tuple[int, int, int, int] | None,
@@ -138,6 +139,8 @@ class GameConfig:
     def to_toml(self) -> str: ...
     @property
     def core(self) -> str: ...
+    @property
+    def settle_frames(self) -> int: ...
     @property
     def orientation(self) -> int: ...
     @property

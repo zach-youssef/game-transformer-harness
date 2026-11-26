@@ -4,6 +4,7 @@
 # and the ROM audit can check the content, until G2 sets the buttons, reset and RAM variables.
 
 core = "fceumm"
+settle_frames = 0
 orientation = 0
 
 [content]

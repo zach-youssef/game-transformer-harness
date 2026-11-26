@@ -120,6 +120,11 @@ impl Recorder {
         if info.game_id.is_empty() || info.player.is_empty() || info.license.is_empty() {
             return Err(mismatch("game_id, player and license must not be empty"));
         }
+        if core.settle_frames() != game.settle_frames {
+            return Err(mismatch(
+                "the core settles after loads for another number of frames than the game's settle_frames",
+            ));
+        }
         let state = core.serialize()?;
         // The replay starts by loading this state, which clears the frame: a core that repeats
         // its frame (dupes) until the first check would otherwise hash the last frame drawn
@@ -396,6 +401,7 @@ mod tests {
             None,
             &std::env::temp_dir(),
             &game.core_options,
+            game.settle_frames,
         )
         .unwrap();
         let info = RecordingInfo {

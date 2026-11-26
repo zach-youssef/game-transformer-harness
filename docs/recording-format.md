@@ -28,7 +28,7 @@ and `start.state` against their SHA-1s in `meta.toml`, the frame and step counts
 
 | Field | Meaning |
 |---|---|
-| `format_version` | `gth_record::FORMAT_VERSION` (1). Readers refuse any other version, checked before the other fields. |
+| `format_version` | `gth_record::FORMAT_VERSION` (2). Readers read it and older versions back to `OLDEST_FORMAT_VERSION` (1) through migrations (below, "Versioning") and refuse others, checked before the other fields. |
 | `game_id` | The game's directory under `games/`. |
 | `game_config_sha1` | SHA-1 of `game.toml`. |
 | `recorder` | `human` (gth-play), `policy`, `scripted` (tests, random or scripted rollouts) or `converted` (from a MAME `.inp`). |
@@ -84,11 +84,16 @@ Game RAM in a recording is for validation and rewards, never a policy's input.
 ## Versioning
 
 `format_version` covers the layout and meaning of every file, and `Recording::open` refuses
-any other version. The stored `game.toml` is parsed with today's `gth-config`, which refuses
+versions outside `OLDEST_FORMAT_VERSION..=FORMAT_VERSION`. The stored `game.toml` is parsed with today's `gth-config`, which refuses
 unknown fields, so a change to the game.toml schema that old files no longer parse under
 (a renamed or removed field, a new required one) is a format change too: bump
 `FORMAT_VERSION` and read old recordings through a migration. Adding an optional game.toml
 field isn't one. `meta.toml`'s `[core.lock]` is stored as a plain table for the same reason.
+
+| Version | Change | Migration |
+|---|---|---|
+| 1 | The first format. | |
+| 2 | game.toml's required `settle_frames` (docs/games.md, "Settle frames"): the recorder and the replayer settle after loading the start state. | A version 1 `game.toml` (its SHA-1 checked as stored) is read with `settle_frames = 0`, which is how it was recorded. |
 
 `[branch]` and `[[rewind]]` didn't bump the version: they are optional, a recording without
 them reads exactly as before, and they don't change what any other file holds (a rewound
@@ -101,7 +106,8 @@ rather than misreading it.
 - `gth_record::Recorder::create(dir, core, game, content, info)` snapshots the core's state,
   reloads it (a replay starts by loading it, which clears the frame, so the recording does
   too; a core that repeats its frame until the first check would otherwise hash a different
-  picture), and writes everything but `meta.toml`; `run(core, frames, buttons)` runs one
+  picture; the reload settles as the replay's does), and writes everything but `meta.toml`; it
+  refuses a core loaded with other settle frames than the game's; `run(core, frames, buttons)` runs one
   agent step frame by frame, recording each; `finish(core)` writes the last check and
   `meta.toml`. Any error in `run` is terminal: the core may have run a frame the recording
   doesn't hold, so later calls, `finish` included, fail with `Error::Failed` and the directory
@@ -125,7 +131,7 @@ rather than misreading it.
   (gth-play, P6) will use the same `Recorder`.
 - `gth_record::Recording::open(dir)` reads and checks a recording;
   `Replayer::load(recording, core_path, content, system_dir)` loads the core with the
-  recording's core options, checks the core version, the content (above) and that every RAM
+  recording's core options and settle frames, checks the core version, the content (above) and that every RAM
   variable is in the core's memory, and loads the start state. `step()` replays one agent
   step, `run_to_end()` the rest. `_native.Replayer` (`gtharness.record.Replayer`) adds an
   observation pipeline: its `step()` returns each step's joypad mask, frame count and last

@@ -129,8 +129,9 @@ impl Core {
 
 #[pymethods]
 impl Core {
-    /// Loads a core (one per process) with `core_options` set, and sets up the observation
-    /// pipeline. `crop` is `(x, y, width, height)` in the core's pixels, `rotate` is 0, 90 or
+    /// Loads a core (one per process) with `core_options` set, settling `settle_frames`
+    /// after each savestate load (a game's `settle_frames`, docs/games.md), and sets up the
+    /// observation pipeline. `crop` is `(x, y, width, height)` in the core's pixels, `rotate` is 0, 90 or
     /// 270 degrees clockwise, `interpolation` is "area" or "bilinear".
     #[new]
     #[allow(clippy::too_many_arguments)]
@@ -140,6 +141,7 @@ impl Core {
         content_path: Option<PathBuf>,
         system_dir: PathBuf,
         core_options: BTreeMap<String, String>,
+        settle_frames: u32,
         obs_height: usize,
         obs_width: usize,
         crop: Option<(usize, usize, usize, usize)>,
@@ -153,6 +155,7 @@ impl Core {
                 content_path.as_deref(),
                 &system_dir,
                 &core_options,
+                settle_frames,
             )
         })?;
         Ok(Core {

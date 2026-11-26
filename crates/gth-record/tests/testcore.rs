@@ -58,6 +58,7 @@ fn load(game: &GameConfig, content: &Path) -> Core {
         Some(content),
         &std::env::temp_dir(),
         &game.core_options,
+        game.settle_frames,
     )
     .unwrap()
 }
@@ -89,14 +90,24 @@ impl Rng {
 /// Records `frames` frames of random buttons, in steps of 1 to 6 frames, from the game's
 /// start (its reset script); returns the recording's directory and the final RAM.
 fn record(dir: &Path, frames: u64, checks_every: u32, rng: &mut Rng) -> (PathBuf, Vec<u8>) {
-    let game = game();
-    let mut core = load(&game, &content(dir));
+    record_game(&game(), dir, frames, checks_every, rng)
+}
+
+/// [`record`] with `game` in place of the testcore game.
+fn record_game(
+    game: &GameConfig,
+    dir: &Path,
+    frames: u64,
+    checks_every: u32,
+    rng: &mut Rng,
+) -> (PathBuf, Vec<u8>) {
+    let mut core = load(game, &content(dir));
     core.run_inputs(&game.reset_inputs().unwrap());
     let path = dir.join("rec.gthrec");
     let mut recorder = Recorder::create(
         &path,
         &mut core,
-        &game,
+        game,
         Some(&content(dir)),
         info(checks_every),
     )
@@ -201,6 +212,93 @@ fn a_tampered_input_is_detected_at_its_frame() {
     }
 }
 
+/// The testcore game with `settle_frames` and the test core's lag option (docs/libretro.md,
+/// "Test core") as given.
+fn game_settled(settle_frames: u32, lag: bool) -> GameConfig {
+    let mut game = game();
+    game.settle_frames = settle_frames;
+    game.core_options.insert(
+        "gth_testcore_lag".into(),
+        if lag { "on" } else { "off" }.into(),
+    );
+    game
+}
+
+/// Like [`replay`], with `game`'s core options and settle frames.
+fn replay_game(game: &GameConfig, path: &Path, content: &Path) -> gth_record::Result<Replayer> {
+    Replayer::new(Recording::open(path)?, load(game, content))
+}
+
+#[test]
+fn settle_frames_make_a_core_with_state_outside_its_savestates_replay() {
+    let _serial = serial();
+    // The lag option draws the first frame after a load from the frames run before it, which
+    // the replay's fresh core hasn't run: without settling, the first check's frame differs.
+    let dir = TempDir::new();
+    let unsettled = game_settled(0, true);
+    let (path, _) = record_game(&unsettled, &dir.0, 300, 1, &mut Rng(5));
+    match replay_game(&unsettled, &path, &content(&dir.0))
+        .unwrap()
+        .run_to_end()
+    {
+        Err(Error::Desync {
+            first,
+            frame,
+            detail,
+        }) => {
+            assert_eq!((first, frame), (1, 1));
+            assert!(detail.contains("frame"), "{detail}");
+        }
+        other => panic!("expected a desync on the first frame, got {other:?}"),
+    }
+    // Settling one frame after each load (as games/testcore does) makes it replay.
+    let dir = TempDir::new();
+    let settled = game_settled(1, true);
+    let (path, _) = record_game(&settled, &dir.0, 300, 1, &mut Rng(5));
+    let mut replayer = replay_game(&settled, &path, &content(&dir.0)).unwrap();
+    assert_eq!(replayer.run_to_end().unwrap(), 300, "every frame checked");
+    drop(replayer);
+    // A core loaded with other settle frames than the recording's game is refused.
+    let error = replay_game(&unsettled, &path, &content(&dir.0))
+        .err()
+        .unwrap();
+    assert!(matches!(error, Error::Mismatch { .. }), "{error}");
+    assert!(
+        error.to_string().contains("settles for 0 frames"),
+        "{error}"
+    );
+}
+
+#[test]
+fn version_1_recordings_replay_with_no_settle_frames() {
+    let _serial = serial();
+    let dir = TempDir::new();
+    let game = game_settled(0, false);
+    let (path, _) = record_game(&game, &dir.0, 200, 60, &mut Rng(9));
+    // Rewrite it as version 1 wrote it: no settle_frames in game.toml.
+    let toml = std::fs::read_to_string(path.join("game.toml")).unwrap();
+    let v1_toml = toml.replacen("settle_frames = 0\n", "", 1);
+    assert_ne!(v1_toml, toml);
+    std::fs::write(path.join("game.toml"), &v1_toml).unwrap();
+    let meta = std::fs::read_to_string(path.join("meta.toml")).unwrap();
+    let sha1 = |text: &str| {
+        use sha1::Digest;
+        (sha1::Sha1::digest(text.as_bytes()).iter())
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    };
+    let meta = meta
+        .replacen("format_version = 2", "format_version = 1", 1)
+        .replacen(&sha1(&toml), &sha1(&v1_toml), 1);
+    std::fs::write(path.join("meta.toml"), meta).unwrap();
+
+    let recording = Recording::open(&path).unwrap();
+    assert_eq!(recording.meta.format_version, 1);
+    assert_eq!(recording.game, game, "migrated to settle_frames = 0");
+    let mut replayer = replay_game(&game, &path, &content(&dir.0)).unwrap();
+    assert_eq!(replayer.run_to_end().unwrap(), 200);
+}
+
 #[test]
 fn other_format_versions_and_inconsistent_files_are_refused() {
     let _serial = serial();
@@ -213,15 +311,17 @@ fn other_format_versions_and_inconsistent_files_are_refused() {
     };
     let open_error = || Recording::open(&path).unwrap_err().to_string();
 
-    edit("format_version = 1", "format_version = 999");
+    edit("format_version = 2", "format_version = 999");
     let error = open_error();
     assert!(
-        error.contains("format version 999; this build reads version 1"),
+        error.contains("format version 999; this build reads versions 1 to 2"),
         "{error}"
     );
+    edit("format_version = 2", "format_version = 0");
+    assert!(open_error().contains("format version 0"));
     // A future version's new fields don't hide the version.
-    edit("format_version = 1", "format_version = 2\nnew_field = 1");
-    assert!(open_error().contains("format version 2"));
+    edit("format_version = 2", "format_version = 3\nnew_field = 1");
+    assert!(open_error().contains("format version 3"));
     edit("frames = 100", "frames = 101");
     assert!(open_error().contains("inputs.bin has 100 frames"));
     edit("checks_every = 60", "checks_every = 50");

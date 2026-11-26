@@ -47,8 +47,14 @@ pub fn smoke_mask(i: u32) -> u16 {
 /// recording's directory.
 pub fn run(core_path: &Path, games_dir: &Path, out: &Path) -> Result<PathBuf, String> {
     let game = crate::game::load_config(games_dir, "testcore")?;
-    let core = Core::load(core_path, None, &std::env::temp_dir(), &game.core_options)
-        .map_err(|e| format!("cannot load {}: {e}", core_path.display()))?;
+    let core = Core::load(
+        core_path,
+        None,
+        &std::env::temp_dir(),
+        &game.core_options,
+        game.settle_frames,
+    )
+    .map_err(|e| format!("cannot load {}: {e}", core_path.display()))?;
     let settings = RecordSettings {
         dir: out.to_owned(),
         // Honest labelling: no human played this.

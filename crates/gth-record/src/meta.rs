@@ -7,12 +7,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Result, format_error};
 
-/// The recording format version this build writes and reads. Bump it when any file's layout
-/// or meaning changes; [`Recording::open`](crate::Recording::open) refuses other versions.
-/// The stored `game.toml` is read with today's gth-config, so a change to the game.toml
-/// schema that an old file no longer parses under is a format change too: bump this and
-/// read old recordings through a migration (docs/recording-format.md, "Versioning").
-pub const FORMAT_VERSION: u32 = 1;
+/// The recording format version this build writes. Bump it when any file's layout or meaning
+/// changes; [`Recording::open`](crate::Recording::open) reads it and the versions from
+/// [`OLDEST_FORMAT_VERSION`] on, through migrations, and refuses others. The stored
+/// `game.toml` is read with today's gth-config, so a change to the game.toml schema that an
+/// old file no longer parses under is a format change too (docs/recording-format.md,
+/// "Versioning"). Version 2 added game.toml's required `settle_frames`.
+pub const FORMAT_VERSION: u32 = 2;
+
+/// The oldest recording format version this build reads.
+pub const OLDEST_FORMAT_VERSION: u32 = 1;
 
 /// The parsed `meta.toml` (docs/recording-format.md, "meta.toml").
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -187,11 +191,12 @@ impl Meta {
         let error = |e: toml::de::Error| format_error(path, e.to_string());
         // `VersionOnly` ignores the other fields.
         let VersionOnly { format_version } = toml::from_str(text).map_err(error)?;
-        if format_version != FORMAT_VERSION {
+        if !(OLDEST_FORMAT_VERSION..=FORMAT_VERSION).contains(&format_version) {
             return Err(format_error(
                 path,
                 format!(
-                    "format version {format_version}; this build reads version {FORMAT_VERSION}"
+                    "format version {format_version}; this build reads versions \
+                     {OLDEST_FORMAT_VERSION} to {FORMAT_VERSION}"
                 ),
             ));
         }

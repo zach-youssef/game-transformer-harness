@@ -85,8 +85,11 @@ pub struct Core {
     api: Api,
     system_info: SystemInfo,
     av_info: AvInfo,
-    /// `retro_run` calls since loading.
+    /// `retro_run` calls since loading, not counting settle frames.
     frames_run: u64,
+    /// Neutral frames run after each savestate load before loading it again
+    /// ([`load`](Self::load)).
+    settle_frames: u32,
     /// Whether `retro_init` and `retro_load_game` succeeded, for `Drop`.
     initialized: bool,
     game_loaded: bool,
@@ -204,6 +207,16 @@ impl Core {
     /// `options` sets core options (`SET_VARIABLES` keys) to one of the values the core lists
     /// for them, before the core reads them; the others keep the core's defaults.
     ///
+    /// `settle_frames` (a game's `settle_frames`, docs/games.md) makes the first frame after
+    /// a savestate load independent of what this process ran before: some cores keep state
+    /// they derive while running outside their savestates (FBNeo's Toaplan and CAVE drivers
+    /// draw each frame with the palette computed after the previous one), so that frame would
+    /// show the previous run. After every load ([`unserialize`](Self::unserialize),
+    /// [`reset`](Self::reset), and the load state taken here) the core runs `settle_frames`
+    /// frames with no button held and loads the state again. Those frames aren't counted in
+    /// [`frames_run`](Self::frames_run) or [`audio_frames`](Self::audio_frames), and their
+    /// audio is dropped. 0 loads states as they are.
+    ///
     /// Fails with [`Error::CoreLoad`] if another `Core` exists in this process, the library
     /// or one of its entry points is missing, its API version isn't 1, the content can't be
     /// read, the core refuses it, or an option isn't one the core declares with that value.
@@ -212,8 +225,10 @@ impl Core {
         content_path: Option<&Path>,
         system_dir: &Path,
         options: &BTreeMap<String, String>,
+        settle_frames: u32,
     ) -> Result<Core> {
         let (mut core, setup) = Self::open(core_path, content_path, system_dir, options)?;
+        core.settle_frames = settle_frames;
 
         let game = core._content.as_ref().map(|(path, data)| retro_game_info {
             path: path.as_ptr(),
@@ -254,6 +269,15 @@ impl Core {
         // SAFETY: plain integers; port 0 is a joypad, which most cores assume anyway.
         unsafe { (setup.set_controller_port_device)(0, RETRO_DEVICE_JOYPAD) };
         core.load_state = core.serialize().ok();
+        if settle_frames > 0
+            && let Some(state) = core.load_state.take()
+        {
+            // The first episode starts as later resets do. A refused state leaves
+            // `load_state` empty, as `reset` would.
+            if core.settle(&state) {
+                core.load_state = Some(state);
+            }
+        }
         core.clear_frame();
         Ok(core)
     }
@@ -431,6 +455,7 @@ impl Core {
                 sample_rate: 0.0,
             },
             frames_run: 0,
+            settle_frames: 0,
             initialized: false,
             game_loaded: false,
             load_state: None,
@@ -478,6 +503,11 @@ impl Core {
     /// refused that state on a reset; once false, it stays false).
     pub fn resets_to_load_state(&self) -> bool {
         self.load_state.is_some()
+    }
+
+    /// Neutral frames run after each savestate load ([`load`](Self::load)).
+    pub fn settle_frames(&self) -> u32 {
+        self.settle_frames
     }
 
     /// `retro_run` calls since loading (resets and savestates don't change it).
@@ -581,16 +611,56 @@ impl Core {
         Ok(state)
     }
 
-    /// Loads a savestate from [`serialize`](Self::serialize). Fails with
-    /// [`Error::Savestate`] if the core refuses it.
+    /// Loads a savestate from [`serialize`](Self::serialize), settling as
+    /// [`load`](Self::load) describes. Fails with [`Error::Savestate`] if the core refuses
+    /// it.
     pub fn unserialize(&mut self, state: &[u8]) -> Result<()> {
-        // SAFETY: `state` is readable for its length; `&mut self` makes this the only call
-        // into the core.
-        if !unsafe { (self.api.unserialize)(state.as_ptr().cast(), state.len()) } {
+        if !self.settle(state) {
             return Err(self.savestate_error("the core refused the state"));
         }
         self.clear_frame();
         Ok(())
+    }
+
+    /// Loads `state`, then, with `settle_frames`, runs that many neutral frames unseen and
+    /// loads it again. `false` if the core refused it.
+    fn settle(&mut self, state: &[u8]) -> bool {
+        if !self.load_raw(state) {
+            return false;
+        }
+        if self.settle_frames == 0 {
+            return true;
+        }
+        let (buttons, audio_frames, audio_len) = {
+            let mut host = host::host();
+            let kept = (
+                host.buttons,
+                host.audio_frames,
+                host.audio.as_ref().map(Vec::len),
+            );
+            host.buttons = 0;
+            kept
+        };
+        for _ in 0..self.settle_frames {
+            // SAFETY: as in `run_frames`.
+            unsafe { (self.api.run)() };
+        }
+        {
+            let mut host = host::host();
+            host.buttons = buttons;
+            host.audio_frames = audio_frames;
+            if let (Some(audio), Some(len)) = (&mut host.audio, audio_len) {
+                audio.truncate(len);
+            }
+        }
+        self.load_raw(state)
+    }
+
+    /// `retro_unserialize`.
+    fn load_raw(&mut self, state: &[u8]) -> bool {
+        // SAFETY: `state` is readable for its length; `&mut self` makes this the only call
+        // into the core.
+        unsafe { (self.api.unserialize)(state.as_ptr().cast(), state.len()) }
     }
 
     fn savestate_error(&self, reason: &str) -> Error {

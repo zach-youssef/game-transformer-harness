@@ -4,6 +4,7 @@
 # the content and the stand-in BIOS files, whose hashes are below.
 
 core = "gth_testcore"
+settle_frames = 1         # what gth_testcore_lag (below) needs
 orientation = 90          # turned like a vertical game
 crop = [0, 0, 320, 232]   # drops the bottom 8 rows
 
@@ -74,3 +75,4 @@ terminate = "score >= 20 && prng != 0"
 
 [core_options]
 gth_testcore_step = "4"
+gth_testcore_lag = "on"   # the first frame after a load depends on the past, like FBNeo

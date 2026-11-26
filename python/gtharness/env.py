@@ -154,6 +154,7 @@ class RetroEnv(gym.Env[Observation, Action]):
                 content_path,
                 system_dir,
                 config.core_options,
+                config.settle_frames,
                 height,
                 width,
                 config.crop,

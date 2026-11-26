@@ -58,6 +58,7 @@ fn load() -> Core {
         None,
         &std::env::temp_dir(),
         &game().core_options,
+        game().settle_frames,
     )
     .unwrap()
 }

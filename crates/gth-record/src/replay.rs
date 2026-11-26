@@ -27,6 +27,17 @@ fn read(path: &Path) -> Result<Vec<u8>> {
     std::fs::read(path).map_err(io_error(path))
 }
 
+/// A stored `game.toml` from format `version` as today's gth-config reads it. Version 1
+/// predates `settle_frames`: its recordings were made loading states as they are, which is
+/// `settle_frames = 0` (a top-level key, so it goes before the first table).
+fn migrate_game_toml(version: u32, text: String) -> String {
+    if version == 1 {
+        format!("settle_frames = 0\n{text}")
+    } else {
+        text
+    }
+}
+
 fn decompress(path: &Path) -> Result<Vec<u8>> {
     zstd::decode_all(read(path)?.as_slice())
         .map_err(|error| format_error(path, format!("cannot decompress: {error}")))
@@ -52,7 +63,10 @@ impl Recording {
         if sha1_hex(game_toml.as_bytes()) != meta.game_config_sha1 {
             return Err(bad("game.toml doesn't have the SHA-1 in meta.toml".into()));
         }
-        let game = GameConfig::parse(&game_toml, &dir.join("game.toml").display().to_string())?;
+        let game = GameConfig::parse(
+            &migrate_game_toml(meta.format_version, game_toml),
+            &dir.join("game.toml").display().to_string(),
+        )?;
 
         let start_state = decompress(&dir.join("start.state"))?;
         if start_state.len() as u64 != meta.start.size || sha1_hex(&start_state) != meta.start.sha1
@@ -160,13 +174,15 @@ impl Replayer {
             content_path,
             system_dir,
             &recording.game.core_options,
+            recording.game.settle_frames,
         )?;
         Replayer::new(recording, core)
     }
 
     /// Replays `recording` on `core`, which must have loaded the recording's game with its
     /// core options. Fails with [`Error::Mismatch`] if the core's name or version differ (a
-    /// replay only reproduces on the same core build), and with [`gth_core::Error::Ram`] if a
+    /// replay only reproduces on the same core build) or it settles after loads for another
+    /// number of frames than the game's `settle_frames`, and with [`gth_core::Error::Ram`] if a
     /// RAM variable isn't in the core's memory.
     pub fn new(recording: Recording, mut core: Core) -> Result<Replayer> {
         let info = core.system_info();
@@ -182,6 +198,16 @@ impl Replayer {
                     recorded.library_version,
                     info.library_name,
                     info.library_version
+                ),
+            });
+        }
+        if core.settle_frames() != recording.game.settle_frames {
+            return Err(Error::Mismatch {
+                path: recording.dir.clone(),
+                reason: format!(
+                    "the core settles for {} frames after loads, the game for {}",
+                    core.settle_frames(),
+                    recording.game.settle_frames
                 ),
             });
         }

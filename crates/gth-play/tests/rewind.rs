@@ -70,6 +70,7 @@ fn session(out: &Path, rewind_frames: u64, lives: bool) -> Session {
         None,
         &std::env::temp_dir(),
         &game.core_options,
+        game.settle_frames,
     )
     .unwrap();
     let settings = RecordSettings {
@@ -150,6 +151,7 @@ fn lives_at_ends(dir: &Path) -> (i64, i64) {
         None,
         &std::env::temp_dir(),
         &recording.game.core_options,
+        recording.game.settle_frames,
     )
     .unwrap();
     let mut replayer = Replayer::new(recording, core).unwrap();
@@ -232,6 +234,7 @@ fn a_lives_drop_rewinds_and_its_clip_replays_to_the_death() {
         None,
         &std::env::temp_dir(),
         &recording.game.core_options,
+        recording.game.settle_frames,
     )
     .unwrap();
     let mut replayer = Replayer::new(recording, core).unwrap();
@@ -245,6 +248,7 @@ fn a_lives_drop_rewinds_and_its_clip_replays_to_the_death() {
         None,
         &std::env::temp_dir(),
         &clip_recording.game.core_options,
+        clip_recording.game.settle_frames,
     )
     .unwrap();
     core.unserialize(&clip_recording.start_state).unwrap();
@@ -368,6 +372,41 @@ fn a_second_death_inside_the_window_rewinds_past_the_first_branch() {
     assert_eq!(lives_at_ends(&clip2), (2, 1));
 }
 
+/// A death one frame past the rewind window branches at frame 1, which only the start
+/// savestate precedes by less than 1 + settle_frames: that savestate serves it, as the
+/// recording began from the same settled load.
+#[test]
+fn a_death_just_past_the_window_rewinds_to_frame_one_from_the_start_state() {
+    let _serial = serial();
+    let out = TempDir::new();
+    let rewind = 45;
+    let mut session = session(&out.0, rewind, true);
+    session.toggle_recording().unwrap();
+    let main = recording_dir(&session);
+    let mut masks: Vec<u16> = vec![SELECT, SELECT];
+    masks.extend((2..rewind).map(|f| mask(f, 13)));
+    masks.push(L);
+    let events = play(&mut session, masks);
+    let (from, to, cause, clip) = rewound(&events[0]);
+    assert_eq!(
+        (events.len(), from, to, cause),
+        (1, rewind + 1, 1, RewindCause::Lives)
+    );
+    assert_eq!(session.recording().unwrap().1, 1);
+    session.toggle_pause();
+    play(&mut session, (1..60).map(|f| mask(f, 14)));
+    session.close().unwrap();
+    drop(session);
+    assert_eq!(verify(&main), 60);
+    assert_eq!(verify(&clip), rewind);
+    assert_eq!(
+        Recording::open(&clip).unwrap().meta.branch.unwrap().frame,
+        1
+    );
+    // From frame 1, after the first Select: the second adds a life, L takes it.
+    assert_eq!(lives_at_ends(&clip), (1, 1));
+}
+
 #[test]
 fn rewinds_stop_at_the_oldest_savestate_in_the_ring() {
     let _serial = serial();
@@ -393,9 +432,9 @@ fn rewinds_stop_at_the_oldest_savestate_in_the_ring() {
             (260, 220),
             (220, 180),
             (180, 140),
-            (140, oldest + 1)
+            (140, oldest + 2)
         ],
-        "one frame past the oldest savestate, so the frame there is drawn"
+        "1 + settle_frames past the oldest savestate, so the frame there is the recording's"
     );
     session.toggle_pause();
     play(&mut session, (0..30).map(|f| mask(f, 11)));
@@ -403,12 +442,12 @@ fn rewinds_stop_at_the_oldest_savestate_in_the_ring() {
     drop(session);
     let recording = Recording::open(&main).unwrap();
     assert_eq!(recording.meta.rewind.len(), 1);
-    assert_eq!(recording.meta.rewind[0].frame, oldest + 1);
-    assert_eq!(verify(&main), oldest + 1 + 30);
+    assert_eq!(recording.meta.rewind[0].frame, oldest + 2);
+    assert_eq!(verify(&main), oldest + 2 + 30);
 }
 
 /// Finishing right after a rewind checks the frame shown at the branch, which the core
-/// must have drawn, not a cleared picture from a loaded savestate: 121 isn't a multiple of
+/// must have drawn, not a cleared picture from a loaded savestate: 122 isn't a multiple of
 /// 7, so the final check holds the picture's hash.
 #[test]
 fn a_recording_finished_at_the_oldest_reachable_frame_verifies() {
@@ -419,10 +458,11 @@ fn a_recording_finished_at_the_oldest_reachable_frame_verifies() {
     let main = recording_dir(&session);
     play(&mut session, (0..300).map(|f| mask(f, 12)));
     while session.rewind().is_ok() {}
-    assert_eq!(session.recording().unwrap().1, 121);
+    // The oldest savestate is at 120, and a seek replays 1 + settle_frames (1) after it.
+    assert_eq!(session.recording().unwrap().1, 122);
     session.close().unwrap();
     drop(session);
-    assert_eq!(verify(&main), 121);
+    assert_eq!(verify(&main), 122);
 }
 
 /// A clip that can't be made leaves play where it was: the death frame's picture redrawn,

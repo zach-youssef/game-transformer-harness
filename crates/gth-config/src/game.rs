@@ -13,6 +13,10 @@ use crate::{Condition, RamVar, Result, invalid};
 pub struct GameConfig {
     /// The core's name in `cores.lock`.
     pub core: String,
+    /// Neutral frames the core runs after each savestate load, before loading it again, so the
+    /// first frame after the load doesn't depend on what the process ran before it: 1 for
+    /// FBNeo drivers that draw with state computed after the previous frame (docs/games.md).
+    pub settle_frames: u32,
     /// How far to turn the core's frame clockwise: 90 or 270 for vertical (tate) games.
     pub orientation: Orientation,
     /// The part of the core's frame to keep, before rotation; `None` keeps all of it.
@@ -498,6 +502,7 @@ pub(crate) mod tests {
         format!(
             r#"
 core = "gth_testcore"
+settle_frames = 1
 orientation = 90
 crop = [0, 8, 320, 232]
 
@@ -547,6 +552,7 @@ gth_testcore_step = "4"
     fn parses_every_field_and_round_trips() {
         let config = GameConfig::parse(&full(), "full").unwrap();
         assert_eq!(config.orientation, Orientation::Deg90);
+        assert_eq!(config.settle_frames, 1);
         assert_eq!(config.crop.unwrap().height, 232);
         assert_eq!(config.content.hashes.as_ref().unwrap().size, 21);
         assert_eq!(config.bios[0].hashes, None);
@@ -649,6 +655,7 @@ gth_testcore_step = "4"
     fn validation_errors_name_the_problem() {
         let cases = [
             ("orientation = 90", "orientation = 180", "0, 90 or 270"),
+            ("settle_frames = 1\n", "", "missing field `settle_frames`"),
             (
                 "crop = [0, 8, 320, 232]",
                 "crop = [0, 8, 0, 232]",

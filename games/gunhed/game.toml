@@ -3,6 +3,7 @@
 # from the file). Where the buttons, reset and RAM variables come from: README.md here.
 
 core = "mednafen_pce_fast"
+settle_frames = 0
 orientation = 0
 
 [content]

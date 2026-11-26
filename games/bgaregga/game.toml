@@ -6,6 +6,7 @@
 # content, until G4 sets the orientation, buttons, reset and RAM variables.
 
 core = "fbneo"
+settle_frames = 1         # Toaplan GP9001 driver: verified (docs/games.md)
 orientation = 0           # stub until G4
 
 [content]

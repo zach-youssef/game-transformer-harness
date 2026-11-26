@@ -25,6 +25,14 @@ fn load(content: Option<&Path>) -> Core {
 }
 
 fn load_with(content: Option<&Path>, options: &[(&str, &str)]) -> gth_core::Result<Core> {
+    load_settled(content, options, 0)
+}
+
+fn load_settled(
+    content: Option<&Path>,
+    options: &[(&str, &str)],
+    settle_frames: u32,
+) -> gth_core::Result<Core> {
     let options = (options.iter())
         .map(|&(k, v)| (k.to_owned(), v.to_owned()))
         .collect();
@@ -33,6 +41,7 @@ fn load_with(content: Option<&Path>, options: &[(&str, &str)]) -> gth_core::Resu
         content,
         &std::env::temp_dir(),
         &options,
+        settle_frames,
     )
 }
 
@@ -216,6 +225,61 @@ fn reset_returns_to_the_loaded_state() {
     assert!(first == (frame_hash(&core), ram(&mut core)));
 }
 
+/// The background's red: with the lag option, the previous frame's number (docs/libretro.md).
+fn red(core: &Core) -> u32 {
+    pixels(core)[0] >> 16 & 0xFF
+}
+
+/// Settle frames run unseen: after every load (at `Core::load`, on `reset` and on
+/// `unserialize`) the next frame's red is the settle frame's number, whatever ran before,
+/// and the settle frames add nothing to `frames_run`, `audio_frames` or captured audio.
+#[test]
+fn settle_frames_run_unseen_after_every_load() {
+    let _serial = serial();
+    let mut core = load_settled(None, &[("gth_testcore_lag", "on")], 1).unwrap();
+    assert_eq!(
+        (core.frames_run(), core.audio_frames()),
+        (0, 0),
+        "load settled"
+    );
+    core.run_frames(1, 0);
+    assert_eq!(
+        red(&core),
+        1,
+        "settled at load: unsettled, no frame ran before it (0)"
+    );
+    core.run_frames(5, 0);
+    core.reset();
+    core.run_frames(1, 0);
+    assert_eq!(
+        red(&core),
+        1,
+        "settled on reset: unsettled, the previous frame's 6"
+    );
+    core.set_audio_capture(true);
+    core.run_frames(9, 0);
+    let state = core.serialize().unwrap();
+    core.take_audio(&mut Vec::new());
+    core.run_frames(20, 0);
+    let counters = (core.frames_run(), core.audio_frames());
+    assert_eq!(counters, (36, 36 * 800));
+    core.unserialize(&state).unwrap();
+    assert_eq!((core.frames_run(), core.audio_frames()), counters);
+    let mut audio = Vec::new();
+    core.take_audio(&mut audio);
+    assert_eq!(
+        audio.len(),
+        20 * 2 * 800,
+        "the settle frame's audio is dropped"
+    );
+    core.run_frames(1, 0);
+    assert_eq!(
+        red(&core),
+        11,
+        "settled: unsettled, the previous frame's 30"
+    );
+}
+
 #[test]
 fn reset_restores_the_load_snapshot() {
     let _serial = serial();
@@ -276,6 +340,7 @@ fn one_core_per_process() {
         None,
         Path::new("."),
         &BTreeMap::new(),
+        0,
     )
     .err()
     .expect("second load fails");
@@ -302,6 +367,7 @@ fn load_failures_release_the_claim() {
         None,
         Path::new("."),
         &BTreeMap::new(),
+        0,
     );
     assert!(matches!(missing, Err(Error::CoreLoad { .. })));
     let content = Path::new("no/such/content.gthc");
@@ -310,6 +376,7 @@ fn load_failures_release_the_claim() {
         Some(content),
         Path::new("."),
         &BTreeMap::new(),
+        0,
     )
     .err()
     .expect("missing content fails");
@@ -360,6 +427,7 @@ fn reads_ram_variables_from_memory_and_the_map() {
     let config = gth_config::GameConfig::parse(
         r#"
 core = "gth_testcore"
+settle_frames = 0
 orientation = 0
 content = { file = "x.gthc", size = 0, sha1 = "0000000000000000000000000000000000000000", crc32 = "00000000" }
 buttons = { a = "shot" }

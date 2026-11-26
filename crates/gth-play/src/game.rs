@@ -110,8 +110,14 @@ pub fn load(game_id: &str, paths: &GamePaths) -> Result<Loaded, String> {
         .core
         .clone()
         .unwrap_or_else(|| core_library(&paths.data_dir, &game.core));
-    let core = Core::load(&core_path, Some(&content), &system_dir, &game.core_options)
-        .map_err(|e| format!("{game_id}: cannot load {}: {e}", core_path.display()))?;
+    let core = Core::load(
+        &core_path,
+        Some(&content),
+        &system_dir,
+        &game.core_options,
+        game.settle_frames,
+    )
+    .map_err(|e| format!("{game_id}: cannot load {}: {e}", core_path.display()))?;
     Ok(Loaded {
         core,
         game,

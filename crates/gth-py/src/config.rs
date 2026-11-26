@@ -47,6 +47,12 @@ impl GameConfig {
         &self.config.core
     }
 
+    /// Neutral frames the core runs after each savestate load (docs/games.md).
+    #[getter]
+    fn settle_frames(&self) -> u32 {
+        self.config.settle_frames
+    }
+
     /// Clockwise degrees to turn the frame: 0, 90 or 270.
     #[getter]
     fn orientation(&self) -> u32 {

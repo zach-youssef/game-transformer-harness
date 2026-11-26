@@ -116,9 +116,11 @@ examples. No bomb is used for you: bomb after a rewind yourself if it makes sens
   recording's inputs and checks back to B and goes on from the state at B, so it replays from
   its start state as one deterministic run (`--verify` checks it like any other) and lists
   the rewind in `[[rewind]]` (docs/recording-format.md). B stops at the recording's start,
-  and one frame after the oldest savestate the ring buffer (below) holds: a loaded savestate
-  has no picture until a frame runs, so landing on one would make the check at B (finishing
-  right after a rewind) hash a blank frame the replay doesn't show.
+  and 1 + `settle_frames` (docs/games.md) frames after the oldest savestate the ring buffer
+  (below) holds: a loaded savestate has no picture until a frame runs, so landing on one
+  would make the check at B (finishing right after a rewind) hash a blank frame the replay
+  doesn't show, and the first frame after a settled load shows what settling ran rather than
+  the recording's picture.
 - **Every rewind keeps a clip**: frames B to D as their own recording,
   `<recording>-rewind-<nnn>.gthrec` beside it, from the state at B, ending on the frame where
   `lives` dropped. Its `[branch]` names the recording it came from, B, and the cause (`lives`
@@ -126,7 +128,9 @@ examples. No bomb is used for you: bomb after a rewind yourself if it makes sens
   clips stay, and the first's B is on the timeline the second rewind replaced.
 - **Ring buffer**: a savestate every `SNAPSHOT_EVERY` = 30 frames while recording (and one
   at its start), keeping `RING_REWINDS` = 4 rewinds' worth (with 3 s, 25 savestates). A
-  rewind loads the latest savestate before B and replays the logged inputs forward to B, then
+  rewind loads the latest savestate at least 1 + `settle_frames` frames before B (or the
+  start savestate, which serves any B: the recording began from that same settled load) and
+  replays the logged inputs forward to B, then
   records the clip from there to D, then seeks to B again. Measured on Gunhed
   (mednafen_pce_fast, release, M-series Mac): a savestate is 80.6 KB and takes 0.009 ms to
   take and 0.07 ms to load, and a frame runs in 0.15-0.17 ms (about 6000 fps), so the ring
@@ -279,8 +283,10 @@ rest. minifb would need cpal and gilrs anyway and lacks monitor and DPI queries.
   (docs/libretro.md): an automatic rewind on a drop, with the spliced recording's inputs,
   `[[rewind]]` and replay checked and the clip replaying from the recording's state at the
   branch to the death; the hotkey on a game without `lives` and `gth-play --verify` on the
-  result; a rewind stopping at the recording's start; a second death inside the window;
-  rewinds stopping just after the ring's oldest savestate, and a recording finished there at
+  result; a rewind stopping at the recording's start; a death one frame past the window,
+  branching at frame 1 from the start savestate; a second death inside the window;
+  rewinds stopping 1 + `settle_frames` frames after the ring's oldest savestate (the testcore
+  game settles, with the test core's lag option on), and a recording finished there at
   once; and a failed clip that warns and leaves play to go on. All recordings, clips
   included, replay without desync. No ROM test: ROM tests are Python (docs/testing.md) and the session isn't
   bound to Python; a Gunhed death was rewound and verified by hand (the measurements above).
