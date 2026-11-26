@@ -11,6 +11,9 @@ library_version = "v1.0.0.03 261110 GIT0630faa"
 "0003-msm6295-scan-render-position.patch" = "6c39a66692b9b99b7bfdb77d4fbbd0a233ec12bc04a46ad80b16f3a648d22326"
 
 [cores.fbneo.artifacts]
+aarch64-apple-darwin = "abcc6be22ff8f07408edd520cb1b3f8e94f4028d138588afd50ee23c07b2c813"
+x86_64-pc-windows-msvc = "7630fa78ebe3efbd0e43d725ddc0289e6f4e4ba1f6fc4af0b6255499714627d7"
+x86_64-unknown-linux-gnu = "cd59d9b7c35e2a047c451f6fc2b7f9f91d873d941a6f87c6c8a8c29d3c29020c"
 
 [cores.fceumm]
 repo = "https://github.com/libretro/libretro-fceumm"
@@ -19,7 +22,7 @@ library_version = "(SVN) e0f3086"
 
 [cores.fceumm.artifacts]
 aarch64-apple-darwin = "ba23d4c3ca9e4127f88de83012e80728dad712463961c54f6f538c3dcdb7cab5"
-x86_64-pc-windows-msvc = "40b137ecce1952adcc6372a227ffbba03e9c7dc7782ceaf9cb437ca75a61c13e"
+x86_64-pc-windows-msvc = "7b1482f83533851c843d0f5e6e0bef42a68dccc34e4e036633d51748e70d3c61"
 x86_64-unknown-linux-gnu = "76987d364b3cae02b1b32afdb3a1698905e4835ad88635a15c0e2c97dd49e057"
 
 [cores.genesis_plus_gx]
@@ -29,7 +32,7 @@ library_version = "v1.7.4 b9c2316"
 
 [cores.genesis_plus_gx.artifacts]
 aarch64-apple-darwin = "06388d4f36371c1891bae46fb31e5da3b5f0a8c4cf7329408a6d6e5304b64f37"
-x86_64-pc-windows-msvc = "eda47005d0aba39c8f38632df098a09b493e7754aab35b7ee44c7488dac5f664"
+x86_64-pc-windows-msvc = "067aa1028b768a5ac4faea1a97ade37ed066d90ff6d6df67549762b07e5cdda5"
 x86_64-unknown-linux-gnu = "61a2d10f0106ebbc4bda0ed083ccfcc8c13b92155e6238060ef6a921f817e017"
 
 [cores.mednafen_pce_fast]
@@ -39,5 +42,5 @@ library_version = "v1.31.0.0 2de1ce1"
 
 [cores.mednafen_pce_fast.artifacts]
 aarch64-apple-darwin = "5a704965a6340fe6658f1ffe99e2df937dd5f8a363aa18113f061260ab6829d3"
-x86_64-pc-windows-msvc = "903af9b2bdd0aba7f862e8c0aab974cab6199d2412d4a3e3cb2ddab3004a07c4"
+x86_64-pc-windows-msvc = "efec0609ba94967d841073ecde57351455a4b3e1d7b4f602e7dd6d2f307463e2"
 x86_64-unknown-linux-gnu = "a73ea44a4595ce6d25750768a7fe7e31a10ce58420583a27cb5aac83991e8b23"
