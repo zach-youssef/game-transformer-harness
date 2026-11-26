@@ -24,6 +24,10 @@ name = "gth-frame"
 version = "0.1.0"
 
 [[package]]
+name = "gth-libretro-sys"
+version = "0.1.0"
+
+[[package]]
 name = "gth-py"
 version = "0.1.0"
 dependencies = [

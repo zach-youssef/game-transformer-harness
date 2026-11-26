@@ -13,6 +13,7 @@ emulated frame is Rust; Python is called once per agent step and only orchestrat
 | `gth-record` | The recording format: replay log (start state and per-frame inputs), desync checkpoints, training-shard export. | Frame storage (frames are re-rendered from the replay) |
 | `gth-config` | Config types (serde + TOML): `game.toml`, `cores.lock`, the action space, RAM variables. | Emulation and frame data |
 | `gth-py` | The PyO3 extension module `gtharness._native`: glue that converts types and errors. | Logic: it goes in the crate it belongs to |
+| `gth-libretro-sys` | The FFI subset of `libretro.h` we use, hand-written (docs/libretro.md). | Logic, safe wrappers (those are `gth-core`'s) |
 | `gth-testcore` | A tiny deterministic libretro core (a `cdylib`) that tests and CI load instead of real cores and ROMs. | Dependencies on the host crates (it may use `gth-libretro-sys`) |
 
 The Python package `gtharness` (in `python/gtharness/`) holds the environment API, the CLI and
@@ -20,7 +21,6 @@ the glue to policies and trainers.
 
 Planned crates, added by the task that first needs them:
 
-- `gth-libretro-sys`: the FFI subset of `libretro.h` we use (stack PR S3).
 - `gth-play`: the human-play binary (window, audio, gamepad). Its windowing dependencies stay
   out of the workspace until then (P6).
 
