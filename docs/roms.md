@@ -26,7 +26,31 @@ Each machine keeps its ROMs in one directory outside the repo:
 
 The harness finds that directory through the `GTH_ROM_DIR` environment variable or `rom_dir` in
 the user config file, never through a hard-coded path, and identifies files by SHA-1 rather
-than by name. (Not implemented yet: ROM lookup lands with the game config, stack PR S5.)
+than by name.
+
+## Finding files
+
+`gth_config::rom_dir()` returns the ROM directory:
+
+1. `GTH_ROM_DIR`, if set and not empty;
+2. else `rom_dir` in the user config file, a TOML file whose only key is `rom_dir` (a
+   relative path is relative to the file). The file is `GTH_CONFIG` if set, else
+   `%APPDATA%\gtharness\config.toml` on Windows and
+   `$XDG_CONFIG_HOME/gtharness/config.toml` (default `~/.config/...`) elsewhere;
+3. else none: tests that need a ROM skip.
+
+`gth_config::find_file(rom_dir, spec)` finds a game's `content` (docs/games.md) under the ROM
+directory and its subdirectories: the file named `spec.file` if its size and SHA-1 match,
+else any file with that size and SHA-1, so renamed dumps are found. Only files of the right
+size are hashed. An archive described by `members` is found by name; its members are
+audited by hash in P2. Symlinked directories aren't followed.
+
+The content's `parents` (an arcade clone's parent set) must be in the directory where the
+content was found, where the core looks for them: `GameConfig::missing_parents` checks them
+there by name, and by size and SHA-1 when given. `GameConfig::missing_bios` checks each BIOS
+at its path under the system directory (`fbneo/pgm.zip` is `system/fbneo/pgm.zip`).
+`GameConfig::find_content` puts these together: for content `in_parent` (a clone in a
+merged set) it finds the first parent instead and returns the clone's path beside it.
 
 Inside a checkout, the git-ignored `data/` directory holds local copies when a layout is needed,
 for example for arcade sets that a core loads by set name:
