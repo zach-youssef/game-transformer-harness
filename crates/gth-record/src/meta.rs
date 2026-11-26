@@ -46,6 +46,60 @@ pub struct Meta {
     pub start: StartMeta,
     /// The harness build: `_native.build_info()` (version, git commit, target, rustc).
     pub harness: BTreeMap<String, String>,
+    /// A side recording branched off another (a death clip from gth-play's rewind): where
+    /// it starts in its parent and why. `None` for a recording made from its own start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<BranchMeta>,
+    /// The rewinds spliced into this recording, in the order they happened: each truncated
+    /// the recording to its `frame` and play went on from there. Only rewinds still on the
+    /// recording's timeline are kept (a later rewind to an earlier frame drops them).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rewind: Vec<RewindMeta>,
+}
+
+/// Why gth-play rewound.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RewindCause {
+    /// The game's `lives` RAM variable dropped: a death, rewound automatically.
+    Lives,
+    /// The player pressed the rewind hotkey.
+    Manual,
+}
+
+impl RewindCause {
+    /// The name in `meta.toml`.
+    pub fn name(self) -> &'static str {
+        match self {
+            RewindCause::Lives => "lives",
+            RewindCause::Manual => "manual",
+        }
+    }
+}
+
+/// `[branch]`: a side recording's place in the recording it branched from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BranchMeta {
+    /// The parent recording's directory name (`<id>.gthrec`), beside this one.
+    pub parent: String,
+    /// The parent's frames before this recording's start state: its start state is the
+    /// parent's state after `frame` frames, on the parent's timeline when the branch was made
+    /// (a later rewind of the parent to an earlier frame replaces that timeline).
+    pub frame: u64,
+    pub cause: RewindCause,
+}
+
+/// One `[[rewind]]`: the recording was truncated to `frame` frames and went on from there.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RewindMeta {
+    /// The frames kept: the frames after it were replaced.
+    pub frame: u64,
+    pub cause: RewindCause,
+    /// The side recording holding the replaced frames (`<id>.gthrec`, beside this one), whose
+    /// `[branch]` points back here.
+    pub clip: String,
 }
 
 /// Who or what produced the inputs.
@@ -165,5 +219,67 @@ mod tests {
             assert_eq!(RecorderKind::from_name(kind.name()), Some(kind));
         }
         assert_eq!(RecorderKind::from_name("Human"), None);
+    }
+
+    #[test]
+    fn branch_and_rewinds_round_trip_and_are_optional() {
+        let mut meta = Meta {
+            format_version: FORMAT_VERSION,
+            game_id: "gunhed".into(),
+            game_config_sha1: "0".repeat(40),
+            recorder: RecorderKind::Human,
+            player: "test".into(),
+            license: "CC0-1.0".into(),
+            created_unix: 0,
+            fps: 60.0,
+            frames: 10,
+            steps: 10,
+            checks_every: 60,
+            core: CoreMeta {
+                name: "gth_testcore".into(),
+                library_name: "gth-testcore".into(),
+                library_version: "0".into(),
+                lock: None,
+            },
+            content: None,
+            start: StartMeta {
+                sha1: "0".repeat(40),
+                size: 1,
+            },
+            harness: BTreeMap::new(),
+            branch: None,
+            rewind: Vec::new(),
+        };
+        let plain = meta.to_toml();
+        assert!(
+            !plain.contains("branch") && !plain.contains("rewind"),
+            "{plain}"
+        );
+        assert_eq!(Meta::parse(&plain, Path::new("m")).unwrap(), meta);
+
+        meta.branch = Some(BranchMeta {
+            parent: "gunhed-main.gthrec".into(),
+            frame: 120,
+            cause: RewindCause::Lives,
+        });
+        meta.rewind = vec![
+            RewindMeta {
+                frame: 5,
+                cause: RewindCause::Manual,
+                clip: "a.gthrec".into(),
+            },
+            RewindMeta {
+                frame: 7,
+                cause: RewindCause::Lives,
+                clip: "b.gthrec".into(),
+            },
+        ];
+        let text = meta.to_toml();
+        assert!(
+            text.contains("[branch]") && text.contains("[[rewind]]"),
+            "{text}"
+        );
+        assert!(text.contains("cause = \"lives\""), "{text}");
+        assert_eq!(Meta::parse(&text, Path::new("m")).unwrap(), meta);
     }
 }

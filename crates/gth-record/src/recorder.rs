@@ -11,7 +11,9 @@ use gth_config::{CoreLock, GameConfig, RamVar};
 use gth_core::Core;
 
 use crate::format::{Check, INPUTS_MAGIC, Input};
-use crate::meta::{ContentMeta, CoreMeta, FORMAT_VERSION, Meta, RecorderKind, StartMeta};
+use crate::meta::{
+    BranchMeta, ContentMeta, CoreMeta, FORMAT_VERSION, Meta, RecorderKind, RewindMeta, StartMeta,
+};
 use crate::{Error, Result, content_identity, io_error, sha1_hex};
 
 /// zstd level for every file: small enough output for tiny inputs, fast enough to compress a
@@ -46,15 +48,21 @@ type Encoder = zstd::Encoder<'static, BufWriter<File>>;
 /// The recorder doesn't own the core, so the caller must not run it other than through
 /// [`run`](Self::run) (nor load a state) until it has finished.
 ///
-/// Any error in [`run`](Self::run) is terminal: the core may have run a frame the recording
-/// doesn't hold, so later calls fail with [`Error::Failed`] and the directory stays
-/// incomplete.
+/// Any error in [`run`](Self::run) or [`rewind`](Self::rewind) is terminal: the core may
+/// have run a frame the recording doesn't hold, so later calls fail with [`Error::Failed`]
+/// and the directory stays incomplete.
+///
+/// The inputs and checks are also kept in memory (3 bytes a frame, and a check every
+/// `checks_every` frames), for [`inputs`](Self::inputs) and to rewrite the files on a
+/// rewind.
 pub struct Recorder {
     dir: PathBuf,
     meta: Meta,
     ram: BTreeMap<String, RamVar>,
-    inputs: Encoder,
-    checks: Encoder,
+    /// `inputs.bin` and `checks.bin`; `None` only while a rewind reopens them.
+    files: Option<Files>,
+    inputs: Vec<Input>,
+    checks: Vec<Check>,
     /// Scratch for one encoded check.
     check: Vec<u8>,
     /// A write failed: refuse to go on (see the type's docs).
@@ -67,6 +75,29 @@ pub struct Recorder {
 fn encoder(path: &Path) -> Result<Encoder> {
     let file = File::create(path).map_err(io_error(path))?;
     zstd::Encoder::new(BufWriter::new(file), ZSTD_LEVEL).map_err(io_error(path))
+}
+
+const NO_FILES: &str = "only a failed rewind leaves no files, and it fails the recorder";
+
+/// The two streamed files of a recording being written.
+struct Files {
+    inputs: Encoder,
+    checks: Encoder,
+}
+
+impl Files {
+    /// Creates (or empties) `inputs.bin` and `checks.bin` in `dir` and writes their headers.
+    fn create(dir: &Path, ram_vars: usize) -> Result<Files> {
+        let path = dir.join("inputs.bin");
+        let mut inputs = encoder(&path)?;
+        inputs.write_all(INPUTS_MAGIC).map_err(io_error(&path))?;
+        let path = dir.join("checks.bin");
+        let mut checks = encoder(&path)?;
+        checks
+            .write_all(&Check::header(ram_vars))
+            .map_err(io_error(&path))?;
+        Ok(Files { inputs, checks })
+    }
 }
 
 impl Recorder {
@@ -120,14 +151,7 @@ impl Recorder {
         let compressed = zstd::encode_all(state.as_slice(), ZSTD_LEVEL).map_err(io_error(&path))?;
         std::fs::write(&path, compressed).map_err(io_error(&path))?;
 
-        let mut inputs = encoder(&dir.join("inputs.bin"))?;
-        inputs
-            .write_all(INPUTS_MAGIC)
-            .map_err(io_error(&dir.join("inputs.bin")))?;
-        let mut checks = encoder(&dir.join("checks.bin"))?;
-        checks
-            .write_all(&Check::header(game.ram.len()))
-            .map_err(io_error(&dir.join("checks.bin")))?;
+        let files = Files::create(dir, game.ram.len())?;
 
         let system = core.system_info();
         let meta = Meta {
@@ -158,13 +182,16 @@ impl Recorder {
                 size: state.len() as u64,
             },
             harness: info.harness,
+            branch: None,
+            rewind: Vec::new(),
         };
         Ok(Recorder {
             dir: dir.to_owned(),
             meta,
             ram: game.ram.clone(),
-            inputs,
-            checks,
+            files: Some(files),
+            inputs: Vec::new(),
+            checks: Vec::new(),
             check: Vec::new(),
             failed: false,
             #[cfg(test)]
@@ -180,6 +207,88 @@ impl Recorder {
     /// Frames recorded so far.
     pub fn frames(&self) -> u64 {
         self.meta.frames
+    }
+
+    /// The inputs recorded so far, frame by frame.
+    pub fn inputs(&self) -> &[Input] {
+        &self.inputs
+    }
+
+    /// The rewinds spliced in so far (`[[rewind]]` in `meta.toml`).
+    pub fn rewinds(&self) -> &[RewindMeta] {
+        &self.meta.rewind
+    }
+
+    /// Labels the recording as a side recording branched off another (`[branch]` in
+    /// `meta.toml`, docs/recording-format.md).
+    pub fn set_branch(&mut self, branch: BranchMeta) {
+        self.meta.branch = Some(branch);
+    }
+
+    /// Truncates the recording to its first `rewind.frame` frames (and their checks) and
+    /// records the rewind (`[[rewind]]`), dropping earlier rewinds to later frames, which
+    /// are no longer on its timeline. The caller must already have put the core in the state
+    /// after those frames, as running them from the start state would: the recording goes on
+    /// from there and must replay as one run.
+    ///
+    /// Fails with [`Error::Mismatch`], changing nothing, if the recording has fewer frames or
+    /// the frame isn't the end of an agent step. A failed rewrite of the files is terminal,
+    /// as in [`run`](Self::run).
+    pub fn rewind(&mut self, rewind: RewindMeta) -> Result<()> {
+        self.check_not_failed()?;
+        let frames = rewind.frame;
+        let mid_step = frames
+            .checked_sub(1)
+            .and_then(|last| self.inputs.get(last as usize))
+            .is_some_and(|input| !input.step_end);
+        if frames > self.meta.frames || mid_step {
+            return Err(Error::Mismatch {
+                path: self.dir.clone(),
+                reason: format!(
+                    "cannot rewind to frame {frames} of {}: past the end or inside a step",
+                    self.meta.frames
+                ),
+            });
+        }
+        self.inputs.truncate(frames as usize);
+        self.checks.retain(|check| check.frame <= frames);
+        self.meta.frames = frames;
+        self.meta.steps = self.inputs.iter().filter(|input| input.step_end).count() as u64;
+        self.meta.rewind.retain(|earlier| earlier.frame <= frames);
+        self.meta.rewind.push(rewind);
+        let result = self.rewrite();
+        self.failed = result.is_err();
+        result
+    }
+
+    /// Rewrites `inputs.bin` and `checks.bin` from the in-memory logs.
+    fn rewrite(&mut self) -> Result<()> {
+        // Drop the old encoders before the files are recreated: their buffers flush into
+        // the files on drop, which must happen before the truncation, not after it.
+        drop(self.files.take());
+        let mut files = Files::create(&self.dir, self.ram.len())?;
+        let path = self.dir.join("inputs.bin");
+        for input in &self.inputs {
+            files
+                .inputs
+                .write_all(&input.encode())
+                .map_err(io_error(&path))?;
+        }
+        let path = self.dir.join("checks.bin");
+        for check in &self.checks {
+            self.check.clear();
+            check.encode(&mut self.check);
+            files
+                .checks
+                .write_all(&self.check)
+                .map_err(io_error(&path))?;
+        }
+        self.files = Some(files);
+        Ok(())
+    }
+
+    fn files(&mut self) -> &mut Files {
+        self.files.as_mut().expect(NO_FILES)
     }
 
     /// Runs one agent step: `frames` frames with `buttons` held, as
@@ -213,9 +322,11 @@ impl Recorder {
             if std::mem::take(&mut self.fail_next_write) {
                 return Err(io_error(&path)(std::io::Error::other("injected failure")));
             }
-            self.inputs
+            self.files()
+                .inputs
                 .write_all(&input.encode())
                 .map_err(io_error(&path))?;
+            self.inputs.push(input);
             self.meta.frames += 1;
             if self
                 .meta
@@ -232,11 +343,18 @@ impl Recorder {
     }
 
     fn write_check(&mut self, core: &mut Core) -> Result<()> {
+        let check = Check::take(core, self.meta.frames, &self.ram);
         self.check.clear();
-        Check::take(core, self.meta.frames, &self.ram).encode(&mut self.check);
-        self.checks
+        check.encode(&mut self.check);
+        let path = self.dir.join("checks.bin");
+        self.files
+            .as_mut()
+            .expect(NO_FILES)
+            .checks
             .write_all(&self.check)
-            .map_err(io_error(&self.dir.join("checks.bin")))
+            .map_err(io_error(&path))?;
+        self.checks.push(check);
+        Ok(())
     }
 
     /// Checks the state after the last frame (unless a periodic check just did), closes the
@@ -251,7 +369,8 @@ impl Recorder {
         {
             self.write_check(core)?;
         }
-        for (encoder, name) in [(self.inputs, "inputs.bin"), (self.checks, "checks.bin")] {
+        let files = self.files.take().expect(NO_FILES);
+        for (encoder, name) in [(files.inputs, "inputs.bin"), (files.checks, "checks.bin")] {
             let path = self.dir.join(name);
             let mut writer = encoder.finish().map_err(io_error(&path))?;
             writer.flush().map_err(io_error(&path))?;

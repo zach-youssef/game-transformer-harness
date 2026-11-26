@@ -42,6 +42,8 @@ and `start.state` against their SHA-1s in `meta.toml`, the frame and step counts
 | `[content]` | `file` and `sha1` of what identifies the content the core loaded: the content file, or for a clone `in_parent` (docs/games.md), whose path doesn't exist, the parent archive holding it. A replay refuses content with another SHA-1, no content when the recording has some, and content when it has none. Absent when the core loaded none. Not checked: an `in_parent` clone's own files (the archive's SHA-1 covers them, with every other set in it), the other `parents`, and BIOS files, whose hashes are in the stored `game.toml` for the ROM audit (P2). |
 | `[start]` | `sha1` and `size` of the uncompressed start state. |
 | `[harness]` | The harness build, `_native.build_info()`: version, git commit and dirty flag, target, profile, rustc. |
+| `[branch]` | Only in a side recording branched off another (gth-play's rewind clips, docs/human-play.md): `parent`, the parent recording's directory name (beside this one); `frame`, the parent's frames before this recording's start (its start state is the parent's state after them, on the parent's timeline when the branch was made); `cause`, `lives` (the game's `lives` variable dropped: a death) or `manual` (the rewind hotkey). |
+| `[[rewind]]` | One per rewind spliced into this recording that is still on its timeline, in order: `frame`, the frames kept (the frames after them were replaced by what was played after the rewind); `cause`, as in `[branch]`; `clip`, the side recording holding the replaced frames, whose `[branch]` points back here. A later rewind to an earlier frame drops the entries past it: their clips stay, labelled with a `frame` on a timeline the parent no longer holds. Absent when nothing was rewound. |
 
 The recorder, player, license and check interval are required wherever a recording is made
 (`RecordingInfo`, `gtharness.record.Record`), so none of them is ever a silent default.
@@ -88,6 +90,12 @@ unknown fields, so a change to the game.toml schema that old files no longer par
 `FORMAT_VERSION` and read old recordings through a migration. Adding an optional game.toml
 field isn't one. `meta.toml`'s `[core.lock]` is stored as a plain table for the same reason.
 
+`[branch]` and `[[rewind]]` didn't bump the version: they are optional, a recording without
+them reads exactly as before, and they don't change what any other file holds (a rewound
+recording is still one run from its start state, with every check in place). A build from
+before them refuses a recording that has them by name (`meta.toml` refuses unknown fields)
+rather than misreading it.
+
 ## Recording and replaying
 
 - `gth_record::Recorder::create(dir, core, game, content, info)` snapshots the core's state,
@@ -98,6 +106,13 @@ field isn't one. `meta.toml`'s `[core.lock]` is stored as a plain table for the 
   `meta.toml`. Any error in `run` is terminal: the core may have run a frame the recording
   doesn't hold, so later calls, `finish` included, fail with `Error::Failed` and the directory
   stays incomplete.
+- `Recorder::rewind(RewindMeta { frame, cause, clip })` truncates the recording to its first
+  `frame` frames (the end of a step) and their checks, rewrites `inputs.bin` and
+  `checks.bin` from the copy it keeps in memory (3 bytes a frame), and appends the
+  `[[rewind]]` entry. The caller has already put the core in the state after those frames
+  (gth-play loads a ring-buffer savestate and replays the log forward), so the recording goes
+  on as one run. `set_branch(BranchMeta)` labels a side recording; `inputs()` is the log so
+  far.
 - `RetroEnv(record=Record(...))` records every episode, from the end of its reset's script or
   state load (so the first observation's frames are in it) to the next reset or `close()`, as
   `<directory>/<game_id>-<UTC time>-<pid>-<n>.gthrec` (`n` numbers the process's

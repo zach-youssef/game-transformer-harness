@@ -648,3 +648,71 @@ fn an_export_that_fails_leaves_no_shard() {
         gth_record::export(&mut replayer, &options, &mut gth_record::KeepAll, &out).unwrap_err();
     assert!(error.to_string().contains("already started"), "{error}");
 }
+
+#[test]
+fn a_rewound_recording_replays_as_one_run() {
+    use gth_record::{RewindCause, RewindMeta};
+    let _serial = serial();
+    let dir = TempDir::new();
+    let game = game();
+    let content = content(&dir.0);
+    let mut core = load(&game, &content);
+    core.run_inputs(&game.reset_inputs().unwrap());
+    let path = dir.0.join("rec.gthrec");
+    let mut recorder = Recorder::create(&path, &mut core, &game, Some(&content), info(7)).unwrap();
+    let mut rng = Rng(3);
+    let mut random_steps = |recorder: &mut Recorder, core: &mut Core, steps: usize| {
+        for _ in 0..steps {
+            let frames = (1 + rng.next() % 6) as u32;
+            recorder.run(core, frames, rng.next() as u16).unwrap();
+        }
+    };
+    random_steps(&mut recorder, &mut core, 10);
+    let branch = recorder.frames();
+    let state = core.serialize().unwrap();
+    random_steps(&mut recorder, &mut core, 10);
+    let rewind = |frame, clip: &str| RewindMeta {
+        frame,
+        cause: RewindCause::Manual,
+        clip: clip.into(),
+    };
+    // Only the end of a step, and not past the end.
+    let end = recorder.frames();
+    let mid_step = (branch + 1..end)
+        .find(|&frame| !recorder.inputs()[frame as usize - 1].step_end)
+        .unwrap();
+    assert!(matches!(
+        recorder.rewind(rewind(mid_step, "x")),
+        Err(Error::Mismatch { .. })
+    ));
+    assert!(matches!(
+        recorder.rewind(rewind(end + 1, "x")),
+        Err(Error::Mismatch { .. })
+    ));
+    // A rewind to a later frame, then one to an earlier frame: the first leaves the timeline.
+    random_steps(&mut recorder, &mut core, 3);
+    let later = recorder.frames();
+    let later_state = core.serialize().unwrap();
+    random_steps(&mut recorder, &mut core, 5);
+    core.unserialize(&later_state).unwrap();
+    recorder.rewind(rewind(later, "later.gthrec")).unwrap();
+    random_steps(&mut recorder, &mut core, 5);
+    core.unserialize(&state).unwrap();
+    recorder.rewind(rewind(branch, "branch.gthrec")).unwrap();
+    assert_eq!(recorder.frames(), branch);
+    assert_eq!(recorder.inputs().len() as u64, branch);
+    assert_eq!(recorder.rewinds(), [rewind(branch, "branch.gthrec")]);
+    random_steps(&mut recorder, &mut core, 10);
+    let frames = recorder.frames();
+    let path = recorder.finish(&mut core).unwrap();
+    drop(core);
+
+    // The checks (RAM hash and frame hash) after the rewinds came from the rewound states:
+    // replaying the spliced log from the start reproduces them, the last one included.
+    let recording = Recording::open(&path).unwrap();
+    assert_eq!(recording.meta.frames, frames);
+    assert_eq!(recording.meta.rewind, [rewind(branch, "branch.gthrec")]);
+    assert_eq!(recording.meta.branch, None);
+    let mut replayer = replay(&path, &content).unwrap();
+    assert_eq!(replayer.run_to_end().unwrap(), frames);
+}

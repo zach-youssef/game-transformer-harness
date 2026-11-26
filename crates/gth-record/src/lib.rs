@@ -13,7 +13,10 @@ mod shard;
 use std::path::{Path, PathBuf};
 
 pub use format::{Check, Input};
-pub use meta::{ContentMeta, CoreMeta, FORMAT_VERSION, Meta, RecorderKind, StartMeta};
+pub use meta::{
+    BranchMeta, ContentMeta, CoreMeta, FORMAT_VERSION, Meta, RecorderKind, RewindCause, RewindMeta,
+    StartMeta,
+};
 pub use recorder::{Recorder, RecordingInfo};
 pub use replay::{Recording, Replayer};
 pub use shard::{
