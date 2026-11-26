@@ -1,5 +1,9 @@
 //! Per-frame pixel ops into caller buffers: format conversion, crop, rotate, resize.
 
+mod pipeline;
+
+pub use pipeline::{Error, Filter, Pipeline, Rect, Rotation};
+
 /// A source frame's pixel format: the three libretro formats, each a native-endian integer per
 /// pixel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
