@@ -5,7 +5,7 @@
 use std::env::consts::DLL_SUFFIX;
 use std::path::{Path, PathBuf};
 
-use gth_config::GameConfig;
+use gth_config::{CoreLock, CoresLock, GameConfig};
 use gth_core::Core;
 
 /// Where a game's files are. Every path is the caller's choice, with no hidden default but
@@ -37,6 +37,20 @@ pub fn core_library(data_dir: &Path, core: &str) -> PathBuf {
     data_dir
         .join("cores")
         .join(format!("{core}_libretro{DLL_SUFFIX}"))
+}
+
+/// The game's core's entry in the `cores.lock` at `lock_path` when `core_path` is the build
+/// that lock pins for this platform (by SHA-256), else `None`: what a recording keeps as
+/// `[core.lock]`, decided as `RetroEnv` decides it (`CoresLock::pinned`). A lock that is
+/// missing or doesn't parse is an error, since the caller named it.
+pub fn pinned_core(
+    lock_path: &Path,
+    game: &GameConfig,
+    core_path: &Path,
+) -> Result<Option<CoreLock>, String> {
+    let lock = CoresLock::load(lock_path).map_err(|e| e.to_string())?;
+    let target = gth_build_info::build_info()["target"];
+    Ok(lock.pinned(&game.core, target, core_path).cloned())
 }
 
 /// Reads `<games_dir>/<game_id>/game.toml`.

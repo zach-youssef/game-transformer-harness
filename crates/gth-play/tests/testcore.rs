@@ -8,7 +8,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use gth_config::{GameConfig, RetroButton};
+use gth_config::{CoreLock, CoresLock, GameConfig, RetroButton};
 use gth_core::Core;
 use gth_play::session::{Event, RecordSettings, Session};
 use gth_play::{latency, smoke};
@@ -142,13 +142,14 @@ fn headless_smoke_replays_without_desync() {
     );
 }
 
-fn session(out: &Path) -> Session {
+fn session(out: &Path, core_lock: Option<CoreLock>) -> Session {
     let settings = RecordSettings {
         dir: out.to_owned(),
         recorder: RecorderKind::Human,
         player: "test".into(),
         license: "CC0-1.0".into(),
         checks_every: NonZeroU32::new(7).unwrap(),
+        core_lock,
     };
     Session::new(load(), game(), "testcore", None, settings)
 }
@@ -157,7 +158,7 @@ fn session(out: &Path) -> Session {
 fn session_hotkeys_keep_recordings_whole() {
     let _serial = serial();
     let out = TempDir::new();
-    let mut session = session(&out.0);
+    let mut session = session(&out.0, None);
     let a = RetroButton::A.bit();
 
     assert!(
@@ -216,6 +217,104 @@ fn session_hotkeys_keep_recordings_whole() {
         let mut replayer = Replayer::new(Recording::open(&dir).unwrap(), load()).unwrap();
         replayer.run_to_end().unwrap();
     }
+}
+
+/// A `cores.lock` pinning the test core as `gth_testcore`, with this platform's hash taken
+/// from the build at `core` (as the cores workflow writes a release's lock), written to
+/// `<dir>/cores.lock`.
+fn write_lock(dir: &Path, core: &Path) -> PathBuf {
+    let unfilled = CoresLock::parse(
+        "[cores.gth_testcore]\n\
+         repo = \"https://example.invalid/gth-testcore\"\n\
+         commit = \"0123456789abcdef0123456789abcdef01234567\"\n\
+         library_version = \"test\"\n\
+         [cores.gth_testcore.artifacts]\n",
+        "test lock",
+    )
+    .unwrap();
+    let target = gth_build_info::build_info()["target"];
+    let builds = dir.join("builds");
+    std::fs::create_dir_all(builds.join(target)).unwrap();
+    let name = gth_config::library_file("gth_testcore", target);
+    std::fs::copy(core, builds.join(target).join(name)).unwrap();
+    let lock = unfilled.with_builds(&builds, &[target]).unwrap();
+    let path = dir.join("cores.lock");
+    std::fs::write(&path, lock.to_toml()).unwrap();
+    path
+}
+
+/// The `[core.lock]` of a one-frame recording made with `core_lock`.
+fn record_one(out: &Path, core_lock: Option<CoreLock>) -> Option<toml::Table> {
+    let mut session = session(out, core_lock);
+    let Event::RecordingStarted(dir) = session.toggle_recording().unwrap() else {
+        panic!("started");
+    };
+    session.run_frame(0).unwrap();
+    session.close().unwrap();
+    Recording::open(&dir).unwrap().meta.core.lock
+}
+
+#[test]
+fn recordings_keep_the_pin_of_a_pinned_core() {
+    let _serial = serial();
+    let out = TempDir::new();
+    let lock_path = write_lock(&out.0, gth_test_support::testcore_path());
+    let pinned =
+        gth_play::game::pinned_core(&lock_path, &game(), gth_test_support::testcore_path())
+            .unwrap()
+            .expect("the test core is the build the lock pins");
+    let lock = record_one(&out.0.join("pinned"), Some(pinned)).expect("[core.lock]");
+    assert_eq!(
+        lock["commit"].as_str(),
+        Some("0123456789abcdef0123456789abcdef01234567")
+    );
+    assert_eq!(
+        lock["repo"].as_str(),
+        Some("https://example.invalid/gth-testcore")
+    );
+
+    // Any other file is unpinned, and its recordings keep no [core.lock].
+    let other = out.0.join("other_core");
+    let mut bytes = std::fs::read(gth_test_support::testcore_path()).unwrap();
+    bytes.push(0);
+    std::fs::write(&other, bytes).unwrap();
+    let unpinned = gth_play::game::pinned_core(&lock_path, &game(), &other).unwrap();
+    assert_eq!(unpinned, None);
+    assert_eq!(record_one(&out.0.join("unpinned"), unpinned), None);
+
+    // So is a core the lock doesn't name.
+    let mut renamed = game();
+    renamed.core = "fbneo".into();
+    let path = gth_test_support::testcore_path();
+    assert_eq!(
+        gth_play::game::pinned_core(&lock_path, &renamed, path),
+        Ok(None)
+    );
+    // The lock is named by the caller, so a missing one is an error, not "unpinned".
+    let error = gth_play::game::pinned_core(&out.0.join("missing.lock"), &game(), path);
+    assert!(error.unwrap_err().contains("missing.lock"));
+
+    // And playing needs one: the binary refuses before opening a window.
+    let output = Command::new(env!("CARGO_BIN_EXE_gth-play"))
+        .args(["testcore", "--games-dir"])
+        .arg(games_dir())
+        .args(["--data-dir"])
+        .arg(&out.0)
+        .args(["--out"])
+        .arg(&out.0)
+        .args([
+            "--player",
+            "test",
+            "--license",
+            "CC0-1.0",
+            "--checks-every",
+            "60",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("--lock is required"), "{stderr}");
 }
 
 #[test]

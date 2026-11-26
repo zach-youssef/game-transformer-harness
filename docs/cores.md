@@ -49,7 +49,9 @@ target) and `x86_64-unknown-linux-gnu`. `gth cores` takes this platform's triple
 Loading a game checks nothing about the core: a core built some other way loads and runs if
 its file is in `cores/` or passed as `core_path`, but its savestates and recordings won't
 match a pinned build's. A recording keeps the core's lock entry (`[core.lock]`,
-docs/recording-format.md) only when the core file has the pinned hash.
+docs/recording-format.md) only when the core file has the pinned hash
+(`gth_config::CoresLock::pinned`): `RetroEnv` checks it against the checkout's lock, and
+`gth-play` against its `--lock` (docs/human-play.md).
 
 ## Builds
 

@@ -6,7 +6,7 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use gth_config::GameConfig;
+use gth_config::{CoreLock, GameConfig};
 use gth_core::Core;
 use gth_record::{Recorder, RecorderKind, RecordingInfo};
 
@@ -20,6 +20,9 @@ pub struct RecordSettings {
     pub player: String,
     pub license: String,
     pub checks_every: NonZeroU32,
+    /// The core's `cores.lock` entry, kept as `[core.lock]`: only when the loaded core file
+    /// is the build the lock pins (`game::pinned_core`), as `RetroEnv` does, else `None`.
+    pub core_lock: Option<CoreLock>,
 }
 
 /// What a hotkey did, for the player to show.
@@ -171,7 +174,7 @@ impl Session {
             player: self.settings.player.clone(),
             license: self.settings.license.clone(),
             harness: gth_build_info::build_info_owned(),
-            core_lock: None,
+            core_lock: self.settings.core_lock.clone(),
             checks_every: self.settings.checks_every,
         };
         let recorder = Recorder::create(

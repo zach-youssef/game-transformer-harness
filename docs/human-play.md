@@ -19,10 +19,11 @@ binary (`src/bin/gth-play/`) only adds the window, the audio device and the cont
    cargo build --release -p gth-play      # target/release/gth-play
    ```
 
-2. Put the core in a data directory (docs/roms.md, "Data directory"): the PC Engine core is
-   `mednafen_pce_fast` (`games/gunhed/game.toml`), so copy your
-   `mednafen_pce_fast_libretro.dylib` to `<data_dir>/cores/`. Gunhed is a HuCard and needs no
-   BIOS. Pass `--core PATH` instead to use a core elsewhere.
+2. Put the pinned core builds in a data directory (docs/roms.md, "Data directory"):
+   `gth cores fetch <data_dir>` (docs/cores.md) puts `mednafen_pce_fast_libretro.dylib`, the
+   PC Engine core `games/gunhed/game.toml` names, in `<data_dir>/cores/`. Gunhed is a HuCard
+   and needs no BIOS. Pass `--core PATH` instead to use a core elsewhere; a core that isn't
+   the pinned build plays, but its recordings don't keep the pin (step 4).
 
 3. Point the harness at your ROMs: `GTH_ROM_DIR=~/roms`, `rom_dir` in
    `~/.config/gtharness/config.toml`, or `--rom-dir ~/roms` (docs/roms.md). The ROM is found
@@ -31,13 +32,21 @@ binary (`src/bin/gth-play/`) only adds the window, the audio device and the cont
 4. Play:
 
    ```sh
-   target/release/gth-play gunhed --games-dir games --data-dir <data_dir> \
+   target/release/gth-play gunhed --games-dir games --data-dir <data_dir> --lock cores.lock \
        --out <recordings_dir> --player <your name> --license CC-BY-4.0 --checks-every 60
    ```
 
    Every recording option is required, as in `RetroEnv`'s `Record`: who recorded and under
    which license is never a default. `--checks-every` is how often (in frames) the recording
    stores a frame hash for the desync check (docs/recording-format.md).
+
+   `--lock` is the `cores.lock` that pins the core builds (docs/cores.md), normally the
+   checkout's. When the core file is the build it pins for this platform (by SHA-256, as
+   `gth cores fetch` puts it in place), every recording keeps the core's lock entry as
+   `[core.lock]`, saying exactly which build made it, as `RetroEnv`'s recordings do. At start
+   it prints which: the pinned commit, or a warning that the core isn't the pinned build and
+   recordings won't keep `[core.lock]` (they still replay on that same file). Record datasets
+   with the pinned core. A missing or broken lock file is an error.
 
    On the first run it writes the keyboard bindings to `~/.config/gtharness/bindings/keyboard.toml`
    and prints the path; a gamepad gets its own file the first time it connects (below).
@@ -215,6 +224,7 @@ rest. minifb would need cpal and gilrs anyway and lacks monitor and DPI queries.
   and resampler, recording names and the latency summary.
 - `crates/gth-play/tests/testcore.rs`: the headless smoke and its replay, the session's
   hotkeys keeping recordings whole (pause adds no frame, loading a state finishes the
-  recording, the next one starts from the loaded state), and the latency probe on the test
-  core.
+  recording, the next one starts from the loaded state), `[core.lock]` kept only with the
+  pinned core (the test core standing in for a pinned build, in a lock written with its
+  hash), and the latency probe on the test core.
 - The window, the audio device and gamepads are checked by hand: CI has none of them.

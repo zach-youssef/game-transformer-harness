@@ -15,8 +15,8 @@ use gth_record::RecorderKind;
 
 const USAGE: &str = "\
 usage:
-  gth-play GAME_ID --games-dir DIR --data-dir DIR --out DIR --player NAME --license SPDX
-           --checks-every N [--rom-dir DIR] [--core PATH] [--quit-after FRAMES]
+  gth-play GAME_ID --games-dir DIR --data-dir DIR --lock FILE --out DIR --player NAME
+           --license SPDX --checks-every N [--rom-dir DIR] [--core PATH] [--quit-after FRAMES]
       Play GAME_ID in a window; the record hotkey records to --out (docs/human-play.md).
   gth-play --verify RECORDING --data-dir DIR [--rom-dir DIR] [--core PATH]
       Replay a recording and fail on any desync.
@@ -173,6 +173,7 @@ fn play(args: &[String]) -> Result<(), String> {
             "data-dir",
             "rom-dir",
             "core",
+            "lock",
             "out",
             "player",
             "license",
@@ -190,19 +191,42 @@ fn play(args: &[String]) -> Result<(), String> {
         .required("checks-every")?
         .parse::<NonZeroU32>()
         .map_err(|e| format!("--checks-every: {e}"))?;
-    let settings = RecordSettings {
-        dir: options.path("out")?,
-        recorder: RecorderKind::Human,
-        player: options.required("player")?.to_owned(),
-        license: options.required("license")?.to_owned(),
-        checks_every,
-    };
+    let lock_path = options.path("lock")?;
+    let (dir, player, license) = (
+        options.path("out")?,
+        options.required("player")?.to_owned(),
+        options.required("license")?.to_owned(),
+    );
     let loaded = game::load(game_id, &options.game_paths()?)?;
     eprintln!(
         "gth-play: {game_id} on {} ({})",
         loaded.core.system_info().library_name,
         loaded.core_path.display()
     );
+    let core_lock = game::pinned_core(&lock_path, &loaded.game, &loaded.core_path)?;
+    match &core_lock {
+        Some(lock) => eprintln!(
+            "gth-play: the core is the build {} pins (commit {}): recordings keep [core.lock]",
+            lock_path.display(),
+            lock.commit
+        ),
+        None => eprintln!(
+            "gth-play: warning: {} isn't the {} build of {} that {} pins: recordings won't \
+             keep [core.lock] (docs/cores.md, \"Fetching\")",
+            loaded.core_path.display(),
+            gth_build_info::build_info()["target"],
+            loaded.game.core,
+            lock_path.display()
+        ),
+    }
+    let settings = RecordSettings {
+        dir,
+        recorder: RecorderKind::Human,
+        player,
+        license,
+        checks_every,
+        core_lock,
+    };
     let screen = gth_play::display::Screen::new(&loaded.game);
     let session = Session::new(
         loaded.core,

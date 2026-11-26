@@ -532,6 +532,7 @@ mod tests {
             player: "test".into(),
             license: "CC0-1.0".into(),
             checks_every: NonZeroU32::new(5).unwrap(),
+            core_lock: None,
         };
         let session = Session::new(load(), game.clone(), "testcore", None, settings);
         let keyboard = bindings::parse_keyboard(bindings::KEYBOARD_TEMPLATE, "template").unwrap();

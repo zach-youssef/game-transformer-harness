@@ -56,6 +56,8 @@ pub fn run(core_path: &Path, games_dir: &Path, out: &Path) -> Result<PathBuf, St
         player: "gth-play headless smoke".into(),
         license: "CC0-1.0".into(),
         checks_every: NonZeroU32::new(60).expect("non-zero"),
+        // The test core is no pinned build.
+        core_lock: None,
     };
     let mut screen = Screen::new(&game);
     let mut session = Session::new(core, game, "testcore", None, settings);
