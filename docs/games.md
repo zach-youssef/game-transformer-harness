@@ -35,7 +35,7 @@ crc32 = "..."             # 8 lowercase hex digits
 A plain file is identified by size and hashes, whatever its name (docs/roms.md). An archive
 whose own hash depends on how it was packed (an arcade set's zip) gives `members` instead of
 `size`/`sha1`/`crc32`, one inline table per file inside it, and is found by name; its
-members are checked by the ROM audit (P2), not by the lookup here:
+members are checked by the ROM audit (docs/roms.md, "Auditing"), not by the lookup here:
 
 ```toml
 [content]

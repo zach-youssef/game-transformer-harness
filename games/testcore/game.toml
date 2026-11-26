@@ -25,7 +25,7 @@ sha1 = "4abec8a8f48e9105b1271f938a0df5f88cf2ce7c"
 crc32 = "2e66fc54"
 
 [[bios]]
-file = "gth/gth_testcore_bios.zip"  # in system/gth/; an archive: found by name, members audited in P2
+file = "gth/gth_testcore_bios.zip"  # in system/gth/; an archive: found by name, members audited
 members = [
   { name = "bios.bin", size = 53, sha1 = "4abec8a8f48e9105b1271f938a0df5f88cf2ce7c", crc32 = "2e66fc54" },
 ]

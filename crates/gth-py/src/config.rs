@@ -173,6 +173,19 @@ impl GameConfig {
         Ok(missing.into_iter().map(|spec| spec.file.clone()).collect())
     }
 
+    /// The ROM audit of the game's files (docs/roms.md, "Auditing"), as JSON: the content
+    /// under `rom_dir`, its parents beside it, the BIOS files under `system_dir`.
+    fn audit(
+        &self,
+        py: Python<'_>,
+        rom_dir: PathBuf,
+        system_dir: PathBuf,
+    ) -> errors::Result<String> {
+        Ok(py
+            .detach(|| self.config.audit(&rom_dir, &system_dir))?
+            .to_json())
+    }
+
     /// The content file's name, for messages.
     #[getter]
     fn content_file(&self) -> &str {

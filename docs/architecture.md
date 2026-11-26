@@ -12,7 +12,7 @@ native calls, and the reward function) and only orchestrates.
 | `gth-core` | The libretro host: load a core dynamic library, answer its callbacks, run frames (including frame skip), savestates, RAM and memory-map reads. | Python, windowing, audio output |
 | `gth-frame` | Per-frame pixel ops: pixel format to RGB8, crop, tate rotation, resize to the model size, all into caller-provided buffers. | Anything core-specific |
 | `gth-record` | The recording format: replay log (start state and per-frame inputs), desync checkpoints, training-shard export. | Frame storage (frames are re-rendered from the replay) |
-| `gth-config` | Config types (serde + TOML): `game.toml`, `cores.lock`, the action space, RAM variables. | Emulation and frame data |
+| `gth-config` | Config types (serde + TOML): `game.toml`, `cores.lock`, the action space, RAM variables; finding and auditing the user's ROM and BIOS files by hash. | Emulation and frame data |
 | `gth-py` | The PyO3 extension module `gtharness._native`: glue that converts types and errors. | Logic: it goes in the crate it belongs to |
 | `gth-libretro-sys` | The FFI subset of `libretro.h` we use, hand-written (docs/libretro.md). | Logic, safe wrappers (those are `gth-core`'s) |
 | `gth-testcore` | A tiny deterministic libretro core (a `cdylib`) that tests and CI load instead of real cores and ROMs. | Dependencies on the host crates (it may use `gth-libretro-sys`) |
@@ -32,7 +32,7 @@ Planned crates, added by the task that first needs them:
 Python (gtharness: env, CLI)
   -> gtharness._native        (gth-py: glue)
     -> gth-core               (host)  + gth-frame, gth-config, gth-record
-         gth-config           (game.toml, action space, ROM lookup; also used by gth-py)
+         gth-config           (game.toml, action space, ROM lookup and audit; also used by gth-py)
       -> libretro core        (.so / .dylib / .dll, loaded at runtime)
 ```
 

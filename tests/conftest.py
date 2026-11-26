@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -74,10 +75,12 @@ def testcore_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     roms = tmp_path / "roms" / "sub"
     roms.mkdir(parents=True)
     (roms / "renamed.gthc").write_bytes(TESTCORE_CONTENT)
-    (roms / "gth_testcore_parent.zip").write_bytes(b"members are audited in P2")
+    with zipfile.ZipFile(roms / "gth_testcore_parent.zip", "w", zipfile.ZIP_DEFLATED) as parent:
+        parent.writestr("parent.bin", TESTCORE_BIOS)
     monkeypatch.setenv("GTH_ROM_DIR", str(tmp_path / "roms"))
     system = tmp_path / "data" / "system"
     (system / "gth").mkdir(parents=True)
     (system / "gth_testcore_bios.bin").write_bytes(TESTCORE_BIOS)
-    (system / "gth" / "gth_testcore_bios.zip").write_bytes(b"members are audited in P2")
+    with zipfile.ZipFile(system / "gth" / "gth_testcore_bios.zip", "w") as bios:
+        bios.writestr("bios.bin", TESTCORE_BIOS)
     return tmp_path / "data"

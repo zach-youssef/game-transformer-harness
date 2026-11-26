@@ -43,7 +43,9 @@ than by name.
 directory and its subdirectories: the file named `spec.file` if its size and SHA-1 match,
 else any file with that size and SHA-1, so renamed dumps are found. Only files of the right
 size are hashed. An archive described by `members` is found by name; its members are
-audited by hash in P2. Symlinked directories aren't followed.
+checked by the audit (below). Symlinked directories aren't followed. A subdirectory or file
+that can't be read is skipped; if the file isn't found elsewhere, the lookup fails with that
+error (the audit reports the file `unreadable`).
 
 The content's `parents` (an arcade clone's parent set) must be in the directory where the
 content was found, where the core looks for them: `GameConfig::missing_parents` checks them
@@ -51,6 +53,45 @@ there by name, and by size and SHA-1 when given. `GameConfig::missing_bios` chec
 at its path under the system directory (`fbneo/pgm.zip` is `system/fbneo/pgm.zip`).
 `GameConfig::find_content` puts these together: for content `in_parent` (a clone in a
 merged set) it finds the first parent instead and returns the clone's path beside it.
+
+## Auditing
+
+`gth audit <data_dir>` checks every game in `games/` (but the test core's, unless named
+with `--game`) against the user's files, read-only:
+
+- the content, found as above under the ROM directory (`--rom-dir`, else `GTH_ROM_DIR` or
+  `rom_dir`), and its parents beside it;
+- the BIOS files at their paths under `<data_dir>/system`;
+- every member of each archive, by size, CRC-32 and SHA-1. A member matches any entry with
+  those, whatever its name (preferring its own name), since MAME's merged sets keep clone
+  files in `<clone>/` and FBNeo finds members by CRC whatever their name; several members may
+  match one entry (a ROM listed twice). With no match, the entry with its name, if any, is
+  reported as bad or unreadable. A clone `in_parent` is audited inside its parent's archive.
+
+Each file and member is `ok`, `missing`, `bad-hash` (the size or a hash differs; for an
+archive, a member is missing or bad) or `unreadable` (an I/O error, also while searching the
+ROM directory; a zip that doesn't parse; a member that fails its own CRC or uses a
+compression method other than store and deflate). Content with the wrong hashes is found by
+its name at the top of the ROM directory only; elsewhere it's `missing`. The report gives the
+size and hashes found for anything bad, and lists the archive members that match no expected
+member (not an error: a merged set holds its clones), with their hashes or error. A game's
+status is the worst of its files', from best to worst `ok`, `missing`, `bad-hash`,
+`unreadable`: a game whose files are absent is `missing`, one with a bad dump `bad-hash`. It
+prints a table, or with `--json` the report as JSON:
+
+```json
+{"rom_dir": "...", "system_dir": "...", "games": {"<game-id>": {"status": "ok", "files": [
+  {"role": "content | parent | bios", "file": "<game.toml name>", "status": "ok",
+   "path": "...", "found": {"size": 0, "crc32": "...", "sha1": "..."},
+   "members": [{"name": "...", "status": "ok", "found_as": "<clone>/...", "found": {}}],
+   "extra": [{"name": "...", "size": 0, "crc32": "...", "sha1": "...", "error": "..."}],
+   "error": "..."}]}}}
+```
+
+Optional keys appear only when they apply; the table counts the other members and how many
+of them are unreadable. The exit status is 0 when every audited game is ok, 1 otherwise and 2
+on a usage or config error (no ROM directory, or no game to audit). The work is
+`GameConfig::audit` in `gth-config` (`audit.rs`); the CLI is `python/gtharness/cli.py`.
 
 ## Data directory
 
@@ -91,8 +132,8 @@ FBNeo (docs/games.md, "Content and BIOS files"). A non-merged set is one zip. A 
 has its own zip and lists its parent in `content.parents`, kept beside it. A merged clone
 (`ddpdojblk` inside `ddp3.zip`) has no zip of its own: its content is `in_parent`, and the
 harness finds it through the parent. Whether a set's contents
-match what the pinned core expects is checked by hash in P2's audit, not assumed from the
-name.
+match what the pinned core expects is checked by hash in the audit (above), not assumed from
+the name.
 
 `roms/`, `system/`, `cores/` and `runs/` at the repo root are ignored as well, so a stray copy
 there is never committed.

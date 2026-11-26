@@ -1,9 +1,10 @@
 //! Game and core config types (serde, TOML): `game.toml` (docs/games.md), `cores.lock`, RAM
 //! variables, the episode condition and the action space (docs/actions.md). Parsing validates
 //! everything it can without a core, so a config that loads is one the harness can use. `roms`
-//! finds the user's ROM directory and files in it (docs/roms.md).
+//! finds the user's ROM directory and files in it, and `audit` checks them by hash (docs/roms.md).
 
 mod actions;
+mod audit;
 mod condition;
 mod game;
 mod lock;
@@ -11,6 +12,7 @@ mod ram;
 mod roms;
 
 pub use actions::{Action, ActionSpace, Direction, Gamepad};
+pub use audit::{Entry, FileAudit, Found, GameAudit, MemberAudit, Role, Status};
 pub use condition::Condition;
 pub use game::{
     Crop, Episode, FileSpec, GameConfig, Hashes, Member, Orientation, Reset, ResetStep,

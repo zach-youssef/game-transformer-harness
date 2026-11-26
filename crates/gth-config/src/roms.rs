@@ -64,7 +64,7 @@ fn io_error(path: &Path, source: std::io::Error) -> Error {
     }
 }
 
-fn hex(digest: &[u8]) -> String {
+pub(crate) fn hex(digest: &[u8]) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -93,7 +93,8 @@ fn matches(path: &Path, hashes: &Hashes) -> Result<bool> {
 }
 
 /// Whether `path` is the file `spec` describes: same size and SHA-1, or for an archive, same
-/// file name (its members are checked by the ROM audit, P2). `false` if it doesn't exist.
+/// file name (its members are checked by [`GameConfig::audit`](crate::GameConfig::audit)).
+/// `false` if it doesn't exist.
 pub fn check_file(path: &Path, spec: &FileSpec) -> Result<bool> {
     if !path.is_file() {
         return Ok(false);
@@ -106,7 +107,9 @@ pub fn check_file(path: &Path, spec: &FileSpec) -> Result<bool> {
 
 /// Finds the file `spec` describes under `dir`, searching subdirectories too: by size and
 /// SHA-1, whatever its name (files of the right size are hashed, the expected name first),
-/// or, for an archive, by name. `None` if it isn't there.
+/// or, for an archive, by name. `None` if it isn't there. A subdirectory or file that can't be
+/// read is skipped; if the file isn't found elsewhere, that I/O error is returned, since the
+/// file may be what couldn't be read.
 pub fn find_file(dir: &Path, spec: &FileSpec) -> Result<Option<PathBuf>> {
     if !dir.is_dir() {
         return Err(invalid(
@@ -115,18 +118,26 @@ pub fn find_file(dir: &Path, spec: &FileSpec) -> Result<Option<PathBuf>> {
         ));
     }
     let named = dir.join(&spec.file);
-    if check_file(&named, spec)? {
-        return Ok(Some(named));
+    let mut errors = Vec::new();
+    match check_file(&named, spec) {
+        Ok(true) => return Ok(Some(named)),
+        Ok(false) => {}
+        Err(error) => errors.push(error),
     }
     let mut candidates = Vec::new();
-    walk(dir, &mut candidates)?;
+    walk(dir, &mut candidates, &mut errors);
     candidates.sort();
     for path in candidates.into_iter().filter(|path| *path != named) {
-        if check_file(&path, spec)? {
-            return Ok(Some(path));
+        match check_file(&path, spec) {
+            Ok(true) => return Ok(Some(path)),
+            Ok(false) => {}
+            Err(error) => errors.push(error),
         }
     }
-    Ok(None)
+    match errors.into_iter().next() {
+        Some(error) => Err(error),
+        None => Ok(None),
+    }
 }
 
 /// The specs in `specs` that aren't at `dir/<file>` ([`check_file`]).
@@ -193,28 +204,31 @@ impl StateFile {
 }
 
 /// Every file under `dir`. Symlinked directories aren't followed, so a loop can't trap it.
-fn walk(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
-    for entry in std::fs::read_dir(dir).map_err(|error| io_error(dir, error))? {
-        let entry = entry.map_err(|error| io_error(dir, error))?;
-        let kind = entry.file_type().map_err(|error| io_error(dir, error))?;
-        if kind.is_dir() {
-            walk(&entry.path(), files)?;
-        } else if entry.path().is_file() {
-            files.push(entry.path());
+fn walk(dir: &Path, files: &mut Vec<PathBuf>, errors: &mut Vec<Error>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) => return errors.push(io_error(dir, error)),
+    };
+    for entry in entries {
+        let kind = entry.and_then(|entry| Ok((entry.file_type()?, entry.path())));
+        match kind {
+            Ok((kind, path)) if kind.is_dir() => walk(&path, files, errors),
+            Ok((_, path)) if path.is_file() => files.push(path),
+            Ok(_) => {}
+            Err(error) => errors.push(io_error(dir, error)),
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// A fresh directory under the system temp dir, removed on drop.
-    struct TempDir(PathBuf);
+    pub(crate) struct TempDir(pub(crate) PathBuf);
 
     impl TempDir {
-        fn new(name: &str) -> TempDir {
+        pub(crate) fn new(name: &str) -> TempDir {
             let path =
                 std::env::temp_dir().join(format!("gth-config-{name}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&path);
@@ -269,6 +283,42 @@ mod tests {
         assert_eq!(find_file(&dir.0, &missing).unwrap(), None);
         assert!(!check_file(&dir.0.join("other.bin"), &spec("other.bin", ABC)).unwrap());
         assert!(find_file(&dir.0.join("nope"), &missing).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_files_and_directories_are_skipped() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new("find-unreadable");
+        std::fs::create_dir_all(dir.0.join("a-locked")).unwrap();
+        std::fs::create_dir_all(dir.0.join("z")).unwrap();
+        std::fs::write(dir.0.join("a-locked.bin"), b"abd").unwrap();
+        std::fs::write(dir.0.join("z/renamed.bin"), b"abc").unwrap();
+        let mode = |path: &str, mode| {
+            std::fs::set_permissions(dir.0.join(path), std::fs::Permissions::from_mode(mode))
+                .unwrap()
+        };
+        mode("a-locked", 0o000);
+        mode("a-locked.bin", 0o000);
+        // Root reads them anyway.
+        let locked = std::fs::File::open(dir.0.join("a-locked.bin")).is_err();
+        let found = find_file(&dir.0, &spec("game.bin", ABC));
+        let missing = find_file(&dir.0, &spec("game.bin", &"0".repeat(40)));
+        mode("a-locked", 0o755);
+        mode("a-locked.bin", 0o644);
+        if !locked {
+            return;
+        }
+        assert_eq!(
+            found.unwrap(),
+            Some(dir.0.join("z/renamed.bin")),
+            "found past them"
+        );
+        let error = missing.unwrap_err().to_string();
+        assert!(
+            error.contains("a-locked"),
+            "not found, so the error: {error}"
+        );
     }
 
     #[test]
