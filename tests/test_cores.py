@@ -1,6 +1,7 @@
 """``gth cores`` (docs/cores.md) with the test core standing in for a pinned core: a lock
 fabricated around its build, a release laid out from it, and fetches from that directory."""
 
+import hashlib
 import json
 import shutil
 import tomllib
@@ -67,7 +68,7 @@ def test_the_checkout_lock_pins_every_game_core():
     game_cores = {_native.GameConfig.load(path).core for path in GAMES_DIR.glob("*/game.toml")}
     assert game_cores - {NAME} <= set(lock.names)
     assert "fbneo" in lock.names
-    plan = cores.plan(lock)
+    plan = cores.plan(lock, cores.LOCK.parent)
     assert plan["tag"] == lock.release_tag
     assert [core["name"] for core in plan["cores"]] == lock.names
 
@@ -168,9 +169,38 @@ def test_plan_prints_json(tmp_path: Path, version: str, capsys: pytest.CaptureFi
             "repo": "https://example.invalid/gth-testcore",
             "commit": COMMIT,
             "library_version": version,
+            "patches": [],
         }
     ]
     assert plan["tag"].startswith("cores-")
+
+
+def test_plan_lists_the_patches_and_checks_their_hashes(
+    tmp_path: Path, version: str, capsys: pytest.CaptureFixture[str]
+):
+    patches = tmp_path / "cores" / "patches" / NAME
+    patches.mkdir(parents=True)
+    for file in ("0002-b.patch", "0001-a.patch"):
+        (patches / file).write_bytes(file.encode())
+    sums = {
+        file: hashlib.sha256(file.encode()).hexdigest() for file in ("0002-b.patch", "0001-a.patch")
+    }
+    lock = tmp_path / "cores.lock"
+    lines = [f"[cores.{NAME}.patches]", *(f'"{file}" = "{sha}"' for file, sha in sums.items())]
+    lock.write_text(lock_text(version) + "\n".join(lines) + "\n", encoding="utf-8")
+    code, text = run(capsys, lock, "plan")
+    assert code == 0, text
+    plan = json.loads(text)
+    assert plan["cores"][0]["patches"] == [
+        f"cores/patches/{NAME}/0001-a.patch",
+        f"cores/patches/{NAME}/0002-b.patch",
+    ]
+    assert plan["tag"] != _native.CoresLock.parse(lock_text(version), "x").release_tag
+
+    (patches / "0002-b.patch").write_bytes(b"changed")
+    code, text = run(capsys, lock, "plan")
+    assert code == 2
+    assert f"but cores.lock pins {sums['0002-b.patch']} for {NAME}'s 0002-b.patch" in text
 
 
 def test_a_broken_lock_is_a_config_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]):

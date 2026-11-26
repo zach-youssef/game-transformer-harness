@@ -3,8 +3,8 @@
 ``fetch`` downloads this platform's builds from the lock's GitHub release (or copies them from
 a directory), checks each one's SHA-256 against the lock, loads it without a game and checks
 the ``library_version`` it reports. ``plan``, ``check`` and ``release`` are the cores
-workflow's steps. The hashing, naming and loading are Rust (``_native``); this module moves
-files.
+workflow's steps; ``plan`` also checks the patches the lock applies to a core's source. The
+hashing, naming and loading are Rust (``_native``); this module moves files.
 """
 
 from __future__ import annotations
@@ -32,9 +32,14 @@ TARGET = _native.build_info()["target"]
 Report = Callable[[str], None]
 
 
-def plan(lock: _native.CoresLock) -> dict[str, Any]:
-    """What the cores workflow builds: the release tag and each core's source."""
-    cores = [{"name": name, **lock.core(name)} for name in lock.names]
+def plan(lock: _native.CoresLock, lock_dir: Path) -> dict[str, Any]:
+    """What the cores workflow builds: the release tag and each core's source, with its
+    patches as paths relative to ``lock_dir`` (the lock's directory) in the order they apply.
+    Raises ConfigError unless each patch there has the SHA-256 the lock pins."""
+    cores = []
+    for name in lock.names:
+        lock.check_patches(name, lock_dir)
+        cores.append({"name": name, **lock.core(name), "patches": lock.patches(name)})
     return {"tag": lock.release_tag, "cores": cores}
 
 

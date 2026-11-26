@@ -17,7 +17,9 @@ __pycache__/
 /data/
 /roms/
 /system/
-/cores/
+# cores/patches/ holds the tracked source patches applied to core builds (docs/cores.md).
+/cores/*
+!/cores/patches/
 /runs/
 
 # ROM, BIOS, disc image and MAME input files, wherever they end up.

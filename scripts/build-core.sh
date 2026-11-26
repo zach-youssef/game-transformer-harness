@@ -1,20 +1,29 @@
 #!/usr/bin/env bash
 # Builds one libretro core at a pinned commit with its own Makefile (docs/cores.md).
 #
-#   scripts/build-core.sh <name> <repo> <commit> <platform> <out_dir>
+#   scripts/build-core.sh <name> <repo> <commit> <platform> <out_dir> [<patch>...]
 #
 # <name> is the core's cores.lock name, <platform> the Makefile's: osx, unix or win (run win
 # in an MSYS2 MINGW64 shell). The library lands in <out_dir>/<name>_libretro.<dylib|so|dll>.
 # The source is a shallow clone of exactly <commit> in <out_dir>/src/<name>, made the same way
 # everywhere: cores put `git rev-parse --short HEAD` (and FBNeo the commit date) into
 # library_version, which cores.lock pins, so the clone and the date must not vary by machine.
+# Each <patch> (the core's patches in cores.lock, in order: `gth cores plan` lists them) is
+# applied on top and committed with a fixed author, date and message, so the patched commit,
+# and the short hash the core reports, are the same everywhere too.
 set -euo pipefail
 
-if [ $# -ne 5 ]; then
-  echo "usage: $0 <name> <repo> <commit> <osx|unix|win> <out_dir>" >&2
+if [ $# -lt 5 ]; then
+  echo "usage: $0 <name> <repo> <commit> <osx|unix|win> <out_dir> [<patch>...]" >&2
   exit 2
 fi
 name=$1 repo=$2 commit=$3 platform=$4 out=$5
+shift 5
+patches=()
+for patch in "$@"; do
+  # Absolute, since git runs in the clone.
+  patches+=("$(cd "$(dirname "$patch")" && pwd)/$(basename "$patch")")
+done
 
 case $platform in
   osx) ext=dylib ;;
@@ -41,6 +50,23 @@ git -C "$src" fetch -q --depth 1 "$repo" "$commit"
 git -C "$src" checkout -q FETCH_HEAD
 # A fixed abbreviation, so the short hash in library_version doesn't depend on the clone.
 git -C "$src" config core.abbrev 7
+
+if [ ${#patches[@]} -gt 0 ]; then
+  # `--index` applies to the index from the patch's bytes (no line-ending conversion), and the
+  # commit takes the upstream commit's dates: its hash depends only on the upstream commit and
+  # the patches. FBNeo's GIT_DATE below reads the author date, which stays upstream's.
+  names=()
+  for patch in "${patches[@]}"; do
+    git -C "$src" apply --index "$patch"
+    names+=("$(basename "$patch")")
+  done
+  GIT_AUTHOR_NAME=gth GIT_AUTHOR_EMAIL=gth@invalid \
+    GIT_COMMITTER_NAME=gth GIT_COMMITTER_EMAIL=gth@invalid \
+    GIT_AUTHOR_DATE="$(git -C "$src" log -1 --format=%ad --date=raw)" \
+    GIT_COMMITTER_DATE="$(git -C "$src" log -1 --format=%cd --date=raw)" \
+    git -C "$src" -c commit.gpgsign=false commit -q --no-verify \
+    -m "gth patches: ${names[*]}"
+fi
 
 if [ "$name" = mednafen_pce_fast ]; then
   # Its Makefile passes the short hash (GIT_VERSION) to C++ only, but library_version is set

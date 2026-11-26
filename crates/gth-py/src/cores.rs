@@ -40,7 +40,7 @@ impl CoresLock {
         self.lock.cores.keys().cloned().collect()
     }
 
-    /// Core `name`'s `repo`, `commit` and `library_version`.
+    /// Core `name`'s `repo`, `commit` and `library_version` (its patches: `patches`).
     fn core(&self, name: &str) -> errors::Result<BTreeMap<&'static str, String>> {
         let core = self.lock.core(name)?;
         Ok(BTreeMap::from([
@@ -48,6 +48,19 @@ impl CoresLock {
             ("commit", core.commit.clone()),
             ("library_version", core.library_version.clone()),
         ]))
+    }
+
+    /// Core `name`'s patches in the order they apply, as paths relative to the lock's
+    /// directory (`cores/patches/<name>/<file>`).
+    fn patches(&self, name: &str) -> errors::Result<Vec<String>> {
+        Ok(self.lock.core(name)?.patch_paths(name))
+    }
+
+    /// Raises `ConfigError` unless each of core `name`'s patches under `lock_dir` has the
+    /// pinned SHA-256.
+    fn check_patches(&self, py: Python<'_>, name: &str, lock_dir: PathBuf) -> errors::Result<()> {
+        let core = self.lock.core(name)?;
+        Ok(py.detach(|| core.check_patches(name, &lock_dir))?)
     }
 
     /// Core `name`'s pinned SHA-256 per target triple.

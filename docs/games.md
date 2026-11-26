@@ -396,6 +396,9 @@ repo = "https://github.com/libretro/FBNeo"
 commit = "<40 hex digits>"
 library_version = "<what retro_get_system_info reports>"
 
+[cores.fbneo.patches]     # optional: cores/patches/fbneo/<file> and its SHA-256, applied in name order
+"0001-<what>.patch" = "<64 hex digits>"
+
 [cores.fbneo.artifacts]   # SHA-256 of the built library per target triple
 aarch64-apple-darwin = "<64 hex digits>"
 ```
