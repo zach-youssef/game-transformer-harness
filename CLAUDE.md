@@ -12,6 +12,8 @@ Headless libretro cores behind a Python gymnasium environment, with all per-fram
 - [docs/libretro.md](docs/libretro.md): the libretro FFI subset in `gth-libretro-sys`, how to
   extend it, and what the test core does. Read before touching either crate, the host's
   callbacks or tests that load a core.
+- [docs/games.md](docs/games.md): the `game.toml` and `cores.lock` schemas (`gth-config`).
+  Read before writing or changing a game config.
 - [docs/roms.md](docs/roms.md): before touching ROMs, BIOS or cores, or tests that use them.
 
 Rules that apply everywhere:

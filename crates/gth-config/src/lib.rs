@@ -1,1 +1,48 @@
-//! Game and core config types (serde, TOML): game.toml, cores.lock, actions, RAM vars.
+//! Game and core config types (serde, TOML): `game.toml` (docs/games.md), `cores.lock`, RAM
+//! variables and the episode condition. Parsing validates everything it can without a core,
+//! so a config that loads is one the harness can use.
+
+mod condition;
+mod game;
+mod lock;
+mod ram;
+
+pub use condition::Condition;
+pub use game::{
+    Crop, Episode, FileSpec, GameConfig, Member, Orientation, Reset, ResetStep, RetroButton, Slot,
+    StateFile,
+};
+pub use lock::{CoreLock, CoresLock};
+pub use ram::{Encoding, Location, MemoryId, RamVar};
+
+/// Everything that can go wrong reading a config. Not `#[non_exhaustive]`: `gth-py` maps every
+/// variant to a Python exception.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// A file couldn't be read.
+    #[error("cannot read {path}: {source}")]
+    Io {
+        path: String,
+        source: std::io::Error,
+    },
+    /// A config doesn't parse or breaks a rule; `what` names the file or value.
+    #[error("invalid {what}: {reason}")]
+    Invalid { what: String, reason: String },
+}
+
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+fn invalid(what: impl Into<String>, reason: impl Into<String>) -> Error {
+    Error::Invalid {
+        what: what.into(),
+        reason: reason.into(),
+    }
+}
+
+/// Reads `path` as text, for the `load` functions.
+fn read(path: &std::path::Path) -> Result<String> {
+    std::fs::read_to_string(path).map_err(|source| Error::Io {
+        path: path.display().to_string(),
+        source,
+    })
+}
