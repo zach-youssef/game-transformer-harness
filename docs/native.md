@@ -63,6 +63,21 @@ for example in a replay buffer. `_native` never returns a view of memory that Ru
 reuses (`PyArray::borrow_from_array`): a later step would silently change frames the caller
 still holds. The cost is one allocation per returned frame, small next to emulating it.
 
+## GIL
+
+- Release the GIL around every native call that does real work (a frame step, a pixel
+  conversion, file or network I/O) with `py.detach(|| ...)`, the PyO3 0.26+ name for
+  `allow_threads`. Other Python threads (a data loader, a second environment thread, a
+  logger) then run during the call, and native calls on different threads run in parallel.
+- Convert arguments before `detach` and results after it: the closure can't touch Python
+  objects, which PyO3 enforces by requiring it to be `Send`. `fill_test_pattern` allocates
+  and fills the buffer detached, then builds the array.
+- Calls that only convert a few values (`build_info`) keep the GIL: releasing it costs more
+  than they do.
+- Detaching doesn't make a resource thread-safe: whatever the closure shares across threads
+  is locked by its owner in Rust (the core host, for example), not by the GIL.
+- `tests/test_native_gil.py` checks that two threads blocked in `_native` overlap.
+
 ## Build info
 
 `_native.__version__` is the workspace version (`Cargo.toml`), which `pyproject.toml` repeats.

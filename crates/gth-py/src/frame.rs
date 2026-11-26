@@ -43,8 +43,12 @@ fn fill_test_pattern(
     width: usize,
     seed: u8,
 ) -> errors::Result<Bound<'_, PyArray3<u8>>> {
-    let mut buffer = rgb8_buffer(height, width)?;
-    gth_frame::fill_test_pattern(&mut buffer, height, width, seed);
+    // Zeroing and filling are O(pixels), so both run detached. A PyErr needs no GIL to create.
+    let buffer = py.detach(|| {
+        let mut buffer = rgb8_buffer(height, width)?;
+        gth_frame::fill_test_pattern(&mut buffer, height, width, seed);
+        Ok::<_, errors::Error>(buffer)
+    })?;
     Ok(into_rgb8_array(py, buffer, height, width))
 }
 
