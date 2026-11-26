@@ -3,6 +3,7 @@
 //! module.
 
 mod errors;
+mod frame;
 mod testing;
 
 use std::collections::BTreeMap;
@@ -30,6 +31,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
     module.add_function(wrap_pyfunction!(build_info, module)?)?;
     errors::register(module)?;
+    frame::register(module)?;
     testing::register(module)?;
     Ok(())
 }

@@ -45,6 +45,24 @@ Read this before adding or changing anything it exports.
   argument conversion already raises `OverflowError` (negative or too large integers) and
   `TypeError`.
 
+## Arrays
+
+Frames reach Python as numpy `uint8[height, width, 3]` arrays (RGB8, row-major), without a
+copy (`gth-py/src/frame.rs`):
+
+1. `gth-py` allocates the buffer (`rgb8_buffer`). Sizes from Python are untrusted, so a size
+   that overflows raises `ValueError` and one that can't be allocated raises `MemoryError`
+   instead of aborting the process.
+2. A crate function fills it as a plain `&mut [u8]`, as `gth_frame::fill_test_pattern` does.
+3. `into_rgb8_array` moves the `Vec` into the array (`IntoPyArray`): numpy views the Rust
+   allocation, and the array's base object frees it when the last array or view of it goes.
+
+The lifetime rule: an array `_native` returns owns its memory. Rust never writes to or frees
+a buffer after handing it over, so callers may keep, change and share frames across threads,
+for example in a replay buffer. `_native` never returns a view of memory that Rust keeps and
+reuses (`PyArray::borrow_from_array`): a later step would silently change frames the caller
+still holds. The cost is one allocation per returned frame, small next to emulating it.
+
 ## Build info
 
 `_native.__version__` is the workspace version (`Cargo.toml`), which `pyproject.toml` repeats.

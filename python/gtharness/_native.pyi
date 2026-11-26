@@ -3,9 +3,13 @@
 tests/test_native_stubs.py fails when these drift from the module.
 """
 
+import numpy as np
+import numpy.typing as npt
+
 __version__: str
 
 def build_info() -> dict[str, str]: ...
+def fill_test_pattern(height: int, width: int, seed: int) -> npt.NDArray[np.uint8]: ...
 
 class HarnessError(Exception): ...
 class CoreLoadError(HarnessError): ...
