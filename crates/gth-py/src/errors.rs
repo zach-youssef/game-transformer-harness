@@ -37,6 +37,7 @@ pub enum Error {
     Config(gth_config::Error),
     Core(gth_core::Error),
     Frame(gth_frame::Error),
+    Record(gth_record::Error),
     Python(PyErr),
 }
 
@@ -60,6 +61,12 @@ impl From<gth_frame::Error> for Error {
     }
 }
 
+impl From<gth_record::Error> for Error {
+    fn from(error: gth_record::Error) -> Self {
+        Self::Record(error)
+    }
+}
+
 impl From<PyErr> for Error {
     fn from(error: PyErr) -> Self {
         Self::Python(error)
@@ -73,19 +80,34 @@ impl From<Error> for PyErr {
             Error::Config(error) => ConfigError::new_err(error.to_string()),
             // A bad crop or output size from the caller, or a frame the core shouldn't send.
             Error::Frame(error) => HarnessError::new_err(error.to_string()),
-            Error::Core(error) => {
+            Error::Core(error) => core_error(error),
+            Error::Record(error) => {
                 let message = error.to_string();
-                // No wildcard arm: a new gth_core::Error variant must pick its exception here.
+                // No wildcard arm: a new gth_record::Error variant must pick its exception here.
                 match error {
-                    gth_core::Error::CoreLoad { .. } => CoreLoadError::new_err(message),
-                    // A file the caller (or a game config) names: a config problem.
-                    gth_core::Error::Content { .. } => ConfigError::new_err(message),
-                    gth_core::Error::Desync { .. } => DesyncError::new_err(message),
-                    gth_core::Error::Savestate { .. } => HarnessError::new_err(message),
-                    gth_core::Error::Ram { .. } => HarnessError::new_err(message),
+                    gth_record::Error::Desync { .. } => DesyncError::new_err(message),
+                    // The recording doesn't fit the core or content it is replayed with.
+                    gth_record::Error::Mismatch { .. } => ConfigError::new_err(message),
+                    gth_record::Error::Io { .. }
+                    | gth_record::Error::Format { .. }
+                    | gth_record::Error::Failed { .. } => HarnessError::new_err(message),
+                    gth_record::Error::Core(error) => core_error(error),
+                    gth_record::Error::Config(error) => ConfigError::new_err(error.to_string()),
                 }
             }
         }
+    }
+}
+
+fn core_error(error: gth_core::Error) -> PyErr {
+    let message = error.to_string();
+    // No wildcard arm: a new gth_core::Error variant must pick its exception here.
+    match error {
+        gth_core::Error::CoreLoad { .. } => CoreLoadError::new_err(message),
+        // A file the caller (or a game config) names: a config problem.
+        gth_core::Error::Content { .. } => ConfigError::new_err(message),
+        gth_core::Error::Savestate { .. } => HarnessError::new_err(message),
+        gth_core::Error::Ram { .. } => HarnessError::new_err(message),
     }
 }
 

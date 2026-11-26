@@ -24,8 +24,9 @@ Read this before adding or changing anything it exports.
 
 ## Errors
 
-- Each crate has one `thiserror` error enum (`gth_core::Error`, `gth_config::Error`), with messages that name the
-  cause. Panics are for bugs only; PyO3 turns a panic into `pyo3_runtime.PanicException`.
+- Each crate has one `thiserror` error enum (`gth_core::Error`, `gth_config::Error`,
+  `gth_record::Error`), with messages that name the cause. Panics are for bugs only; PyO3
+  turns a panic into `pyo3_runtime.PanicException`.
 - A `#[pyfunction]` that can fail returns `errors::Result<T>` (`gth-py/src/errors.rs`). `?`
   converts both crate errors and `PyErr` into it, and PyO3 raises it as the mapped exception.
 - The Python exceptions are defined in Rust with `create_exception!` and re-exported by
@@ -35,11 +36,14 @@ Read this before adding or changing anything it exports.
   |---|---|
   | `gth_core::Error::CoreLoad` | `CoreLoadError` |
   | `gth_core::Error::Content` (content file unreadable) | `ConfigError` |
-  | `gth_core::Error::Desync` | `DesyncError` |
   | `gth_core::Error::Savestate` | `HarnessError` |
   | `gth_core::Error::Ram` | `HarnessError` |
   | `gth_frame::Error` (any) | `HarnessError` |
   | `gth_config::Error` (any) | `ConfigError` |
+  | `gth_record::Error::Desync` | `DesyncError` |
+  | `gth_record::Error::Mismatch` (another core build or content) | `ConfigError` |
+  | `gth_record::Error::Io`, `Format`, `Failed` | `HarnessError` |
+  | `gth_record::Error::Core`, `Config` | as the wrapped error |
 
 - Their `__module__` is `gtharness.errors`, so they pickle across the process boundary of
   parallel environments.

@@ -20,6 +20,7 @@ doctest = false
 gth-config = { path = "../gth-config" }
 gth-core = { path = "../gth-core" }
 gth-frame = { path = "../gth-frame" }
+gth-record = { path = "../gth-record" }
 numpy = "0.30.0"
 # abi3: one wheel per OS for every CPython from 3.12 on.
 pyo3 = { version = "0.30.1", features = ["abi3-py312"] }

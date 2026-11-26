@@ -12,12 +12,14 @@ struct Host {
     buttons: u16,
     step: &'static CStr,
     step_changed: bool,
+    dupe: &'static CStr,
     pixel_format: Option<retro_pixel_format>,
     memory_map: Option<retro_memory_descriptor>,
     step_defined: bool,
     frame: Vec<u32>,
     audio_frames: usize,
     polls: usize,
+    dupes: usize,
 }
 
 // SAFETY: `memory_map`'s raw pointers are only compared, never dereferenced through `HOST`.
@@ -32,12 +34,14 @@ impl Host {
             buttons: 0,
             step: c"2",
             step_changed: false,
+            dupe: c"off",
             pixel_format: None,
             memory_map: None,
             step_defined: false,
             frame: Vec::new(),
             audio_frames: 0,
             polls: 0,
+            dupes: 0,
         }
     }
 }
@@ -70,12 +74,21 @@ unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool {
             host.step_defined = key == STEP_KEY;
         }
         RETRO_ENVIRONMENT_GET_VARIABLE => {
-            // SAFETY: `retro_variable *`; `host.step` is 'static.
+            // SAFETY: `retro_variable *`; the values are 'static.
             let variable = unsafe { &mut *data.cast::<retro_variable>() };
             // SAFETY: the key is a C string.
-            assert_eq!(unsafe { CStr::from_ptr(variable.key) }, STEP_KEY);
-            variable.value = host.step.as_ptr();
+            let key = unsafe { CStr::from_ptr(variable.key) };
+            variable.value = if key == STEP_KEY {
+                host.step.as_ptr()
+            } else {
+                assert_eq!(key, DUPE_KEY);
+                host.dupe.as_ptr()
+            };
             host.step_changed = false;
+        }
+        RETRO_ENVIRONMENT_GET_CAN_DUPE => {
+            // SAFETY: `bool *`.
+            unsafe { *data.cast::<bool>() = true };
         }
         RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE => {
             // SAFETY: `bool *`.
@@ -89,6 +102,10 @@ unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool {
 
 unsafe extern "C" fn video_cb(data: *const c_void, width: c_uint, height: c_uint, pitch: usize) {
     assert_eq!((width, height, pitch), (320, 240, 320 * 4));
+    if data.is_null() {
+        host().dupes += 1;
+        return;
+    }
     // SAFETY: the core passes height rows of `pitch` bytes, and pitch is width pixels.
     let pixels = unsafe { std::slice::from_raw_parts(data.cast::<u32>(), WIDTH * HEIGHT) };
     host().frame = pixels.to_vec();
@@ -264,6 +281,26 @@ fn dpad_moves_square_by_the_step_option_and_clamps() {
         session.run(LEFT | UP);
     }
     assert_eq!(square(&session.run(0)), (0, 0));
+}
+
+#[test]
+fn dupe_option_repeats_the_frame_while_no_button_is_held() {
+    let session = Session::start(None);
+    host().dupe = c"on";
+    host().step_changed = true;
+    let drawn = session.run(RIGHT);
+    assert_eq!(square(&drawn), (154, 112));
+    assert!(session.run(0) == drawn, "no new frame without a button");
+    assert_eq!(host().dupes, 1);
+    assert_eq!(
+        session.run(A)[WIDTH * 100],
+        0x0300,
+        "the core kept counting frames"
+    );
+    host().dupe = c"off";
+    host().step_changed = true;
+    session.run(0);
+    assert_eq!(host().dupes, 1);
 }
 
 #[test]

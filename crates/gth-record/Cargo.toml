@@ -10,3 +10,16 @@ publish.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+gth-config = { path = "../gth-config" }
+gth-core = { path = "../gth-core" }
+gth-frame = { path = "../gth-frame" }
+serde = { version = "1.0.229", features = ["derive"] }
+sha1 = "0.11.0"
+thiserror = "2.0.21"
+toml = "1.2.3"
+zstd = "=0.14.3"
+
+[dev-dependencies]
+gth-test-support = { path = "../gth-test-support" }

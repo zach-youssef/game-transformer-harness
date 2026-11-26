@@ -85,7 +85,10 @@ cores in tests and CI: video, input, RAM, core options and savestates, with no R
   state's low byte (0 without content); a strip of 16 cells, 20x8 each, across the top, cell
   `id` coloured `0xFF0000 | id * 0x1010` while joypad button `id` is held; a 16x16 white
   square, starting at (152, 112), that the d-pad moves by the `gth_testcore_step` core option
-  (`2|1|4` pixels, default 2) per frame, clamped to the screen.
+  (`2|1|4` pixels, default 2) per frame, clamped to the screen. With the `gth_testcore_dupe`
+  core option `on` (default `off`) and a host that answers `GET_CAN_DUPE`, a frame with no
+  button held sends no new picture (`NULL`, repeat the previous one), as cores do on static
+  screens.
 - **Input**: port 0 joypad, queried per button (not with `RETRO_DEVICE_ID_JOYPAD_MASK`).
 - **Audio**: 800 silent stereo frames per `retro_run`, through the batch callback.
 - **RAM**: `RETRO_MEMORY_SYSTEM_RAM` is 256 bytes, also registered with `SET_MEMORY_MAPS` at
@@ -94,7 +97,7 @@ cores in tests and CI: video, input, RAM, core options and savestates, with no R
   the last PRNG output (xorshift32 seeded with FNV-1a of the content, little-endian; zero
   without content). The rest stays zero. No save RAM.
 - **Savestates**: 276 bytes, the frame number, square position, PRNG state and system RAM. The
-  step option is not saved, and a state that is short or puts the square off screen is
+  options are not saved, and a state that is short or puts the square off screen is
   refused. `retro_reset` is a soft reset, like a console's reset button: the frame number and
   the square start over, but RAM (so the score) and the PRNG keep their values.
 

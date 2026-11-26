@@ -36,6 +36,10 @@ uv run cargo test --workspace
   so rerun `maturin develop` after it. `uv run` doesn't remove anything.
 - CI passes `--locked`, so after adding or changing a Rust dependency, update `Cargo.lock`
   (any plain `cargo build`, `cargo metadata` or `cargo fetch`) and commit it with the change.
+- New dependencies and version bumps take a release at least two weeks old, so a broken or
+  malicious release has time to be noticed and yanked. `zstd`, which writes every recording,
+  is pinned with `=` in `gth-record`'s `Cargo.toml` so a routine `cargo update` can't move
+  it; its `zstd-safe` and `zstd-sys` stay pinned by `Cargo.lock` (`--locked`).
 - `gth-py` has no Rust tests (`test = false`): it is glue, and pytest tests it through Python.
 - CI (`.github/workflows/ci.yml`) runs the commands above on Linux, macOS (arm64) and
   Windows, on every pushed branch (a PR shows its branch's push run). CI has no ROMs and no

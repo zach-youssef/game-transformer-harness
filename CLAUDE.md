@@ -15,6 +15,8 @@ Headless libretro cores behind a Python gymnasium environment, with all per-fram
 - [docs/games.md](docs/games.md): the `game.toml` and `cores.lock` schemas (`gth-config`).
   Read before writing or changing a game config.
 - [docs/actions.md](docs/actions.md): the action space, slot convention and NitroGen mapping.
+- [docs/recording-format.md](docs/recording-format.md): recordings (`gth-record`), replay,
+  desync checks and the training-shard spec.
 - [docs/roms.md](docs/roms.md): before touching ROMs, BIOS or cores, or tests that use them.
 
 Rules that apply everywhere:

@@ -11,7 +11,7 @@ native calls, and the reward function) and only orchestrates.
 |---|---|---|
 | `gth-core` | The libretro host: load a core dynamic library, answer its callbacks, run frames (including frame skip), savestates, RAM and memory-map reads. | Python, windowing, audio output |
 | `gth-frame` | Per-frame pixel ops: pixel format to RGB8, crop, tate rotation, resize to the model size, all into caller-provided buffers. | Anything core-specific |
-| `gth-record` | The recording format: replay log (start state and per-frame inputs), desync checkpoints, training-shard export. | Frame storage (frames are re-rendered from the replay) |
+| `gth-record` | The recording format (docs/recording-format.md): `Recorder` writes the start state, per-frame joypad masks and desync checks; `Recording` and `Replayer` read and re-run them. | Frame storage (frames are re-rendered by replaying); writing training shards (spec only, P7) |
 | `gth-config` | Config types (serde + TOML): `game.toml`, `cores.lock`, the action space, RAM variables; finding and auditing the user's ROM and BIOS files by hash. | Emulation and frame data |
 | `gth-py` | The PyO3 extension module `gtharness._native`: glue that converts types and errors. | Logic: it goes in the crate it belongs to |
 | `gth-libretro-sys` | The FFI subset of `libretro.h` we use, hand-written (docs/libretro.md). | Logic, safe wrappers (those are `gth-core`'s) |
@@ -35,6 +35,9 @@ Python (gtharness: env, CLI)
          gth-config           (game.toml, action space, ROM lookup and audit; also used by gth-py)
       -> libretro core        (.so / .dylib / .dll, loaded at runtime)
 ```
+
+A recording (`gth-record`) borrows the env's core for each step while recording; a replay
+owns its own core.
 
 One agent step is two calls into `_native`: one holds the input for `frameskip` frames inside
 `gth-core`, converts and resizes only the last frame with `gth-frame`, and returns it to Python

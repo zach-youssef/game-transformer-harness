@@ -28,6 +28,7 @@ const FPS: usize = 60;
 static SILENCE: [i16; 2 * SAMPLE_RATE / FPS] = [0; 2 * SAMPLE_RATE / FPS];
 
 const STEP_KEY: &CStr = c"gth_testcore_step";
+const DUPE_KEY: &CStr = c"gth_testcore_dupe";
 const VERSION: &CStr =
     match CStr::from_bytes_with_nul(concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes()) {
         Ok(version) => version,
@@ -79,18 +80,22 @@ struct Game {
     /// Core option `gth_testcore_step`: pixels the square moves per frame. Not saved, as
     /// options aren't in real cores' savestates either.
     step: i32,
+    /// Core option `gth_testcore_dupe`: on frames with no button held, send no new frame
+    /// (`NULL`, "repeat the previous one"), if the host allows it. Not saved either.
+    dupe: bool,
     pixels: Vec<u32>,
 }
 
 impl Game {
-    fn new(seed: u32, step: i32) -> Self {
+    fn new(seed: u32, options: Options) -> Self {
         let mut game = Game {
             frame: 0,
             x: 0,
             y: 0,
             rng: seed,
             ram: Box::new([0; RAM_SIZE]),
-            step,
+            step: options.step,
+            dupe: options.dupe,
             pixels: vec![0; WIDTH * HEIGHT],
         };
         game.reset();
@@ -209,26 +214,44 @@ unsafe fn environment<T>(cmd: c_uint, data: *mut T) -> bool {
     unsafe { callback(cmd, data.cast()) }
 }
 
-/// The step option's value, or the default 2 if the host doesn't have it.
-fn read_step() -> i32 {
+/// The core options' values.
+#[derive(Clone, Copy)]
+struct Options {
+    step: i32,
+    dupe: bool,
+}
+
+/// An option's value, or `None` if the host doesn't have it.
+fn read_option(key: &CStr) -> Option<&'static [u8]> {
     let mut variable = retro_variable {
-        key: STEP_KEY.as_ptr(),
+        key: key.as_ptr(),
         value: std::ptr::null(),
     };
     // SAFETY: GET_VARIABLE takes a `retro_variable *`; `variable` outlives the call.
     if !unsafe { environment(RETRO_ENVIRONMENT_GET_VARIABLE, &mut variable) }
         || variable.value.is_null()
     {
-        return 2;
+        return None;
     }
     // SAFETY: the host set `value` to a NUL-terminated string it keeps alive at least until
-    // the next environment call.
-    let value = unsafe { CStr::from_ptr(variable.value) };
-    match value.to_bytes() {
-        b"1" => 1,
-        b"4" => 4,
+    // the next environment call, and the value is only compared before then.
+    Some(unsafe { CStr::from_ptr(variable.value) }.to_bytes())
+}
+
+/// The options, with the defaults (step 2, dupe off) for any the host doesn't have. Dupe is
+/// also off if the host can't repeat frames (`GET_CAN_DUPE`).
+fn read_options() -> Options {
+    let step = match read_option(STEP_KEY) {
+        Some(b"1") => 1,
+        Some(b"4") => 4,
         _ => 2,
-    }
+    };
+    let mut can_dupe = false;
+    // SAFETY: GET_CAN_DUPE takes a `bool *`; `can_dupe` outlives the call.
+    let can_dupe =
+        unsafe { environment(RETRO_ENVIRONMENT_GET_CAN_DUPE, &mut can_dupe) } && can_dupe;
+    let dupe = can_dupe && read_option(DUPE_KEY) == Some(b"on");
+    Options { step, dupe }
 }
 
 // Entry points, in header order. Signatures are checked against gth-libretro-sys at the end.
@@ -245,6 +268,10 @@ pub unsafe extern "C" fn retro_set_environment(callback: retro_environment_t) {
         retro_variable {
             key: STEP_KEY.as_ptr(),
             value: c"Square step in pixels; 2|1|4".as_ptr(),
+        },
+        retro_variable {
+            key: DUPE_KEY.as_ptr(),
+            value: c"Repeat the frame while no button is held; off|on".as_ptr(),
         },
         retro_variable {
             key: std::ptr::null(),
@@ -357,24 +384,30 @@ pub extern "C" fn retro_run() {
     }
     let mut options_changed = false;
     // SAFETY: GET_VARIABLE_UPDATE takes a `bool *`; `options_changed` outlives the call.
-    let step =
+    let options =
         (unsafe { environment(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &mut options_changed) }
             && options_changed)
-            .then(read_step);
+            .then(read_options);
 
     let pixels = {
         let mut guard = lock(&GAME);
         let Some(game) = guard.as_mut() else { return };
-        game.step = step.unwrap_or(game.step);
+        if let Some(options) = options {
+            (game.step, game.dupe) = (options.step, options.dupe);
+        }
         game.update(buttons);
-        game.render(buttons);
-        game.pixels.as_ptr()
+        if game.dupe && buttons == 0 {
+            std::ptr::null()
+        } else {
+            game.render(buttons);
+            game.pixels.as_ptr()
+        }
     };
     if let Some(video) = callbacks.video {
-        // SAFETY: `pixels` is WIDTH * HEIGHT XRGB8888 pixels, rows WIDTH * 4 bytes apart. The
-        // buffer is only freed when GAME is replaced or cleared (`retro_load_game`,
-        // `retro_unload_game`, `retro_deinit`), none of which a host may call from inside its
-        // video callback.
+        // SAFETY: `pixels` is null (repeat the frame, which the host allowed) or WIDTH *
+        // HEIGHT XRGB8888 pixels, rows WIDTH * 4 bytes apart. The buffer is only freed when
+        // GAME is replaced or cleared (`retro_load_game`, `retro_unload_game`,
+        // `retro_deinit`), none of which a host may call from inside its video callback.
         unsafe { video(pixels.cast(), WIDTH as c_uint, HEIGHT as c_uint, WIDTH * 4) };
     }
     if let Some(audio) = callbacks.audio_batch {
@@ -450,7 +483,7 @@ pub unsafe extern "C" fn retro_load_game(game: *const retro_game_info) -> bool {
         seed_from(content)
     };
 
-    let mut new_game = Game::new(seed, read_step());
+    let mut new_game = Game::new(seed, read_options());
     let ram = new_game.ram.as_mut_ptr();
     *lock(&GAME) = Some(new_game);
     let mut descriptor = retro_memory_descriptor {

@@ -8,7 +8,7 @@ use pyo3::prelude::*;
 
 use crate::errors;
 
-/// Raises the exception that `kind` ("core_load", "savestate" or "desync") of `gth_core::Error` maps to.
+/// Raises the exception that error `kind` of `gth_core`, `gth_config` or `gth_record` maps to.
 #[pyfunction]
 fn _raise_core_error(kind: &str) -> errors::Result<()> {
     let error = match kind {
@@ -36,10 +36,14 @@ fn _raise_core_error(kind: &str) -> errors::Result<()> {
             core: "x".into(),
             reason: "test".into(),
         },
-        "desync" => gth_core::Error::Desync {
-            frame: 7,
-            detail: "test".into(),
-        },
+        "desync" => {
+            let error = gth_record::Error::Desync {
+                first: 7,
+                frame: 7,
+                detail: "test".into(),
+            };
+            return Err(error.into());
+        }
         _ => {
             let message = format!("unknown error kind {kind:?}");
             return Err(PyValueError::new_err(message).into());

@@ -22,9 +22,6 @@ pub enum Error {
     /// A RAM variable couldn't be read or decoded.
     #[error("cannot read RAM variable {name}: {reason}")]
     Ram { name: String, reason: String },
-    /// A replay produced a different state than its recording.
-    #[error("replay desynced at frame {frame}: {detail}")]
-    Desync { frame: u64, detail: String },
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -42,14 +39,6 @@ mod tests {
         assert_eq!(
             load.to_string(),
             "cannot load core cores/x.so: missing symbol retro_run"
-        );
-        let desync = Error::Desync {
-            frame: 42,
-            detail: "state hash differs".into(),
-        };
-        assert_eq!(
-            desync.to_string(),
-            "replay desynced at frame 42: state hash differs"
         );
     }
 }
