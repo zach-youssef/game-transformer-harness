@@ -7,6 +7,8 @@ Headless libretro cores behind a Python gymnasium environment, with all per-fram
   where hot code lives. Read before adding code anywhere.
 - [docs/development.md](docs/development.md): uv, maturin and cargo commands, CI, the shared
   `CARGO_TARGET_DIR`.
+- [docs/native.md](docs/native.md): the `_native` binding conventions and type stubs. Read
+  before touching `gth-py` or `_native.pyi`.
 - [docs/roms.md](docs/roms.md): before touching ROMs, BIOS or cores, or tests that use them.
 
 Rules that apply everywhere:
