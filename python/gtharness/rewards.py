@@ -7,6 +7,7 @@ they reach the reward function and ``info["ram"]``, never the observation.
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Callable, Mapping
 
 Reward = Callable[[Mapping[str, int], Mapping[str, int]], float]
@@ -24,3 +25,12 @@ REQUIRED_RAM: dict[Reward, tuple[str, ...]] = {score_delta: ("score",)}
 `RetroEnv` finds the reward here by identity, looking through `functools.partial`; a reward
 wrapped any other way isn't checked, and a missing variable raises `KeyError` at its first
 step instead."""
+
+
+def required_ram(reward: Reward) -> tuple[str, ...]:
+    """The RAM variables ``reward`` reads, from `REQUIRED_RAM`, looking through
+    `functools.partial`; ``()`` for a reward it doesn't list."""
+    base = reward
+    while isinstance(base, functools.partial):
+        base = base.func
+    return next((names for known, names in REQUIRED_RAM.items() if known is base), ())
