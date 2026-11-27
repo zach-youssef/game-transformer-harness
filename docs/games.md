@@ -60,8 +60,8 @@ table and RAM variable key (the other forms of `reset` and `content`, a savestat
 
 A game can land in stages: until its RAM variables are found, a stub with only `[content]`
 final (one button, a one-frame reset script, no `[ram]`, `terminate = "0"`) parses and lets
-the audit check the content, as `games/zanac` does. Say in the file's header comment what is
-still a stub.
+the audit check the content (`games/zanac` did until its config was finished). Say in the
+file's header comment what is still a stub.
 
 ### Example: Gunhed
 
@@ -90,6 +90,24 @@ still a stub.
   1300), then flies up into the enemies until GAME OVER, pinning the steps where ships are
   lost, and replays the recording; from a savestate before the Area 1 clear it plays into
   Area 2 and checks the episode goes on. The pinned numbers hold on the pinned core.
+
+### Example: Zanac (NES)
+
+`games/zanac` is the worked example for an NES game on `fceumm`:
+
+- **Header and core**: the Project Egg dump's iNES header (mapper 2, CHR-RAM) loads as it is,
+  so there is no core option or override; a dump that misloads is fixed in `game.toml`
+  (`core_options`), never in the ROM file.
+- **Memory**: the work RAM is `system_ram`, 2 KB (CPU $0000-$07FF); sprites are drawn from
+  a copy of the OAM at $0200, which a search can use to find what is on screen.
+- **Buttons**: RetroPad B and A are the NES B and A.
+- **Reset**: the title takes two Start presses (menu, then GAME START); end the script where
+  the ship first answers the d-pad.
+- **RAM**: the score is one digit per byte (`digits`), which no search view reads: find it
+  by dumping the RAM at known scores. The HUD shows no weapon state, so those variables
+  have no number to search against (games/zanac/README.md says what is missing).
+- **Episode end**: `terminate = "lives == 0"`, where `lives` counts the ship in play; the
+  play flag also drops at every area clear and under every banner, so it isn't an end.
 
 ### Changing the schema
 

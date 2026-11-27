@@ -105,7 +105,8 @@ The work is `GameConfig::audit` in `gth-config` (`audit.rs`); the CLI is
 | Game | `games/<id>` | Hashes from |
 |---|---|---|
 | Gunhed | `gunhed` | the user's dump (`~/roms/manifest.md`); the rest of the config: `games/gunhed/README.md` |
-| Zanac, Lightening Force | `zanac`, `lightening-force` | the user's dumps (`~/roms/manifest.md`); only `[content]` is final until G2-G3 |
+| Zanac | `zanac` | the user's dump (`~/roms/manifest.md`); the rest of the config: `games/zanac/README.md` |
+| Lightening Force | `lightening-force` | the user's dump (`~/roms/manifest.md`); only `[content]` is final until G3 |
 | Battle Garegga, Ketsui, DoDonPachi III and DoDonPachi Dai-Ou-Jou Black Label, Gunbird, Strikers 1945 | `bgaregga`, `ket`, `ddp3`, `ddpdojblk` (in `ddp3.zip`, `in_parent`), `gunbird`, `s1945` | names, sizes and CRC-32s from the pinned FBNeo's driver tables (`a836e52`, below); SHA-1s from MAME 0.289 (below); only `[content]` is final until G4-G6 |
 
 FBNeo's driver tables list each member's name, size and CRC-32 but no SHA-1, which `members`

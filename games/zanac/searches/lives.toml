@@ -1,0 +1,35 @@
+# The ships in play, counting the one flying (the HUD at the bottom right shows one less):
+# sit still from the reset and let the enemies hit the ship. 3 at the start, 2 after the
+# first death (about 210 frames in), 1 after the second (about 540), 0 after the third (about 815), which
+# is GAME OVER.
+# gth ram-search zanac data games/zanac/searches/lives.toml
+space = "system_ram"
+views = ["le1", "bcd1"]
+
+[[step]]
+expect = "equals"
+value = 3
+
+[[step]]
+frames = 260
+expect = "decreased"
+
+[[step]]
+expect = "equals"
+value = 2
+
+[[step]]
+frames = 340
+expect = "decreased"
+
+[[step]]
+expect = "equals"
+value = 1
+
+[[step]]
+frames = 300
+expect = "decreased"
+
+[[step]]
+expect = "equals"
+value = 0

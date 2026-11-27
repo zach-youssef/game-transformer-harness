@@ -1,0 +1,38 @@
+# The play flag: 0 while the AREA banner shows at the start of an area and between areas, 1
+# while an area plays (and 0 again at GAME OVER). From the reset it turns 1 about 200 frames
+# in; from a savestate a little before the end of Area 1 (states/area1-end.state,
+# games/zanac/README.md) it goes back to 0; Areas 1 and 2 a few seconds in, it is 1.
+# gth ram-search zanac data games/zanac/searches/playing.toml
+space = "system_ram"
+views = ["le1", "bcd1"]
+
+[[step]]
+frames = 100
+expect = "equal"
+
+[[step]]
+frames = 150
+expect = "increased"
+
+[[step]]                  # a death (213 in) doesn't change it; 0x99, a timer, does
+frames = 150
+expect = "equal"
+
+[[step]]                  # nobody shoots, so the ships go and the flag drops at GAME OVER (~820 in)
+frames = 700
+expect = "decreased"
+
+[[step]]
+state = "states/area1.state"
+expect = "equals"
+value = 1
+
+[[step]]
+state = "states/area1-end.state"
+frames = 700
+expect = "decreased"
+
+[[step]]
+state = "states/area2.state"
+expect = "equals"
+value = 1

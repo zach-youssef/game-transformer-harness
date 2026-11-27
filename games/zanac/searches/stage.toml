@@ -1,0 +1,20 @@
+# The area: savestates a few seconds into Areas 1 to 3, after each "AREA n" banner
+# (games/zanac/README.md, "Savestates"); the HUD shows the area only in that banner.
+# gth ram-search zanac data games/zanac/searches/stage.toml
+space = "system_ram"
+views = ["le1", "bcd1"]
+
+[[step]]
+state = "states/area1.state"
+expect = "equals"
+value = 1
+
+[[step]]
+state = "states/area2.state"
+expect = "equals"
+value = 2
+
+[[step]]
+state = "states/area3.state"
+expect = "equals"
+value = 3

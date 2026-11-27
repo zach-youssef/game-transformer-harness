@@ -1,7 +1,6 @@
 # Zanac (NES, Project Egg re-release with an iNES header), Compile.
-# Only [content] is final: the hashes of the user's dump (~/roms/manifest.md: size and
-# SHA-1 from the manifest, CRC-32 from the file). The rest is a stub, so the config parses
-# and the ROM audit can check the content, until G2 sets the buttons, reset and RAM variables.
+# Hashes of the user's dump (~/roms/manifest.md: size and SHA-1 from the manifest, CRC-32
+# from the file). Where the buttons, reset and RAM variables come from: README.md here.
 
 core = "fceumm"
 settle_frames = 0
@@ -13,11 +12,46 @@ size = 131088
 sha1 = "c62479b307acb9bbf708f53f3a9b708e5fe79a4e"
 crc32 = "38ab8f89"
 
+# fceumm maps RetroPad B to the NES B button and A to A.
 [buttons]
-a = "shot"                # stub until G2
+b = "shot"                # B: the main weapon (the pink shot)
+a = "bomb"                # A: the special weapon
 
+# From power-on to the first frame the ship shows and answers the d-pad, 126 frames; RetroEnv.reset
+# then runs `frameskip` more before the first action.
 [reset]
-script = [{ press = [], frames = 1 }]   # stub until G2
+script = [
+  { press = [], frames = 40 },          # the title ignores Start before about frame 30
+  { press = ["start"], frames = 6 },    # title: opens the GAME START / CONTINUE menu
+  { press = [], frames = 20 },
+  { press = ["start"], frames = 6 },    # menu: GAME START
+  { press = [], frames = 54 },          # Area 1 loads; the ship appears and answers the d-pad
+]
+
+# Offsets in the 2 KB work RAM (CPU $0000-$07FF); searches/ holds the scripts that find them.
+[ram.score]
+memory = "system_ram"
+offset = 0x17c
+size = 6                  # one digit per byte, most significant first; the ones digit is always 0
+encoding = "digits"
+
+[ram.lives]
+memory = "system_ram"
+offset = 0x32
+size = 1                  # ships left including the one in play (the HUD shows one less): 3 at the start, 0 at GAME OVER
+encoding = "le"
+
+[ram.stage]
+memory = "system_ram"
+offset = 0x7d
+size = 1                  # the area, from 1 (0x91 holds the same value)
+encoding = "le"
+
+[ram.playing]
+memory = "system_ram"
+offset = 0x31a
+size = 1                  # 1 while an area plays; 0 under the AREA banner, between areas and from GAME OVER on
+encoding = "le"
 
 [episode]
-terminate = "0"           # stub until G2: never ends
+terminate = "lives == 0"  # the last ship is lost: GAME OVER (no continues are used)
