@@ -32,7 +32,7 @@ and `start.state` against their SHA-1s in `meta.toml`, the frame and step counts
 | `game_id` | The game's directory under `games/`. |
 | `game_config_sha1` | SHA-1 of `game.toml`. |
 | `recorder` | `human` (gth-play), `policy`, `scripted` (tests, random or scripted rollouts) or `converted` (from a MAME `.inp`). |
-| `player` | A person's handle, or the policy and checkpoint that played. |
+| `player` | A person's handle, the policy and checkpoint that played, or the script, its version and its seed ("Scripted captures"). |
 | `license` | The license the recording is shared under. The user's own play is shareable non-commercially (D8), e.g. `CC-BY-NC-4.0`. |
 | `created_unix` | Seconds since the Unix epoch when recording started. |
 | `fps` | The core's frame rate (`retro_get_system_av_info`). |
@@ -140,6 +140,50 @@ rather than misreading it.
 A 60 fps minute of random actions at frameskip 4 is about 5.5 KB on the test core (1.8 KB of
 inputs, 2 KB of checks, the rest `meta.toml` and `game.toml`). A real core's start state
 comes on top: zstd shrinks most consoles' states to tens of kilobytes.
+
+## Scripted captures
+
+`gth capture DATA_DIR GAME --script attract|random-play --frames N --frameskip K --out DIR
+--license L --checks-every C [--seed S]` (`gtharness.capture.capture`) records a game from its
+reset with no player: an input script chooses every step's RetroPad mask up front, and
+`_native.Core.run_inputs` plays them through the recorder, about a minute of game time per
+call, so the frames run in Rust. The recording is an ordinary one (`recorder = "scripted"`),
+`N` frames long counting the reset's first observation (`N` is a multiple of `K`, every step
+`K` frames), and replays and exports like any other. Its `player` names the script, its
+version and its seed (`attract-v1`, `random-play-v1 seed=7`): replay needs only
+`inputs.bin`, so they say where the inputs came from: the same arguments, game.toml and
+numpy with the same script version (`gtharness.capture.SCRIPT_VERSIONS`, one per script,
+bumped when its inputs change) record the same inputs. Options are checked before the core
+loads (`ConfigError`, exit 2; a core that fails to load exits 2 too), and
+a capture that fails or is interrupted leaves its recording incomplete.
+
+| Script | Inputs |
+|---|---|
+| `attract` | Nothing held, ever: boot, then the game's attract mode and its demo play. Takes no seed. |
+| `random-play` | A credit cycle every 480 frames from the first step (coin, that is RetroPad select, for 8 frames, 16 frames of nothing, start for 8, 16 of nothing), which starts a game from attract mode and continues one at game over; between them, random actions from the game's action space (docs/actions.md), each held 8 to 48 frames: a uniform direction, the shot slot with probability 0.8 and the bomb slot with 0.05 (when the game maps one). Needs `--seed` (numpy's `default_rng`) and a game that maps `shot`. |
+
+Lengths round up to whole steps. Coin and start map to no slot, so the samples they follow
+are unlabelled and a shard drops them (16 frames in 480, a thirtieth of `random-play`'s, at
+`--frameskip 1`); every frame's sprite list stays. Export attract captures with `--filter all`: `playing`
+drops everything before the first input, which is all of an attract capture.
+
+The Psikyo games' captures for the sprite-label experiments (two each of ten minutes, at the
+board's 59.3 fps 36,000 frames) are made and exported on the Mac with:
+
+```sh
+GTH_ROM_DIR=~/roms uv run gth capture data gunbird --out runs/captures --script attract \
+    --frames 36000 --frameskip 1 --license CC-BY-NC-4.0 --checks-every 60
+GTH_ROM_DIR=~/roms uv run gth capture data gunbird --out runs/captures --script random-play \
+    --seed 0 --frames 36000 --frameskip 1 --license CC-BY-NC-4.0 --checks-every 60
+GTH_ROM_DIR=~/roms uv run gth export-shards data runs/captures/*.gthrec --out runs/shards \
+    --obs-size 224 320 --crop none --orientation 0 --frameskip 1 --filter all \
+    --chunk-samples 256 --sprites yes
+```
+
+(and the same for `s1945`). Native size and every frame keep the sprite boxes in observation
+pixels and every frame's picture beside its list. Recordings (their start state) and shards
+(their frames) are made from the ROM, so they never enter git (`runs/` is git-ignored,
+docs/roms.md).
 
 ## Compression
 

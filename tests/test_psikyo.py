@@ -21,14 +21,18 @@ process that loads a state and draws at once shows a cleared frame. The settle f
 it (docs/games.md, "Settle frames").
 
 Their sprite-list labels (docs/recording-format.md, "Sprite labels") are checked against the
-drawn frames, frame-exactly.
+drawn frames, frame-exactly, and `gth capture`'s scripts (docs/recording-format.md, "Scripted
+captures") export with them.
 
 Skips without the ROM or the pinned core, as on CI (docs/testing.md); an FBNeo build without
 the fork's commits isn't the pinned one, so it skips too."""
 
+import itertools
+
 import numpy as np
 import pytest
 
+from gtharness.capture import CREDIT_EVERY, PULSE, capture, player_name
 from gtharness.env import RetroEnv
 from gtharness.record import Record
 from gtharness.shards import SPRITE_VISIBLE, Shard, ShardOptions, export_shards
@@ -154,3 +158,79 @@ def test_sprite_labels_are_the_frame_s_own(game_id, rom, core, tmp_path):
     assert used >= 200, f"only {used} frames with a still background"
     # Measured 1.66x (gunbird) and 1.77x (s1945) at the pin; one frame late or early is worse.
     assert uncovered[0] * 1.3 < min(uncovered[-1], uncovered[1]), uncovered
+
+
+CAPTURE_FRAMES = 2400  # past random-play's first game start (a credit cycle every 480 frames)
+
+
+@pytest.mark.parametrize("game_id", GAMES)
+def test_captures_export_with_sprite_labels(game_id, rom, core, tmp_path):
+    """`gth capture`'s scripts (docs/recording-format.md, "Scripted captures") record the game
+    from its reset, and the recordings replay without desync into shards with every frame's
+    sprite list, losing only the coin and start presses' samples. random-play really plays:
+    attract mode ignores input, so two seeds' sprites diverge only once a credit starts a game."""
+    content = rom(game_id)
+    path = core(game_id)
+    data = path.parent.parent
+    runs = [("attract", None), ("random-play", 0), ("random-play", 1)]
+    recordings = [
+        capture(
+            game_id,
+            data,
+            tmp_path / "rec",
+            script=script,
+            frames=CAPTURE_FRAMES,
+            frameskip=1,
+            seed=seed,
+            license="CC0-1.0",
+            checks_every=60,
+            rom_dir=content.parent,
+            core_path=path,
+        )
+        for script, seed in runs
+    ]
+    options = ShardOptions(
+        obs_size=(112, 160),
+        crop=None,
+        orientation=0,
+        frameskip=1,
+        filter="all",
+        chunk_samples=256,
+        interpolation="area",
+        sprites=True,
+    )
+    results = export_shards(
+        recordings, tmp_path / "shards", data, options, jobs=3, rom_dir=content.parent,
+        core_path=path,
+    )  # fmt: skip
+    sprites = []
+    for (script, seed), result in zip(runs, results, strict=True):
+        assert result.error is None, result.error
+        with Shard(result.shard) as shard:
+            assert shard.meta["recording"]["player"] == player_name(script, seed)
+            assert shard.meta["frames"] == CAPTURE_FRAMES
+            assert len(shard.sprite_offsets) == CAPTURE_FRAMES + 1
+            # Coin and start presses label no sample (the last observation is no sample either).
+            presses = int((~shard.frame_labelled).sum())
+            assert shard.meta["samples"] == CAPTURE_FRAMES - 1 - presses
+            expected = 0 if script == "attract" else 5 * 2 * PULSE  # five credit cycles
+            assert presses == expected
+            drawn = np.diff(shard.sprite_offsets.astype(np.int64)) > 0
+            assert drawn.mean() > 0.5, "most frames draw sprites"
+            records = np.concatenate([shard.sprite_chunk(c) for c in range(shard.sprite_chunks)])
+            offsets = shard.sprite_offsets.astype(np.int64)
+            sprites.append([records[a:b].tobytes() for a, b in itertools.pairwise(offsets)])
+
+    def differing(a, b):
+        return sum(x != y for x, y in zip(a[CREDIT_EVERY:], b[CREDIT_EVERY:], strict=True))
+
+    # The first frames, before a press shows, are the same attract mode in every capture.
+    assert sprites[0][: 2 * PULSE] == sprites[1][: 2 * PULSE] == sprites[2][: 2 * PULSE]
+    after = CAPTURE_FRAMES - CREDIT_EVERY
+    # Measured at the pin, of 1,920 frames: from attract 1,908 (gunbird) and 1,907 (s1945) for
+    # both seeds; seed 0 from seed 1, 1,858 and 1,837. Start replaced by a coin gave 154.
+    left_attract = [differing(sprites[0], sprites[other]) for other in (1, 2)]
+    assert min(left_attract) > after / 2, f"random-play left attract mode: {left_attract}"
+    # A coin alone (no game started) still diverges from attract; only play tells two seeds apart.
+    seeds = differing(sprites[1], sprites[2])
+    assert seeds > after / 2, f"the seeds' inputs reach a game in play: {seeds} of {after} frames"
