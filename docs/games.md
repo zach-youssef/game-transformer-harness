@@ -123,8 +123,8 @@ Some cores keep state they derive while running outside their savestates, so the
 after a load shows what the process ran before it, and a recording doesn't replay in a fresh
 process (its first frame hash differs while RAM matches). FBNeo's Toaplan GP9001 drivers
 (`bgaregga`) draw each frame with the palette computed after the previous one, which is
-outside the state, and nothing recomputes it on load; its CAVE drivers (`ket`, `ddp3`) do
-the same (docs/performance.md, "FBNeo and savestates"). With
+outside the state, and nothing recomputes it on load (docs/performance.md, "FBNeo and
+savestates"). With
 `settle_frames = n`, every load (`Core::unserialize`, `Core::reset`, the replayer's and the
 recorder's start, `RetroEnv.reset`) runs `n` frames with no button held, unseen, and loads
 the state again, so the next frame depends only on the state. It isn't quite the frame the
@@ -137,13 +137,16 @@ docs/cores.md, "Forks", which add state whose loss the frames after a load don't
 from).
 
 Set it to the fewest frames that make the first frame after a load the same whatever ran
-before (1 for the FBNeo games above), checked on the game's ROM as `tests/test_bgaregga.py`
-and `tests/test_psikyo.py` do; 0 loads states as they are, the right value for a core whose
+before (1 for the FBNeo games above), checked on the game's ROM as `tests/test_bgaregga.py`,
+`tests/test_psikyo.py` and `tests/test_pgm.py` do; 0 loads states as they are, the right value for a core whose
 savestates hold everything. A game's value is stored with its recordings (in their
 `game.toml`), and a replay refuses a core loaded with another one. Psikyo games (`gunbird`,
 `s1945`) hold everything in their states on the pinned build (docs/performance.md, "FBNeo and
 savestates"), but keep `settle_frames = 1` too: FBNeo's libretro port dupes the first frame a
-process runs, so an unsettled load in a fresh process shows a cleared frame first.
+process runs, so an unsettled load in a fresh process shows a cleared frame first. The IGS PGM
+games (`ket`, `ddp3`, `ddpdojblk`) likewise hold everything in their states on the pinned
+build (the PGM driver rebuilds its palette from the loaded palette RAM) and keep 1 for the
+same dupe (`tests/test_pgm.py`).
 
 ### Content and BIOS files
 

@@ -7,7 +7,7 @@
 # content, until G5 sets the orientation, buttons, reset and RAM variables.
 
 core = "fbneo"
-settle_frames = 1         # CAVE driver: verified (docs/games.md)
+settle_frames = 1         # FBNeo dupes a fresh process's first frame: verified (docs/games.md)
 orientation = 0           # stub until G5
 
 [content]

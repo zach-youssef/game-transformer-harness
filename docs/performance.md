@@ -199,7 +199,7 @@ build logging each `BurnArea`):
 
 | What the state left out | Symptom without it | Fix |
 |---|---|---|
-| The palette the Toaplan GP9001 drivers draw with, computed after each frame (CAVE's `ket` and `ddp3` too) | The first frame after a load uses the palette the process last drew: desync at frame 1 | `settle_frames = 1` (docs/games.md, "Settle frames") |
+| The palette the Toaplan GP9001 drivers draw with, computed after each frame | The first frame after a load uses the palette the process last drew: desync at frame 1 | `settle_frames = 1` (docs/games.md, "Settle frames") |
 | The YM2151's render position and carried samples (`burn_ym2151.cpp`); the game's YM2151 IRQ is timed by rendered samples | The Z80 takes its IRQ at other points: attract mode desyncs in the Z80 RAM at about frame 810 | fork commit `ddb1e8c` (`burn_ym2151`) |
 | The scanline the Toaplan scanline register last returned (`toaplan.h`), which sets its new-line bit | The 68000 polls for a different number of cycles: play desyncs at frame 870, one row of the raster split off, with RAM identical | fork commit `904777f` (`toaplan`) |
 | The MSM6295's render position and interpolated samples (`msm6295.cpp`) | Samples end at other points, changing the status the Z80 reads: play desyncs in the Z80 RAM at about frame 3340 | fork commit `9fbf243` (`msm6295`) |
@@ -236,8 +236,38 @@ The costs: Gunbird's state grows from 184 KB to 299 KB (64 KB of sprite lists, 4
 YM2610 carried samples), Strikers 1945's from 183 KB to 265 KB (the sprite lists and 16 KB of
 YMF278B samples).
 
+The IGS PGM games (`ket`, `ddp3`, `ddpdojblk`) left out one more, of another kind than the
+sound chips': the driver's own carry from one frame to the next.
+
+| What the state left out | Symptom without it | Fix |
+|---|---|---|
+| The 68000's, Z80's and ARM7's cycle overshoot past each frame's budget in the PGM driver (`pgm_run.cpp`, `nCyclesDone[]`), which the next frame starts by idling off (`SekIdle`, `ZetIdle`) | The first frame after a load runs the CPUs a few cycles more or fewer than the saved run, so their sync points and the sound latch handshake move: the Z80 RAM, then the 68000 RAM, differ from the live run within 2 to 140 frames of a load (Ketsui and DoDonPachi III, 23 of 24 checkpoints), while the frames stay the same for thousands | fork commit `9f55031` (`pgm`) |
+
+With it, a state loaded in a fresh process continues byte for byte as the run that saved it
+(the whole savestate compared frame by frame for 120 frames after a load, and frames and RAM
+for 3000 frames after loads of 12 checkpoints per game), and the three games' 36004-frame
+benchmark recordings of play replay in a fresh process (`tests/test_pgm.py` checks attract
+mode and play on the user's ROMs; Black Label loads from `ddp3.zip`, `in_parent`). The PGM
+driver needs no settling of its own (it rebuilds its palette from the loaded palette RAM, and
+a load in a process that has already drawn a frame continues exactly with no settle frame);
+`settle_frames = 1` is for the fresh-process dupe above. The cost: 12 bytes of state.
+
+A known risk the replays don't cover: the PGM boards' v3021 calendar chip reads the host's
+clock in FBNeo's libretro build (`BurnGetLocalTime` in `burn.cpp` returns the wall-clock time
+unless FBNeo's own movie or netplay is running), and Ketsui polls it. Nothing it read reached
+the frames, RAM or state checked above (states saved minutes apart matched, and the 36004-frame
+recordings replayed minutes after they were made), so it is left as it is; a game that keeps
+the time in RAM or shows it would replay only within the same second, minute or hour, and
+would need the clock made deterministic in our fork (a fixed date, or one derived from the
+frame count).
+
 Other sound chips' wrappers may share the pattern (a render position left out of the scan):
 `burn_ym2203.cpp`, `burn_ym2608.cpp`, `burn_ym2612.cpp` and the YM2608 FM core's counters
 haven't been checked, so a new FBNeo game needs its own replay check before its recordings
 are trusted. The method that finds these is the whole-savestate comparison one frame after a
-fresh-process load: both Psikyo sound bugs left the RAM identical for 6000 frames.
+fresh-process load: both Psikyo sound bugs left the RAM identical for 6000 frames. A replay
+alone isn't enough either: without the PGM fix, the 4004-frame play recordings of
+`tests/test_pgm.py` replayed for Ketsui and Black Label and desynced only for DoDonPachi III
+(frame 253), since a different carry moves the CPUs' sync points by a few cycles, which
+reaches the RAM only when it changes which side of a handshake a CPU lands on. The savestate
+comparison shows it on the first frame after the load.
