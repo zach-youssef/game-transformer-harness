@@ -132,17 +132,18 @@ original run showed: that one used the palette from the frame before the state, 
 state doesn't hold, so on a frame where the palette changes the two differ. The frames after
 it are exact, which is why gth-play's rewind seek (docs/human-play.md) replays 1 +
 `settle_frames` frames past a savestate. Recordings and replays settle alike, so recordings
-replay with no desync (for `bgaregga` together with our FBNeo fork's commits, docs/cores.md, "Forks", which add
-state whose loss the frames after a load don't recover from).
+replay with no desync (for the FBNeo games together with our FBNeo fork's commits,
+docs/cores.md, "Forks", which add state whose loss the frames after a load don't recover
+from).
 
 Set it to the fewest frames that make the first frame after a load the same whatever ran
-before (1 for the FBNeo games above), checked on the game's ROM as
-`tests/test_bgaregga.py` does; 0 loads states as they are, the right value for a core whose
+before (1 for the FBNeo games above), checked on the game's ROM as `tests/test_bgaregga.py`
+and `tests/test_psikyo.py` do; 0 loads states as they are, the right value for a core whose
 savestates hold everything. A game's value is stored with its recordings (in their
 `game.toml`), and a replay refuses a core loaded with another one. Psikyo games (`gunbird`,
-`s1945`) keep more outside their states, and settling doesn't make their first frames
-reproducible (docs/performance.md); their value is a placeholder until their games are set
-up.
+`s1945`) hold everything in their states on the pinned build (docs/performance.md, "FBNeo and
+savestates"), but keep `settle_frames = 1` too: FBNeo's libretro port dupes the first frame a
+process runs, so an unsettled load in a fresh process shows a cleared frame first.
 
 ### Content and BIOS files
 

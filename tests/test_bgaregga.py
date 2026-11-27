@@ -184,7 +184,8 @@ def test_recordings_replay_and_states_load_alike_in_a_fresh_process(rom, core, t
     np.testing.assert_array_equal(np.load(out / "fresh-reset.npy"), live)
     np.testing.assert_array_equal(np.load(out / "fresh-first-1.npy"), warm_first)
     # The cause, still there: unsettled, a fresh core draws the state's first frame with the
-    # palette it starts with, not the one the recording process had.
+    # palette it starts with, not the one the recording process had (and a fresh process dupes
+    # its first frame anyway, as every FBNeo game does: docs/performance.md).
     assert not np.array_equal(np.load(out / "fresh-first-0.npy"), warm_first)
 
 

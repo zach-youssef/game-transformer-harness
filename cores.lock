@@ -2,8 +2,8 @@
 
 [cores.fbneo]
 repo = "https://github.com/zach-youssef/FBNeo"
-commit = "9fbf24334c267d87dcee3265002be63b83bfcba4"
-library_version = "v1.0.0.03 261127 GIT9fbf243"
+commit = "f824e12ff7026db83da1cc90683deb9c817141c2"
+library_version = "v1.0.0.03 261127 GITf824e12"
 
 [cores.fbneo.artifacts]
 

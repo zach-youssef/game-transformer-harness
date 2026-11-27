@@ -20,13 +20,14 @@ history brings in commits whose tree isn't the libretro port (FBNeo's `301a167` 
 | `mednafen_pce_fast` | Gunhed | libretro/beetle-pce-fast-libretro | `2de1ce1c3f237b161c126c54ba407990bb86d1e9` | 2026-10-30 | Fetch translations & Recreate libretro_core_options_intl.h |
 | `fceumm` | Zanac | libretro/libretro-fceumm | `e0f3086a8104f8fbbe49a2615b10401504a9533f` | 2026-11-02 | libretro: send path checks through the frontend VFS (#660) |
 | `genesis_plus_gx` | Lightening Force | libretro/Genesis-Plus-GX | `b9c2316441978d4015ba30e9a95d9b0e6f8ee981` | 2026-11-09 | libretro: define ALIGN_LONG for 32-bit ARM unix builds (#415) |
-| `fbneo` | Battle Garegga, Ketsui, DoDonPachi III / Dai-Ou-Jou Black Label, Gunbird, Strikers 1945 | zach-youssef/FBNeo (`gth`) | `9fbf24334c267d87dcee3265002be63b83bfcba4` | 2026-11-27 | msm6295: save the render position and interpolated samples in savestates |
+| `fbneo` | Battle Garegga, Ketsui, DoDonPachi III / Dai-Ou-Jou Black Label, Gunbird, Strikers 1945 | zach-youssef/FBNeo (`gth`) | `f824e12ff7026db83da1cc90683deb9c817141c2` | 2026-11-27 | fm.c: save the YM2610's LFO and envelope counters in savestates |
 
 FBNeo's pin is the head of branch `gth` of our fork: libretro/FBNeo's
 `a836e52198aa5ce1f54be7b050e44872a1223797` (2026-11-10, "(libretro) update files", picked by
-the rule above) and three commits, each adding state its savestates left out (Forks, below,
-and docs/performance.md, "FBNeo and savestates"): `burn_ym2151` (`ddb1e8c`), `toaplan`
-(`904777f`) and `msm6295` (`9fbf243`).
+the rule above) and seven commits, each adding state its savestates left out (Forks, below,
+and docs/performance.md, "FBNeo and savestates"): for Battle Garegga `burn_ym2151`
+(`ddb1e8c`), `toaplan` (`904777f`) and `msm6295` (`9fbf243`), for the Psikyo games `psikyo`
+(`b061823`), `burn_ym2610` (`ad94ca3`), `burn_ymf278b` (`e85680d`) and `fm.c` (`f824e12`).
 
 FBNeo's upstream commit also fixes its driver tables, so the arcade sets' `game.toml` member
 lists (docs/roms.md, "Content tables") are taken from FBNeo at
@@ -117,8 +118,12 @@ upstream. Anything else (a build flag, a Makefile quirk) is a `case` in the buil
   (`gth-<upstream short hash>`, as the first branch keeps the plain name), with the changes upstream still lacks cherry-picked onto it,
   so the old branch and the commits pinned before stay as they are.
 - Cores that report `git rev-parse --short HEAD` report the fork commit's hash, and FBNeo
-  dates its version with that commit's author date: the build at `9fbf243` reports
-  `v1.0.0.03 261127 GIT9fbf243`.
+  dates its version with that commit's author date: the build at `f824e12` reports
+  `v1.0.0.03 261127 GITf824e12`.
+- Some of FBNeo's source files have CRLF line endings (`src/burn/drv/psikyo/d_psikyo.cpp`
+  among them). Edit them with an editor or tool that keeps them (`git apply`, `sed`, Python
+  with `newline=''`): Python's text mode rewrites every line, and the commit's diff becomes
+  the whole file.
 - To try a fork commit before pushing it, pass the build script the local clone's absolute
   path as the repository (Builds, above; a relative one would resolve in the build's clone).
 

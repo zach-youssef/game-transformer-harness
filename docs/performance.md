@@ -209,7 +209,31 @@ play replay and that loaded states match on the user's ROM. The costs: the state
 126 KB to 159 KB (almost all of it the YM2151's carried samples), and a load takes about
 244 µs instead of 6, since it runs the settle frame.
 
-Still open: Psikyo games (`gunbird`, `s1945`) differ after a load even with 1 to 4 settle
-frames, so they leave out more state, not traced yet. Other sound chips' wrappers may share
-the YM2151's and MSM6295's pattern (a render position left out of the scan): a new FBNeo
-game needs its own replay check before its recordings are trusted.
+Psikyo games (`gunbird`, `s1945`) left out four more, found the same way and fixed by four
+more fork commits:
+
+| What the state left out | Symptom without it | Fix |
+|---|---|---|
+| The sprite lists the Psikyo driver copies out of sprite RAM at each vblank and draws two frames later (`psikyo_sprite.cpp`, double-buffered sprites) | The first two frames after a load draw the sprites of whatever the process last ran (none in a fresh process); settling can't fix it, since the settle frames buffer later sprite RAM than the saved run drew, so 1 to 4 settle frames still gave different first frames; RAM identical | fork commit `b061823` (`psikyo`) |
+| The YM2610's resampling position and carried samples (`burn_ym2610.cpp`; the render positions were saved, the fraction and the samples weren't) | The frame after a load ends at another sample count, and the chip's slot phases drift from the saved run's from the first frame on (Gunbird: `YM2610.CH*.SLOT*:phasecount` differs in the state one frame after a load); audio differs, and the sound CPU could see it through the ADPCM flags | fork commit `ad94ca3` (`burn_ym2610`) |
+| The YMF278B's render position and carried samples (`burn_ymf278b.cpp`), which its scan zeroed on every load | The chip renders a full frame again from position 0, so its slots run ahead of the saved run's for good (Strikers 1945: `m_slots` differs one frame after a load); audio only, since its sound CPU state is fully scanned | fork commit `e85680d` (`burn_ymf278b`) |
+| The YM2610 FM core's LFO and envelope counters (`fm.c`: `lfo_cnt`, `lfo_inc`, `eg_cnt`, `eg_timer`; the YM2203 and YM2612 lists have them) | With the render position saved, slot volumes and LFO phases still stepped from another counter after a load (Gunbird: `volume`, `vol_out`, `phasecount` differ one frame after it) | fork commit `f824e12` (`fm.c`) |
+
+With them, a state loaded in a fresh process continues byte for byte as the run that saved it
+(the whole savestate was compared frame by frame for 120 frames after loads of 12 checkpoints
+per game, and frames and RAM for 2000 more), and both games' 36004-frame benchmark recordings
+of play replay in a fresh process with `settle_frames = 1` (`tests/test_psikyo.py` checks
+attract mode and play on the user's ROMs). The settle frame is still needed, for a reason
+outside the driver: FBNeo's libretro port dupes the first frame a process runs
+(`retro_get_system_av_info` flags its video buffer for reallocation, and the first
+`retro_run` passes no frame to `video_cb`), so a fresh process that loads a state and draws
+at once shows the host's cleared frame. The settle frame absorbs it, for every FBNeo game.
+The costs: Gunbird's state grows from 184 KB to 299 KB (64 KB of sprite lists, 48 KB of
+YM2610 carried samples), Strikers 1945's from 183 KB to 265 KB (the sprite lists and 16 KB of
+YMF278B samples).
+
+Other sound chips' wrappers may share the pattern (a render position left out of the scan):
+`burn_ym2203.cpp`, `burn_ym2608.cpp`, `burn_ym2612.cpp` and the YM2608 FM core's counters
+haven't been checked, so a new FBNeo game needs its own replay check before its recordings
+are trusted. The method that finds these is the whole-savestate comparison one frame after a
+fresh-process load: both Psikyo sound bugs left the RAM identical for 6000 frames.

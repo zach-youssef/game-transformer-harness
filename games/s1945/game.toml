@@ -7,7 +7,7 @@
 # sets the orientation, buttons, reset and RAM variables.
 
 core = "fbneo"
-settle_frames = 1         # Psikyo: not enough, docs/performance.md (docs/games.md)
+settle_frames = 1         # FBNeo dupes a fresh process's first frame: verified (docs/games.md)
 orientation = 0           # stub until G6
 
 [content]
