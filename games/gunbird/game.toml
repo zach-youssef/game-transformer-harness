@@ -1,10 +1,10 @@
 # Gunbird (World), Psikyo.
-# Only [content] is final: names, sizes and CRC-32s from FBNeo a836e52
-# (src/burn/drv/psikyo/d_psikyo.cpp, gunbirdRomDesc), SHA-1s from MAME 0.289
+# Only [content] and [buttons] are final. Content: names, sizes and CRC-32s from FBNeo
+# a836e52 (src/burn/drv/psikyo/d_psikyo.cpp, gunbirdRomDesc), SHA-1s from MAME 0.289
 # (src/mame/psikyo/psikyo.cpp), whose CRC-32 matches for every member (docs/roms.md, "Content
 # tables"). Not listed: 3020.u19, 3021.u69, never dumped (NODUMP in both drivers, so no set
 # holds them). The rest is a stub, so the config parses and the ROM audit can check the
-# content, until G6 sets the orientation, buttons, reset and RAM variables.
+# content, until G6 sets the orientation, reset and RAM variables.
 
 core = "fbneo"
 settle_frames = 1         # FBNeo dupes a fresh process's first frame: verified (docs/games.md)
@@ -28,7 +28,9 @@ members = [
 ]
 
 [buttons]
-a = "shot"                # stub until G6
+b = "shot"                # FBNeo's button 1: fires
+a = "bomb"                # FBNeo's button 2: bombs (each held from one state in play;
+                          # Y and X do nothing)
 
 [reset]
 script = [{ press = [], frames = 1 }]   # stub until G6

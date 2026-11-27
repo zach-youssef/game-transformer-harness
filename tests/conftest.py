@@ -101,7 +101,7 @@ def core() -> Callable[..., Path]:
 # The replay and cold-load check's run: attract mode with random shots, a savestate at
 # STATE_STEP, then no button held for a while.
 FRAMESKIP = 4
-SHOT = 1  # flat action: no direction, the shot slot (the games' game.toml: a)
+SHOT = 1  # flat action: no direction, the shot slot (game.toml: a, or b on gunbird and s1945)
 UP_SHOT = 1 * 16 + SHOT  # flat action: up and shot (docs/actions.md)
 # Steps of boot and attract mode (the PGM BIOS boot first); every game tested animates sprites
 # throughout it.
