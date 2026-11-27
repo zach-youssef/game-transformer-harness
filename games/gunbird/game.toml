@@ -9,6 +9,7 @@
 core = "fbneo"
 settle_frames = 1         # FBNeo dupes a fresh process's first frame: verified (docs/games.md)
 orientation = 0           # stub until G6
+sprite_hw = "psikyo"      # sprite-list labels (docs/recording-format.md, "Sprite labels")
 
 [content]
 file = "gunbird.zip"
