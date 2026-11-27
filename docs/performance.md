@@ -236,6 +236,17 @@ The costs: Gunbird's state grows from 184 KB to 299 KB (64 KB of sprite lists, 4
 YM2610 carried samples), Strikers 1945's from 183 KB to 265 KB (the sprite lists and 16 KB of
 YMF278B samples).
 
+One more YM2610 gap affects only the audio, and was found by reading rather than in a replay:
+the FM core left out channel 3's per-slot frequencies in 3-slot mode and the channels' pan
+(`fm.c`: `SL3.block_fnum`, `pan`; the YM2612 list has them), and its postload doesn't rewrite
+channels 3 and 6's pan register (its loops stop before 0xb6), so a game that pans FM channel 3
+or 6 to one side would play it on both after a load. The fix also keeps the loaded pan across
+the postload's 0xb4/0xb5 rewrites, which recompute it from registers that lack the reset's
+writes. Gunbird's audio after a fresh-process load already
+matched the live run's, and still does with the fix (fork commit `e803e5d`, `fm.c`; +60 bytes
+of state, 298,894 bytes after 600 frames). Strikers 1945 has no YM2610, so its state is
+unchanged.
+
 The IGS PGM games (`ket`, `ddp3`, `ddpdojblk`) left out one more, of another kind than the
 sound chips': the driver's own carry from one frame to the next.
 
@@ -261,13 +272,17 @@ the time in RAM or shows it would replay only within the same second, minute or 
 would need the clock made deterministic in our fork (a fixed date, or one derived from the
 frame count).
 
-Other sound chips' wrappers may share the pattern (a render position left out of the scan):
-`burn_ym2203.cpp`, `burn_ym2608.cpp`, `burn_ym2612.cpp` and the YM2608 FM core's counters
-haven't been checked, so a new FBNeo game needs its own replay check before its recordings
-are trusted. The method that finds these is the whole-savestate comparison one frame after a
-fresh-process load: both Psikyo sound bugs left the RAM identical for 6000 frames. A replay
-alone isn't enough either: without the PGM fix, the 4004-frame play recordings of
-`tests/test_pgm.py` replayed for Ketsui and Black Label and desynced only for DoDonPachi III
-(frame 253), since a different carry moves the CPUs' sync points by a few cycles, which
-reaches the RAM only when it changes which side of a handshake a CPU lands on. The savestate
-comparison shows it on the first frame after the load.
+The other sound chips' wrappers shared the pattern (a resampling position or carried samples
+left out of the scan, and for the YM3812 and Y8950 every chip after the first), as did the
+YM2608 FM core's counters and pan and the Y8950's ADPCM registers. Nine more fork commits
+add them, and two more add two PGM protection devices' state (the 4-in-1 bootleg's ROM bank,
+Puzzli 2's simulation); docs/cores.md, "Pins", lists them. None of our games uses them, so all
+but `burn_md2612` (seen on FBNeo's Mega Drive driver, in Thunder Force III's audio after a
+load) were found by reading and not reproduced. A new FBNeo game still needs its own replay
+check before its recordings are trusted. The method that finds these is the whole-savestate
+comparison one frame after a fresh-process load: both Psikyo sound bugs left the RAM
+identical for 6000 frames. A replay alone isn't enough either: without the PGM fix, the
+4004-frame play recordings of `tests/test_pgm.py` replayed for Ketsui and Black Label and
+desynced only for DoDonPachi III (frame 253), since a different carry moves the CPUs' sync
+points by a few cycles, which reaches the RAM only when it changes which side of a handshake
+a CPU lands on. The savestate comparison shows it on the first frame after the load.

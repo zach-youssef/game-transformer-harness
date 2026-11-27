@@ -2,13 +2,10 @@
 
 [cores.fbneo]
 repo = "https://github.com/zach-youssef/FBNeo"
-commit = "9f550318a08cac460ddc1dffb08a200700c6afeb"
-library_version = "v1.0.0.03 261127 GIT9f55031"
+commit = "d09bde2c0b0a13198f6e40da644daa03221716e8"
+library_version = "v1.0.0.03 261127 GITd09bde2"
 
 [cores.fbneo.artifacts]
-aarch64-apple-darwin = "b4938fd18122086c24f0aaf43106d380dc50c765d959f19771801a9a400aaecd"
-x86_64-pc-windows-msvc = "df507fd7aebfcb1edd2b1ce4c463f1056249a64647fb75e7645741f786fc0db5"
-x86_64-unknown-linux-gnu = "76dcd45d56ed26ecb59fc8582f4ce2f6b44bd9817379b68eacd35997c1f9666a"
 
 [cores.fceumm]
 repo = "https://github.com/libretro/libretro-fceumm"
