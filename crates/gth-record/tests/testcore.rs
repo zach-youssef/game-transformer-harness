@@ -168,6 +168,61 @@ fn five_thousand_random_frames_replay_without_desync() {
     assert_eq!(core.memory(MemoryId::SystemRam.id()).unwrap(), ram);
 }
 
+#[test]
+fn a_sticky_recording_keeps_the_effective_masks_and_replays_without_desync() {
+    let _serial = serial();
+    let dir = TempDir::new();
+    let game = game();
+    let mut core = load(&game, &content(&dir.0));
+    core.run_inputs(&game.reset_inputs().unwrap());
+    let path = dir.0.join("sticky.gthrec");
+    let mut recorder =
+        Recorder::create(&path, &mut core, &game, Some(&content(&dir.0)), info(1)).unwrap();
+    let mut inputs = Rng(11);
+    let mut sticky = gth_core::Rng::new(0);
+    let mut held = Vec::new();
+    for _ in 0..500 {
+        let buttons = inputs.next() as u16;
+        let frames = 1 + (inputs.next() % 4) as u32;
+        let before = recorder.frames();
+        recorder
+            .run_sticky(&mut core, frames, buttons, 0.25, &mut sticky)
+            .unwrap();
+        assert_eq!(recorder.frames(), before + u64::from(frames));
+        held.push((buttons, core.last_buttons()));
+    }
+    let path = recorder.finish(&mut core).unwrap();
+    drop(core);
+
+    let recording = Recording::open(&path).unwrap();
+    // Split the recorded frames into steps at their step-end flags.
+    let mut steps = vec![Vec::new()];
+    for input in &recording.inputs {
+        steps.last_mut().unwrap().push(input.buttons);
+        if input.step_end {
+            steps.push(Vec::new());
+        }
+    }
+    steps.pop();
+    assert_eq!(steps.len(), held.len());
+    let mut stuck = 0;
+    for (frames, &(asked, last)) in steps.iter().zip(&held) {
+        assert_eq!(*frames.last().unwrap(), last, "the mask the core ran last");
+        stuck += frames.iter().filter(|&&mask| mask != asked).count();
+    }
+    assert!(
+        stuck > 0,
+        "stuck frames are recorded with the mask they repeated"
+    );
+    // A check after every frame: the replay, with no RNG, runs exactly what was recorded.
+    let mut replayer = replay(&path, &content(&dir.0)).unwrap();
+    assert_eq!(
+        replayer.run_to_end().unwrap(),
+        recording.meta.frames,
+        "no desync"
+    );
+}
+
 /// Rewrites one frame's buttons in `inputs.bin` (frame 1-based), toggling A, which the test
 /// core scores on.
 fn tamper(path: &Path, frame: usize) {

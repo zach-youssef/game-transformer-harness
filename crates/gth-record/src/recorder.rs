@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gth_config::{CoreLock, GameConfig, RamVar};
-use gth_core::Core;
+use gth_core::{Core, Rng};
 
 use crate::format::{Check, INPUTS_MAGIC, Input};
 use crate::meta::{
@@ -301,7 +301,24 @@ impl Recorder {
     /// `frames == 0` runs and records nothing.
     pub fn run(&mut self, core: &mut Core, frames: u32, buttons: u16) -> Result<()> {
         self.check_not_failed()?;
-        let result = self.record(core, frames, buttons);
+        let result = self.record(core, frames, buttons, None);
+        self.failed = result.is_err();
+        result
+    }
+
+    /// Runs one agent step with sticky actions, as [`Core::run_sticky`] does, recording each
+    /// frame's effective buttons (the ones the core saw), so the recording replays without
+    /// `rng`.
+    pub fn run_sticky(
+        &mut self,
+        core: &mut Core,
+        frames: u32,
+        buttons: u16,
+        sticky_prob: f64,
+        rng: &mut Rng,
+    ) -> Result<()> {
+        self.check_not_failed()?;
+        let result = self.record(core, frames, buttons, Some((sticky_prob, rng)));
         self.failed = result.is_err();
         result
     }
@@ -315,11 +332,21 @@ impl Recorder {
         Ok(())
     }
 
-    fn record(&mut self, core: &mut Core, frames: u32, buttons: u16) -> Result<()> {
+    fn record(
+        &mut self,
+        core: &mut Core,
+        frames: u32,
+        buttons: u16,
+        mut sticky: Option<(f64, &mut Rng)>,
+    ) -> Result<()> {
         for i in 0..frames {
-            core.run_frames(1, buttons);
+            let held = match &mut sticky {
+                Some((sticky_prob, rng)) => core.sticky_buttons(buttons, *sticky_prob, rng),
+                None => buttons,
+            };
+            core.run_frames(1, held);
             let input = Input {
-                buttons,
+                buttons: held,
                 step_end: i + 1 == frames,
             };
             let path = self.dir.join("inputs.bin");

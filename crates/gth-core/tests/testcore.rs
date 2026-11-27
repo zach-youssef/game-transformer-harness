@@ -419,6 +419,133 @@ fn run_inputs_plays_a_script() {
     assert_eq!(square(&pixels(&core)), (154, 112));
 }
 
+/// Whether the last frame shows A held (its cell red).
+fn shows_a(core: &Core) -> bool {
+    pixels(core)[RETRO_DEVICE_ID_JOYPAD_A as usize * 20 + 10] & 0x00FF_0000 == 0x00FF_0000
+}
+
+#[test]
+fn sticky_frames_repeat_the_previous_frame_at_the_given_rate() {
+    let _serial = serial();
+    let mut core = load(None);
+    let mut rng = gth_core::Rng::new(0);
+    // The agent alternates A and nothing every frame, so a frame holding what the agent didn't
+    // ask for is one that stuck, and the frame shows what the core saw.
+    let frames = 4000;
+    let mut stuck = 0;
+    for i in 0..frames {
+        let buttons = if i % 2 == 0 { A } else { 0 };
+        let previous = core.last_buttons();
+        core.run_sticky(1, buttons, 0.25, &mut rng);
+        let held = core.last_buttons();
+        assert!(held == buttons || held == previous, "frame {i}");
+        assert_eq!(
+            shows_a(&core),
+            held == A,
+            "frame {i}: the core saw the effective mask"
+        );
+        if held != buttons {
+            stuck += 1;
+        }
+    }
+    // A frame sticks only when the previous one held the other mask: when the previous frame
+    // stuck, it held this frame's mask already. So a frame differs with probability
+    // 0.25 * P(previous differed from this one), and with alternating masks the stationary rate
+    // of "held != asked" is q = 0.25 * (1 - q), q = 0.2. The count isn't binomial: a differing
+    // frame is never followed by another, so the indicators are a two-state chain with lag-1
+    // correlation -0.25 and an asymptotic variance 0.6 times the binomial's. 5 binomial sigma
+    // is therefore a looser bound than 5 sigma.
+    let q = 0.2;
+    let sigma = (f64::from(frames) * q * (1.0 - q)).sqrt();
+    let expected = f64::from(frames) * q;
+    assert!(
+        (f64::from(stuck) - expected).abs() < 5.0 * sigma,
+        "{stuck} stuck frames, expected {expected} +- {}",
+        5.0 * sigma
+    );
+}
+
+#[test]
+fn sticky_frames_stick_at_the_given_rate_per_frame() {
+    let _serial = serial();
+    let mut core = load(None);
+    let mut rng = gth_core::Rng::new(1);
+    // Holding A for a step after a step of nothing: each frame of the step keeps nothing with
+    // probability 0.25 until one frame takes A, so the first frame sticks with p = 0.25.
+    let steps = 2000;
+    let mut first_stuck = 0;
+    for _ in 0..steps {
+        core.run_frames(1, 0);
+        core.run_sticky(1, A, 0.25, &mut rng);
+        if core.last_buttons() == 0 {
+            first_stuck += 1;
+        }
+    }
+    let p = 0.25;
+    let sigma = (f64::from(steps) * p * (1.0 - p)).sqrt();
+    let expected = f64::from(steps) * p;
+    assert!(
+        (f64::from(first_stuck) - expected).abs() < 5.0 * sigma,
+        "{first_stuck} of {steps} stuck, expected {expected} +- {}",
+        5.0 * sigma
+    );
+}
+
+#[test]
+fn sticky_runs_are_deterministic_for_a_seed() {
+    let _serial = serial();
+    let mut core = load(None);
+    let state = core.serialize().unwrap();
+    let mut run = |seed: u64| {
+        core.unserialize(&state).unwrap();
+        let mut rng = gth_core::Rng::new(seed);
+        let mut masks = Vec::new();
+        for i in 0..300u32 {
+            let buttons = [A, RIGHT, A | DOWN, 0][(i / 4 % 4) as usize];
+            core.run_sticky(1, buttons, 0.25, &mut rng);
+            masks.push(core.last_buttons());
+        }
+        (masks, frame_hash(&core), ram(&mut core))
+    };
+    let first = run(5);
+    assert_eq!(run(5), first, "same seed, same frames");
+    assert_ne!(run(6).0, first.0, "another seed sticks elsewhere");
+}
+
+#[test]
+fn sticky_prob_0_draws_nothing_and_runs_the_buttons() {
+    let _serial = serial();
+    let mut core = load(None);
+    let mut rng = gth_core::Rng::new(9);
+    core.run_frames(1, A);
+    core.run_sticky(5, RIGHT, 0.0, &mut rng);
+    assert_eq!(rng, gth_core::Rng::new(9), "no draws");
+    assert_eq!(core.last_buttons(), RIGHT);
+    assert_eq!(core.frames_run(), 6);
+}
+
+#[test]
+fn the_frame_before_the_first_after_a_load_or_reset_holds_nothing() {
+    let _serial = serial();
+    let mut core = load(None);
+    let mut rng = gth_core::Rng::new(0);
+    assert_eq!(core.last_buttons(), 0, "after loading");
+    let state = core.serialize().unwrap();
+    // Probability 1 always repeats the previous frame, so the frames show what that was.
+    core.run_frames(1, A);
+    core.reset();
+    assert_eq!(core.last_buttons(), 0, "after a reset");
+    core.run_sticky(3, A, 1.0, &mut rng);
+    assert!(!shows_a(&core), "the reset left nothing to repeat");
+    core.run_frames(1, A);
+    core.unserialize(&state).unwrap();
+    assert_eq!(core.last_buttons(), 0, "after a savestate load");
+    core.run_sticky(1, A, 1.0, &mut rng);
+    assert!(!shows_a(&core));
+    core.run_frames(0, A);
+    assert_eq!(core.last_buttons(), 0, "0 frames hold nothing");
+}
+
 #[test]
 fn reads_ram_variables_from_memory_and_the_map() {
     let _serial = serial();

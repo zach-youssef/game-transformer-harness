@@ -240,8 +240,9 @@ impl Replayer {
         self.frame
     }
 
-    /// Replays the next agent step and returns its buttons and frame count, or `None` at the
-    /// end of the recording.
+    /// Replays the next agent step and returns its first frame's buttons (under sticky
+    /// actions, a step's frames may differ) and its frame count, or `None` at the end of the
+    /// recording.
     pub fn step(&mut self) -> Result<Option<(u16, u32)>> {
         let mut first = None;
         let mut frames = 0;

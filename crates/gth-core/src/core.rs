@@ -11,6 +11,7 @@ use gth_libretro_sys::*;
 use libloading::Library;
 
 use crate::host::{self, Claim, MemoryRegion};
+use crate::rng::Rng;
 use crate::{Error, Result};
 
 /// The core's name and version (recorded in every dataset), from `retro_get_system_info`.
@@ -87,6 +88,9 @@ pub struct Core {
     av_info: AvInfo,
     /// `retro_run` calls since loading, not counting settle frames.
     frames_run: u64,
+    /// The buttons the last frame ran with, 0 after loading, a reset or a savestate load:
+    /// what a sticky frame repeats ([`run_sticky`](Self::run_sticky)).
+    last_buttons: u16,
     /// Neutral frames run after each savestate load before loading it again
     /// ([`load`](Self::load)).
     settle_frames: u32,
@@ -457,6 +461,7 @@ impl Core {
                 sample_rate: 0.0,
             },
             frames_run: 0,
+            last_buttons: 0,
             settle_frames: 0,
             initialized: false,
             game_loaded: false,
@@ -552,6 +557,39 @@ impl Core {
             unsafe { (self.api.run)() };
         }
         self.frames_run += u64::from(frames);
+        if frames > 0 {
+            self.last_buttons = buttons;
+        }
+    }
+
+    /// Runs `frames` frames as [`run_frames`](Self::run_frames) does, with sticky actions
+    /// (ALE's semantics, Machado et al. 2018): on each frame, with probability `sticky_prob`
+    /// the previous frame's buttons are held again instead of `buttons`. The previous frame
+    /// of the first one after loading, a reset or a savestate load holds nothing.
+    /// `sticky_prob == 0` draws nothing from `rng` and is `run_frames`. A recorder records
+    /// what ran ([`last_buttons`](Self::last_buttons)), so a replay needs no `rng`.
+    pub fn run_sticky(&mut self, frames: u32, buttons: u16, sticky_prob: f64, rng: &mut Rng) {
+        for _ in 0..frames {
+            let buttons = self.sticky_buttons(buttons, sticky_prob, rng);
+            self.run_frames(1, buttons);
+        }
+    }
+
+    /// The buttons the next frame of a sticky step holds ([`run_sticky`](Self::run_sticky)):
+    /// [`last_buttons`](Self::last_buttons) with probability `sticky_prob`, else `buttons`.
+    /// One draw from `rng`, none when `sticky_prob == 0`.
+    pub fn sticky_buttons(&self, buttons: u16, sticky_prob: f64, rng: &mut Rng) -> u16 {
+        if sticky_prob > 0.0 && rng.next_f64() < sticky_prob {
+            self.last_buttons
+        } else {
+            buttons
+        }
+    }
+
+    /// The buttons the last frame ran with; 0 after loading, a reset or a savestate load
+    /// (settle frames don't count).
+    pub fn last_buttons(&self) -> u16 {
+        self.last_buttons
     }
 
     /// Runs each `(buttons, frames)` pair in order, as [`run_frames`](Self::run_frames) does:
@@ -596,6 +634,7 @@ impl Core {
         }
         // SAFETY: the game is loaded; `&mut self` makes this the only call into the core.
         unsafe { (self.api.reset)() };
+        self.last_buttons = 0;
         self.clear_frame();
     }
 
@@ -621,6 +660,7 @@ impl Core {
         if !self.settle(state) {
             return Err(self.savestate_error("the core refused the state"));
         }
+        self.last_buttons = 0;
         self.clear_frame();
         Ok(())
     }
