@@ -64,17 +64,24 @@ pub enum Encoding {
     Le,
     /// Unsigned big-endian.
     Be,
+    /// One decimal digit (0 to 9) per byte, most significant first: a score a game keeps as
+    /// the digits it draws.
+    Digits,
 }
 
 impl Encoding {
-    pub const ALL: [Encoding; 3] = [Encoding::Bcd, Encoding::Le, Encoding::Be];
+    /// The encodings a RAM search reads candidates in (its views), not all of them: `Digits`
+    /// is left out, since a search can't find a variable by one-digit-per-byte, so its bytes
+    /// are found by looking at the RAM (docs/games.md, "RAM variables").
+    pub const SEARCHABLE: [Encoding; 3] = [Encoding::Bcd, Encoding::Le, Encoding::Be];
 
-    /// Its name in `game.toml` (`bcd`, `le`, `be`).
+    /// Its name in `game.toml` (`bcd`, `le`, `be`, `digits`).
     pub fn name(self) -> &'static str {
         match self {
             Encoding::Bcd => "bcd",
             Encoding::Le => "le",
             Encoding::Be => "be",
+            Encoding::Digits => "digits",
         }
     }
 }
@@ -177,10 +184,12 @@ impl RamVar {
         match self.encoding {
             Encoding::Bcd => 10u128.pow(digits) - 1,
             Encoding::Le | Encoding::Be => (1u128 << (4 * digits)) - 1,
+            Encoding::Digits => 10u128.pow(self.size as u32) - 1,
         }
     }
 
-    /// Decodes the variable's `size` bytes. Fails on a BCD nibble above 9 (or, for a variable
+    /// Decodes the variable's `size` bytes. Fails on a BCD nibble or a `digits` byte above 9
+    /// (or, for a variable
     /// built without validation, a value that doesn't fit an `i64` after scaling: validation
     /// rejects any variable whose largest value wouldn't).
     pub fn decode(&self, input: &[u8]) -> Result<i64, String> {
@@ -206,6 +215,16 @@ impl RamVar {
                         return Err(format!("byte {byte:#04x} isn't packed BCD"));
                     }
                     value = value * 100 + u64::from(high) * 10 + u64::from(low);
+                }
+                value
+            }
+            Encoding::Digits => {
+                let mut value = 0u64;
+                for &byte in bytes.iter() {
+                    if byte > 9 {
+                        return Err(format!("byte {byte:#04x} isn't a decimal digit"));
+                    }
+                    value = value * 10 + u64::from(byte);
                 }
                 value
             }
@@ -256,6 +275,17 @@ mod tests {
         );
         let max = var(8, Encoding::Bcd, false, 1).decode(&[0x99; 8]);
         assert_eq!(max, Ok(9_999_999_999_999_999));
+        // One digit per byte, most significant first; swap16 and scale apply as for the rest.
+        let digits = [0, 4, 7, 6, 1, 0];
+        assert_eq!(
+            var(6, Encoding::Digits, false, 1).decode(&digits),
+            Ok(47_610)
+        );
+        assert_eq!(
+            var(6, Encoding::Digits, false, 10).decode(&digits),
+            Ok(476_100)
+        );
+        assert_eq!(var(2, Encoding::Digits, true, 1).decode(&[1, 2]), Ok(21));
     }
 
     #[test]
@@ -264,6 +294,10 @@ mod tests {
             .decode(&[0x1A, 0])
             .unwrap_err();
         assert!(error.contains("0x1a isn't packed BCD"), "{error}");
+        let error = var(2, Encoding::Digits, false, 1)
+            .decode(&[1, 10])
+            .unwrap_err();
+        assert!(error.contains("0x0a isn't a decimal digit"), "{error}");
         let error = var(8, Encoding::Le, false, 1)
             .decode(&[0xFF; 8])
             .unwrap_err();

@@ -115,7 +115,7 @@ impl FromStr for View {
             Some(base) => (base, true),
             None => (name, false),
         };
-        let (encoding, size) = Encoding::ALL
+        let (encoding, size) = Encoding::SEARCHABLE
             .into_iter()
             .find_map(|encoding| Some((encoding, base.strip_prefix(encoding.name())?)))
             .ok_or_else(error)?;

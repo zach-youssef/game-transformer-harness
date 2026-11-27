@@ -594,6 +594,16 @@ gth_testcore_step = "4"
     }
 
     #[test]
+    fn parses_the_digits_encoding() {
+        let text = full().replace("encoding = \"le\"", "encoding = \"digits\"");
+        let config = GameConfig::parse(&text, "digits").unwrap();
+        assert_eq!(config.ram["lives"].encoding, Encoding::Digits);
+        assert_eq!(config.ram["lives"].decode(&[2, 1]), Ok(12));
+        let again = GameConfig::parse(&config.to_toml(), "round trip").unwrap();
+        assert_eq!(again, config);
+    }
+
+    #[test]
     fn evaluates_the_terminate_condition() {
         let config = GameConfig::parse(&full(), "full").unwrap();
         let values =

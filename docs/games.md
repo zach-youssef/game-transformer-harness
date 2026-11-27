@@ -244,7 +244,7 @@ no-op frames for the first observation.
 memory = "system_ram"     # system_ram | save_ram | video_ram | rtc
 offset = 0x10
 size = 4                  # bytes, 1-8
-encoding = "bcd"          # bcd | le | be
+encoding = "bcd"          # bcd | le | be | digits
 swap16 = false            # optional, default false
 scale = 10                # optional, default 1
 
@@ -255,7 +255,10 @@ encoding = "le"
 ```
 
 - `bcd` is packed BCD, two digits per byte, most significant byte first. `le` and `be` are
-  unsigned.
+  unsigned. `digits` is one decimal digit (0 to 9) per byte, most significant first: a score
+  a game keeps as the digits it draws (Zanac's, six bytes). Like `bcd`, a byte above 9 makes
+  a read fail. RAM search has no view for it (below), so its bytes are found by looking at
+  the RAM: dump the work RAM at known scores and look for the digits.
 - `swap16` swaps the two bytes of each 16-bit word before decoding: FBNeo keeps 68k RAM as
   host-endian 16-bit words, so a value's bytes come out swapped in pairs.
 - The value is multiplied by `scale` (a score stored in tens has `scale = 10`). A variable
@@ -272,10 +275,10 @@ them, by name, to its reward function and in `info["ram"]`.
 When `RetroEnv` is made, it checks every variable against the core's memory: the memory
 exists, the bytes are inside it, an address lies in one memory map region. A config that
 fails is rejected then (`HarnessError` naming the variable), not mid-episode. After that a
-read can fail only on a `bcd` variable holding a byte that isn't BCD, and then `step()` or
-`reset()` raises `HarnessError` naming the variable and the byte. That ends a training run,
-so pick BCD variables (and reset script end points) where the game always keeps them valid:
-some games write garbage to the score during boot or attract screens.
+read can fail only on a `bcd` variable holding a byte that isn't valid BCD (or, for `digits`,
+a byte above 9), and then `step()` or `reset()` raises `HarnessError` naming the variable and
+the byte. That ends a training run, so pick BCD variables (and reset script end points)
+where the game always keeps them valid: some games write garbage to the score during boot or attract screens.
 
 A game under discovery ("RAM search", below) can use a stub config: no `[ram]`, `terminate = "0"`
 and a reward function that doesn't read RAM.
