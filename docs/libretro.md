@@ -12,6 +12,9 @@ commit it was transcribed from is in the crate's doc comment.
   options (`SET_VARIABLES`, `GET_VARIABLE`, `GET_VARIABLE_UPDATE`, `SET_VARIABLE`) and
   `GET_CORE_OPTIONS_VERSION`, input descriptors, log interface, `GET_CAN_DUPE`,
   `SET_SUPPORT_NO_GAME`. Each constant's doc comment names the type `data` points to.
+- `RETRO_ENVIRONMENT_PRIVATE` and the harness's own command in that range,
+  `GTH_ENVIRONMENT_SET_AREA_INTERFACE` with `gth_area_interface` (below, "Named areas"); not
+  in `libretro.h`.
 - The structs those commands and the entry points use, `#[repr(C)]`.
 - The callback types the host passes to the core (`retro_*_t`, `Option<extern "C" fn>` so they
   are nullable), and one function-pointer type per exported entry point (`retro_*_fn`, the
@@ -50,6 +53,7 @@ which cores read as "not supported"):
 | `GET_VARIABLE_UPDATE` | always `false`: the host never changes options |
 | `GET_CORE_OPTIONS_VERSION` | 0 |
 | `SET_MEMORY_MAPS` | copies the descriptors; `read_mapped` reads a region as contiguous from `start` (mirrors aren't resolved) |
+| `GTH_ENVIRONMENT_SET_AREA_INTERFACE` | copies the core's `get_area` (below, "Named areas"); `false` for another `version` |
 | `SET_INPUT_DESCRIPTORS`, `SET_SUPPORT_NO_GAME` | `true`, ignored |
 | `GET_LOG_INTERFACE` | `false` (no C shim, see above) |
 
@@ -66,6 +70,34 @@ stereo samples for `Core::take_audio` (gth-play plays them). Content is read int
 `need_fullpath`, and stays alive until the game is unloaded; an unreadable file is
 `Error::Content`. A `need_fullpath` core gets only the path, which needn't exist: FBNeo
 loads a clone in a merged set from `<dir>/<clone>.zip` through its parent's zip.
+
+### Named areas
+
+Some labels live in a core's own buffers, outside system RAM and the memory map: Psikyo's
+buffered sprite lists, for instance. Our FBNeo
+fork (docs/cores.md, "Forks") and the test core hand the host a lookup of their state areas
+with a private environment command, `GTH_ENVIRONMENT_SET_AREA_INTERFACE`
+(`RETRO_ENVIRONMENT_PRIVATE | 0x4754`, in the range `libretro.h` reserves for frontend- and
+core-private commands), at `retro_load_game`:
+
+```c
+struct gth_area_interface {
+    unsigned version;  /* 1 */
+    bool (*get_area)(const char *name, const void **data, size_t *size);
+};
+```
+
+The host copies the struct. `get_area` returns the one area with that name, `false` for none
+or several; in FBNeo the areas are what `BurnAcb` sees when a savestate is taken (a scan with
+neither `ACB_READ` nor `ACB_WRITE`, like `CheevosInit`'s, which copies nothing), named by
+`ScanVar`/`BurnArea::szName`. The command changes nothing else, and a frontend that doesn't
+know it answers `false`, so the fork stays a drop-in core.
+
+`Core::area(name)` and `Core::areas([names])` give the bytes, borrowed from the `Core` like
+`Core::memory`; `None` when the core gave no interface (`Core::has_areas`), has no such area or
+several. Each name is looked up once per load and its address cached, so use only areas whose
+storage is fixed while the game is loaded (allocated at init, or static), not a pointer a
+driver moves between banks.
 
 `Core::reset` restores a savestate taken right after loading, so every reset starts from the
 same state. `retro_reset` is the console's reset button, and many cores keep RAM or NVRAM
@@ -103,6 +135,15 @@ cores in tests and CI: video, input, RAM, core options and savestates, with no R
   load), which savestates don't hold: like FBNeo's Toaplan drivers, which draw with the
   palette computed after the previous frame, the first frame after a load shows what the
   process ran before it (docs/games.md, `settle_frames`).
+- **Sprites**: with the `gth_testcore_sprites` core option `on` (default `off`, read at load),
+  the core registers the area interface (above, "Named areas") with one area, `gth_testcore
+  sprites`, and keeps a buffered marker list: after each frame (and on load, reset and
+  `unserialize`) it lists a 4x4 marker at the square's centre and one at (4 + 6i, 10) for each
+  of the first 8 lives (byte 8 of RAM), and the next frame draws them magenta (`0xFF00FF`) on
+  top. The list derives from what savestates hold, so a load restores it. Layout: a count
+  byte, then 9 entries of x, y (i16) and width, height (u8), little-endian. As with Psikyo's
+  lists, reading it between frames gives what the next frame draws. With the option `off`
+  nothing changes.
 - **Input**: port 0 joypad, queried per button (not with `RETRO_DEVICE_ID_JOYPAD_MASK`).
 - **Audio**: 800 silent stereo frames per `retro_run`, through the batch callback.
 - **RAM**: `RETRO_MEMORY_SYSTEM_RAM` is 256 bytes, also registered with `SET_MEMORY_MAPS` at

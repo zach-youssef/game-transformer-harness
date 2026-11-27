@@ -682,3 +682,27 @@ fn probe_reports_the_system_info_and_unloads() {
     assert!(matches!(missing, Err(Error::CoreLoad { .. })));
     Core::probe(path, Path::new(".")).expect("the failed probe released the claim");
 }
+
+/// The test core's area interface (docs/libretro.md, "Named areas"): registered only with its
+/// sprites option on, giving its one area by name.
+#[test]
+fn named_areas_come_from_the_core_s_interface() {
+    let _serial = serial();
+    let mut core = load(None);
+    assert!(!core.has_areas());
+    assert!(core.area("gth_testcore sprites").is_none());
+    drop(core);
+
+    let mut core = load_with(None, &[("gth_testcore_sprites", "on")]).unwrap();
+    assert!(core.has_areas());
+    // A count byte and 9 six-byte entries; one marker, the square's, at load.
+    let area = core.area("gth_testcore sprites").unwrap();
+    assert_eq!((area.len(), area[0]), (55, 1));
+    assert!(core.area("gth_testcore sprite").is_none());
+    assert!(core.area("nul\0in name").is_none());
+    let [first, again] = core
+        .areas(["gth_testcore sprites", "gth_testcore sprites"])
+        .unwrap();
+    assert_eq!(first.as_ptr(), again.as_ptr());
+    assert!(core.areas(["gth_testcore sprites", "missing"]).is_none());
+}

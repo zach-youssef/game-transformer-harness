@@ -79,6 +79,16 @@ pub const RETRO_ENVIRONMENT_SET_MEMORY_MAPS: c_uint = 36 | RETRO_ENVIRONMENT_EXP
 pub const RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION: c_uint = 52;
 /// `const retro_variable *` (in): the core sets one of its own options.
 pub const RETRO_ENVIRONMENT_SET_VARIABLE: c_uint = 70;
+/// The base of commands private to a frontend and its cores (libretro.h reserves the range).
+pub const RETRO_ENVIRONMENT_PRIVATE: c_uint = 0x20000;
+
+// Not in libretro.h: the harness's own extension, which our core forks implement
+// (docs/libretro.md, "Named areas").
+/// `const gth_area_interface *` (in): the core's lookup of named state areas. The host copies
+/// the struct; the function stays valid until the core is unloaded.
+pub const GTH_ENVIRONMENT_SET_AREA_INTERFACE: c_uint = RETRO_ENVIRONMENT_PRIVATE | 0x4754;
+/// The `gth_area_interface::version` this crate describes.
+pub const GTH_AREA_INTERFACE_VERSION: c_uint = 1;
 
 // Memory descriptor flags (`retro_memory_descriptor::flags`).
 pub const RETRO_MEMDESC_CONST: u64 = 1 << 0;
@@ -135,6 +145,20 @@ pub struct retro_input_descriptor {
     pub index: c_uint,
     pub id: c_uint,
     pub description: *const c_char,
+}
+
+/// Finds the core's state area named `name` (a NUL-terminated string) and stores its address
+/// and length in bytes; `false` when the core has no such area or more than one. The area
+/// stays valid until the game is unloaded, and changes only while the core runs.
+pub type gth_get_area_t = Option<
+    unsafe extern "C" fn(name: *const c_char, data: *mut *const c_void, size: *mut usize) -> bool,
+>;
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct gth_area_interface {
+    pub version: c_uint,
+    pub get_area: gth_get_area_t,
 }
 
 /// A printf-style logger. Rust can call it but can't define one (C-variadic definitions are
@@ -256,5 +280,7 @@ mod tests {
         assert_eq!(size_of::<retro_system_av_info>(), 40);
         assert_eq!(size_of::<retro_game_info>(), 32);
         assert_eq!(size_of::<retro_log_printf_t>(), 8);
+        assert_eq!(offset_of!(gth_area_interface, get_area), 8);
+        assert_eq!(size_of::<gth_area_interface>(), 16);
     }
 }

@@ -131,6 +131,15 @@ upstream. Anything else (a build flag, a Makefile quirk) is a `case` in the buil
   among them). Edit them with an editor or tool that keeps them (`git apply`, `sed`, Python
   with `newline=''`): Python's text mode rewrites every line, and the commit's diff becomes
   the whole file.
+- FBNeo's fork also exposes the named state areas the harness reads labels from
+  (docs/libretro.md, "Named areas"): `8ece753` adds the private environment command
+  `GTH_ENVIRONMENT_SET_AREA_INTERFACE`, and `9ee23cb` gives the Psikyo driver's sprite-list
+  buffers unique area names (`Psikyo sprite lists`, `... index`, `... ends`). The
+  libretro port's savestates hold the areas' bytes in scan order, without their names, so
+  renaming them changes no savestate: a state saved by the build at `d09bde2` loads in one
+  at `9ee23cb` and continues frame-, RAM- and state-identical (checked on Gunbird and
+  Strikers 1945). They sit on `gth` after `d09bde2`, so they're pinned with the next
+  release.
 - To try a fork commit before pushing it, pass the build script the local clone's absolute
   path as the repository (Builds, above; a relative one would resolve in the build's clone).
 

@@ -84,9 +84,12 @@ unsafe extern "C" fn environment_cb(cmd: c_uint, data: *mut c_void) -> bool {
                 host.step.as_ptr()
             } else if key == LAG_KEY {
                 host.lag.as_ptr()
-            } else {
-                assert_eq!(key, DUPE_KEY);
+            } else if key == DUPE_KEY {
                 host.dupe.as_ptr()
+            } else {
+                // The sprite list (off by default) is tested through the host crates.
+                assert_eq!(key, SPRITES_KEY);
+                std::ptr::null()
             };
             host.step_changed = false;
         }

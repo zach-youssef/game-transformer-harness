@@ -1,6 +1,6 @@
 //! [`Core`]: one loaded libretro core and its game.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -96,6 +96,8 @@ pub struct Core {
     /// The savestate taken right after loading, which [`reset`](Self::reset) restores; `None`
     /// if the core couldn't serialize then.
     load_state: Option<Vec<u8>>,
+    /// Areas looked up by [`areas`](Self::areas): address and length, or `None` if missing.
+    areas_found: HashMap<String, Option<(usize, usize)>>,
     /// The content and its path, kept alive while the game is loaded: some cores keep the
     /// pointers `retro_load_game` gets.
     _content: Option<(CString, Vec<u8>)>,
@@ -459,6 +461,7 @@ impl Core {
             initialized: false,
             game_loaded: false,
             load_state: None,
+            areas_found: HashMap::new(),
             _content: content,
             save_dir,
             _library: library,
@@ -687,6 +690,54 @@ impl Core {
         // and only changes inside calls into the core, which need `&mut self` while the slice
         // borrows it.
         Some(unsafe { std::slice::from_raw_parts(data.cast::<u8>(), size) })
+    }
+
+    /// Whether the core gave the harness's named-area lookup (docs/libretro.md, "Named areas").
+    /// Our FBNeo fork does; stock cores don't.
+    pub fn has_areas(&self) -> bool {
+        host::host().get_area.is_some()
+    }
+
+    /// The core's state area `name`, or `None` if the core has no area lookup, no such area,
+    /// or several with that name. See [`areas`](Self::areas).
+    pub fn area(&mut self, name: &str) -> Option<&[u8]> {
+        self.areas([name]).map(|[area]| area)
+    }
+
+    /// The core's state areas `names`, or `None` if any is missing. Each name is looked up
+    /// once per load and its address cached: use only areas whose storage is fixed while the
+    /// game is loaded (allocated at init or static), not a bank pointer a driver moves.
+    pub fn areas<const N: usize>(&mut self, names: [&str; N]) -> Option<[&[u8]; N]> {
+        let mut found = [(0usize, 0usize); N];
+        for (slot, name) in found.iter_mut().zip(names) {
+            *slot = match self.areas_found.get(name) {
+                Some(area) => (*area)?,
+                None => {
+                    let area = self.find_area(name);
+                    self.areas_found.insert(name.to_owned(), area);
+                    area?
+                }
+            };
+        }
+        // SAFETY: each area is `len` bytes at `address` until the game is unloaded (the core's
+        // contract for `get_area`, and the caller's choice of areas), and changes only inside
+        // calls into the core, which need `&mut self` while the slices borrow it.
+        Some(
+            found.map(|(address, len)| unsafe {
+                std::slice::from_raw_parts(address as *const u8, len)
+            }),
+        )
+    }
+
+    /// Asks the core for area `name`: its address and length.
+    fn find_area(&mut self, name: &str) -> Option<(usize, usize)> {
+        let get_area = host::host().get_area?;
+        let name = CString::new(name).ok()?;
+        let (mut data, mut size) = (std::ptr::null(), 0usize);
+        // SAFETY: a C string and two out-pointers, valid for the call; `&mut self` makes this
+        // the only call into the core. The host lock is released, so the core may call back.
+        let found = unsafe { get_area(name.as_ptr(), &mut data, &mut size) };
+        (found && !data.is_null() && size > 0).then_some((data as usize, size))
     }
 
     /// The memory map regions the core registered (`SET_MEMORY_MAPS`); empty if none.

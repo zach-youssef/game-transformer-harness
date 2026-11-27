@@ -33,6 +33,18 @@ static SILENCE: [i16; 2 * SAMPLE_RATE / FPS] = [0; 2 * SAMPLE_RATE / FPS];
 const STEP_KEY: &CStr = c"gth_testcore_step";
 const DUPE_KEY: &CStr = c"gth_testcore_dupe";
 const LAG_KEY: &CStr = c"gth_testcore_lag";
+const SPRITES_KEY: &CStr = c"gth_testcore_sprites";
+/// The sprite list's area name (`GTH_ENVIRONMENT_SET_AREA_INTERFACE`).
+const SPRITES_AREA: &CStr = c"gth_testcore sprites";
+/// Markers in the sprite list: one for the square, then up to 8 for lives.
+const MAX_SPRITES: usize = 9;
+/// Bytes per sprite list entry: x, y (i16), width, height (u8); all little-endian.
+const SPRITE_SIZE: usize = 6;
+/// The sprite list: a count byte, then `MAX_SPRITES` entries.
+const SPRITES_SIZE: usize = 1 + MAX_SPRITES * SPRITE_SIZE;
+const MARKER: usize = 4;
+/// Magenta: red 0xFF, which the background never has, and green 0, which no button cell has.
+const MARKER_COLOUR: u32 = 0x00FF_00FF;
 const VERSION: &CStr =
     match CStr::from_bytes_with_nul(concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes()) {
         Ok(version) => version,
@@ -93,6 +105,12 @@ struct Game {
     /// The low 7 bits of the previous frame's number, set after each frame (drawn or not) and
     /// 0 at load: state the core derives while running and its savestates don't hold.
     previous: u8,
+    /// Core option `gth_testcore_sprites`, read at load: keep and draw a buffered sprite list.
+    sprites_on: bool,
+    /// The sprite list the next frame draws, which `buffer_sprites` derives from the saved
+    /// state (square position, lives) as hardware buffers sprite RAM at vblank. Boxed so the
+    /// area handed to the host stays put until `retro_unload_game`.
+    sprites: Box<[u8; SPRITES_SIZE]>,
     pixels: Vec<u32>,
 }
 
@@ -108,10 +126,36 @@ impl Game {
             dupe: options.dupe,
             lag: options.lag,
             previous: 0,
+            sprites_on: options.sprites,
+            sprites: Box::new([0; SPRITES_SIZE]),
             pixels: vec![0; WIDTH * HEIGHT],
         };
         game.reset();
         game
+    }
+
+    /// Fills the sprite list from the current state: a 4x4 marker at the square's centre and
+    /// one at (4 + 6 * i, 10) for each of the first 8 lives.
+    fn buffer_sprites(&mut self) {
+        let lives = usize::from(self.ram[LIVES]).min(MAX_SPRITES - 1);
+        let centre = (SQUARE - MARKER) as i32 / 2;
+        let markers = std::iter::once((self.x + centre, self.y + centre))
+            .chain((0..lives).map(|i| (4 + 6 * i as i32, STRIP as i32 + 2)));
+        self.sprites.fill(0);
+        let mut count = 0;
+        for (entry, (x, y)) in self.sprites[1..]
+            .as_chunks_mut::<SPRITE_SIZE>()
+            .0
+            .iter_mut()
+            .zip(markers)
+        {
+            entry[0..2].copy_from_slice(&(x as i16).to_le_bytes());
+            entry[2..4].copy_from_slice(&(y as i16).to_le_bytes());
+            entry[4] = MARKER as u8;
+            entry[5] = MARKER as u8;
+            count += 1;
+        }
+        self.sprites[0] = count;
     }
 
     /// A soft reset, like a console's reset button: the frame number and the square start
@@ -120,6 +164,7 @@ impl Game {
         self.frame = 0;
         self.x = ((WIDTH - SQUARE) / 2) as i32;
         self.y = ((HEIGHT - SQUARE) / 2) as i32;
+        self.buffer_sprites();
     }
 
     fn update(&mut self, buttons: u16) {
@@ -168,6 +213,23 @@ impl Game {
         for row in y..y + SQUARE {
             self.pixels[row * WIDTH + x..row * WIDTH + x + SQUARE].fill(SQUARE_COLOUR);
         }
+        if self.sprites_on {
+            // The list buffered after the previous frame, on top of everything.
+            let count = usize::from(self.sprites[0]);
+            for entry in self.sprites[1..]
+                .as_chunks::<SPRITE_SIZE>()
+                .0
+                .iter()
+                .take(count)
+            {
+                let x = i16::from_le_bytes([entry[0], entry[1]]) as usize;
+                let y = i16::from_le_bytes([entry[2], entry[3]]) as usize;
+                let (w, h) = (usize::from(entry[4]), usize::from(entry[5]));
+                for row in y..y + h {
+                    self.pixels[row * WIDTH + x..row * WIDTH + x + w].fill(MARKER_COLOUR);
+                }
+            }
+        }
     }
 
     fn save(&self) -> Vec<u8> {
@@ -198,6 +260,7 @@ impl Game {
         (self.x, self.y) = (x, y);
         self.rng = u32::from_le_bytes(*rng);
         *self.ram = *ram;
+        self.buffer_sprites();
         Some(())
     }
 }
@@ -245,6 +308,7 @@ struct Options {
     step: i32,
     dupe: bool,
     lag: bool,
+    sprites: bool,
 }
 
 /// An option's value, or `None` if the host doesn't have it.
@@ -264,8 +328,8 @@ fn read_option(key: &CStr) -> Option<&'static [u8]> {
     Some(unsafe { CStr::from_ptr(variable.value) }.to_bytes())
 }
 
-/// The options, with the defaults (step 2, dupe and lag off) for any the host doesn't have. Dupe is
-/// also off if the host can't repeat frames (`GET_CAN_DUPE`).
+/// The options, with the defaults (step 2, dupe, lag and sprites off) for any the host
+/// doesn't have. Dupe is also off if the host can't repeat frames (`GET_CAN_DUPE`).
 fn read_options() -> Options {
     let step = match read_option(STEP_KEY) {
         Some(b"1") => 1,
@@ -278,7 +342,13 @@ fn read_options() -> Options {
         unsafe { environment(RETRO_ENVIRONMENT_GET_CAN_DUPE, &mut can_dupe) } && can_dupe;
     let dupe = can_dupe && read_option(DUPE_KEY) == Some(b"on");
     let lag = read_option(LAG_KEY) == Some(b"on");
-    Options { step, dupe, lag }
+    let sprites = read_option(SPRITES_KEY) == Some(b"on");
+    Options {
+        step,
+        dupe,
+        lag,
+        sprites,
+    }
 }
 
 // Entry points, in header order. Signatures are checked against gth-libretro-sys at the end.
@@ -303,6 +373,10 @@ pub unsafe extern "C" fn retro_set_environment(callback: retro_environment_t) {
         retro_variable {
             key: LAG_KEY.as_ptr(),
             value: c"Draw red from the previous frame, which states don't hold; off|on".as_ptr(),
+        },
+        retro_variable {
+            key: SPRITES_KEY.as_ptr(),
+            value: c"Draw a buffered sprite list and expose it as a named area; off|on".as_ptr(),
         },
         retro_variable {
             key: std::ptr::null(),
@@ -434,6 +508,7 @@ pub extern "C" fn retro_run() {
             game.pixels.as_ptr()
         };
         game.previous = (game.frame & 0x7F) as u8;
+        game.buffer_sprites();
         pixels
     };
     if let Some(video) = callbacks.video {
@@ -516,9 +591,18 @@ pub unsafe extern "C" fn retro_load_game(game: *const retro_game_info) -> bool {
         seed_from(content)
     };
 
-    let mut new_game = Game::new(seed, read_options());
+    let options = read_options();
+    let mut new_game = Game::new(seed, options);
     let ram = new_game.ram.as_mut_ptr();
     *lock(&GAME) = Some(new_game);
+    if options.sprites {
+        let mut interface = gth_area_interface {
+            version: GTH_AREA_INTERFACE_VERSION,
+            get_area: Some(get_area),
+        };
+        // SAFETY: the command takes a `const gth_area_interface *`, which the host copies.
+        unsafe { environment(GTH_ENVIRONMENT_SET_AREA_INTERFACE, &mut interface) };
+    }
     let mut descriptor = retro_memory_descriptor {
         flags: RETRO_MEMDESC_SYSTEM_RAM,
         ptr: ram.cast(),
@@ -536,6 +620,35 @@ pub unsafe extern "C" fn retro_load_game(game: *const retro_game_info) -> bool {
     // SAFETY: SET_MEMORY_MAPS takes a `const retro_memory_map *`; the host copies the map, and
     // the RAM it points to lives until `retro_unload_game`.
     unsafe { environment(RETRO_ENVIRONMENT_SET_MEMORY_MAPS, &mut map) };
+    true
+}
+
+/// The harness's named-area lookup: only [`SPRITES_AREA`], while a game is loaded.
+///
+/// # Safety
+/// `name` is a C string and `data`, `size` are writable, as gth-libretro-sys documents.
+unsafe extern "C" fn get_area(
+    name: *const c_char,
+    data: *mut *const c_void,
+    size: *mut usize,
+) -> bool {
+    if name.is_null() || data.is_null() || size.is_null() {
+        return false;
+    }
+    // SAFETY: the caller passes a C string.
+    if unsafe { CStr::from_ptr(name) } != SPRITES_AREA {
+        return false;
+    }
+    let guard = lock(&GAME);
+    let Some(game) = guard.as_ref() else {
+        return false;
+    };
+    // SAFETY: the caller's out-pointers. The list is boxed, so it stays put until the game is
+    // unloaded.
+    unsafe {
+        data.write(game.sprites.as_ptr().cast());
+        size.write(SPRITES_SIZE);
+    }
     true
 }
 
@@ -576,6 +689,7 @@ pub extern "C" fn retro_get_memory_size(id: c_uint) -> usize {
 }
 
 // The exports have the types the host will load them as.
+const _: gth_get_area_t = Some(get_area);
 const _: retro_set_environment_fn = retro_set_environment;
 const _: retro_set_video_refresh_fn = retro_set_video_refresh;
 const _: retro_set_audio_sample_fn = retro_set_audio_sample;

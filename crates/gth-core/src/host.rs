@@ -37,6 +37,8 @@ pub(crate) struct Host {
     pub option_overrides: Vec<CoreOption>,
     /// Memory descriptors from `SET_MEMORY_MAPS`.
     pub regions: Vec<MemoryRegion>,
+    /// The core's named-area lookup (`GTH_ENVIRONMENT_SET_AREA_INTERFACE`), if it gave one.
+    pub get_area: gth_get_area_t,
 }
 
 pub(crate) struct CoreOption {
@@ -70,6 +72,7 @@ impl Host {
         options: Vec::new(),
         option_overrides: Vec::new(),
         regions: Vec::new(),
+        get_area: None,
     };
 
     /// A black frame of `width` x `height` in the current format, reusing the buffer.
@@ -280,6 +283,18 @@ pub(crate) unsafe extern "C" fn environment(cmd: c_uint, data: *mut c_void) -> b
                 })
                 .collect();
             true
+        }
+        GTH_ENVIRONMENT_SET_AREA_INTERFACE => {
+            // SAFETY: `const gth_area_interface *` (in), which we copy.
+            let Some(interface) = (unsafe { data.cast::<gth_area_interface>().as_ref() }) else {
+                return false;
+            };
+            // A later version may change the struct: refuse it rather than misread it.
+            if interface.version != GTH_AREA_INTERFACE_VERSION {
+                return false;
+            }
+            host.get_area = interface.get_area;
+            host.get_area.is_some()
         }
         // No C shim for the variadic log callback yet (docs/libretro.md): cores then log to
         // stderr or not at all.
