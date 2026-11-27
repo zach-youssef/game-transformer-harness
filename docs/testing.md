@@ -14,11 +14,16 @@ TheaterPC only.
 | The Python package: env, recording, shards, CLI, game configs, benchmark | `tests/test_env.py`, `test_record.py`, `test_shards.py`, `test_cli.py`, `test_games.py`, `test_bench.py` | pytest |
 | A game on its real core and the user's ROM (skips without them) | `tests/test_<game-id>.py`, e.g. `test_gunhed.py` | pytest |
 
-Shared pytest fixtures are in `tests/conftest.py`: `testcore_path` (the built test core),
-`rom` and `core` (below), `testcore_data` (the files `games/testcore/game.toml` names,
-written to a temporary directory) and `zstd_raw_frame` (bytes as a zstd frame, for rewriting
-a recording's files). The test core is deterministic, so tests assert exact frames, RAM
-values and hashes rather than ranges (docs/libretro.md, "Test core").
+Shared pytest fixtures are in `tests/conftest.py`: `testcore_path` (the built test core), `rom`
+and `core` (below), `testcore_data` (the files `games/testcore/game.toml` names, written to a
+temporary directory), `zstd_raw_frame` (bytes as a zstd frame, for rewriting a recording's
+files), and the checks the FBNeo ROM tests share: `replay_and_cold_load` (a recording replays
+in a fresh process and a savestate loads alike whatever the process ran before, in the fresh
+process `tests/fresh_load.py` runs too) and `play_replays` (the benchmark's determinism check
+on a game). pytest imports test files with `--import-mode=importlib`, so tests can't import
+each other or a helper module beside them: shared test code goes in a `conftest.py` fixture.
+The test core is deterministic, so tests assert exact frames, RAM values and hashes rather than
+ranges (docs/libretro.md, "Test core").
 
 - **One core per process** (architecture.md): pytest runs in one process, so every test that
   loads a core, through `RetroEnv`, `_native.Core` or `_native.Replayer`, closes it, even when
