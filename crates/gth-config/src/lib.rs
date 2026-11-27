@@ -18,7 +18,7 @@ pub use audit::{Entry, FileAudit, Found, GameAudit, MemberAudit, Role, Status};
 pub use condition::Condition;
 pub use game::{
     Crop, Episode, FileSpec, GameConfig, Hashes, Member, Orientation, Reset, ResetStep,
-    RetroButton, Slot, StateFile,
+    RetroButton, Slot, SpriteHw, StateFile,
 };
 pub use lock::{CoreLock, CoresLock, asset_name, library_file};
 pub use ram::{Encoding, Location, MemoryId, RamVar};

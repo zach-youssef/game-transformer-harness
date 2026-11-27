@@ -39,6 +39,31 @@ pub struct GameConfig {
     /// Core option values (`SET_VARIABLES` keys); the rest keep the core's defaults.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub core_options: BTreeMap<String, String>,
+    /// The board whose hardware sprite list gth-sprites decodes into training labels, or
+    /// `None` when the game has no sprite stream.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sprite_hw: Option<SpriteHw>,
+}
+
+/// A sprite hardware decoder (`sprite_hw`): which state areas hold the drawn sprite list and
+/// how to read it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SpriteHw {
+    /// Psikyo's 68EC020 boards (Gunbird, Strikers 1945) on our FBNeo fork.
+    Psikyo,
+    /// The test core's marker list (`gth_testcore_sprites = "on"`).
+    Testcore,
+}
+
+impl SpriteHw {
+    /// The name in `game.toml` and in a shard's `meta.json` (`sprite_hw`).
+    pub fn name(self) -> &'static str {
+        match self {
+            SpriteHw::Psikyo => "psikyo",
+            SpriteHw::Testcore => "testcore",
+        }
+    }
 }
 
 /// Clockwise rotation of the core's frame.
@@ -519,6 +544,7 @@ core = "gth_testcore"
 settle_frames = 1
 orientation = 90
 crop = [0, 8, 320, 232]
+sprite_hw = "testcore"
 
 [content]
 file = "game.gthc"
@@ -589,6 +615,8 @@ gth_testcore_step = "4"
         );
         assert_eq!(config.reset_inputs(), Some(vec![(1 << 3, 2), (0, 60)]));
         assert_eq!(config.core_options["gth_testcore_step"], "4");
+        assert_eq!(config.sprite_hw, Some(SpriteHw::Testcore));
+        assert_eq!(SpriteHw::Psikyo.name(), "psikyo");
         let again = GameConfig::parse(&config.to_toml(), "round trip").unwrap();
         assert_eq!(again, config);
     }
@@ -765,6 +793,11 @@ gth_testcore_step = "4"
                 "encoding = \"le\"",
                 "encoding = \"le\"\nendian = 1",
                 "unknown field",
+            ),
+            (
+                "sprite_hw = \"testcore\"",
+                "sprite_hw = \"cps2\"",
+                "unknown variant `cps2`",
             ),
         ];
         for (from, to, reason) in cases {

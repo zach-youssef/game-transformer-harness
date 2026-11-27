@@ -709,6 +709,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gth-sprites"
+version = "0.1.0"
+dependencies = [
+ "gth-config",
+ "gth-core",
+ "gth-libretro-sys",
+ "gth-test-support",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "gth-test-support"
 version = "0.1.0"
 dependencies = [

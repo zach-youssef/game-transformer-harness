@@ -133,6 +133,7 @@ change (docs/recording-format.md, "Versioning").
 | `[reset]` | yes | How an episode starts (below). |
 | `[ram.<name>]` | no | Named RAM variables (below). |
 | `[episode]` | yes | `terminate`: when an episode ends (below). |
+| `sprite_hw` | no | The board whose sprite list `gth-sprites` decodes into training labels: `psikyo` (Psikyo's 68EC020 boards on our FBNeo fork), or `testcore` (tests). Omitted: the game has no sprite labels. |
 | `[core_options]` | no | `key = "value"` core options (`SET_VARIABLES` keys). Others keep the core's defaults. |
 
 ### Settle frames

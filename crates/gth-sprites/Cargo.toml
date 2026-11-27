@@ -1,0 +1,21 @@
+[package]
+name = "gth-sprites"
+description = "Sprite-list labels: decode a board's hardware sprite table from a core's state areas"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+gth-config = { path = "../gth-config" }
+gth-core = { path = "../gth-core" }
+thiserror = "2.0.21"
+
+[dev-dependencies]
+gth-test-support = { path = "../gth-test-support" }
+gth-libretro-sys = { path = "../gth-libretro-sys" }
