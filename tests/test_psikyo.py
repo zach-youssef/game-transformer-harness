@@ -20,11 +20,18 @@ runs, since retro_get_system_av_info flags its video buffer for reallocation, so
 process that loads a state and draws at once shows a cleared frame. The settle frame absorbs
 it (docs/games.md, "Settle frames").
 
+Their sprite-list labels (docs/recording-format.md, "Sprite labels") are checked against the
+drawn frames, frame-exactly.
+
 Skips without the ROM or the pinned core, as on CI (docs/testing.md); an FBNeo build without
 the fork's commits isn't the pinned one, so it skips too."""
 
 import numpy as np
 import pytest
+
+from gtharness.env import RetroEnv
+from gtharness.record import Record
+from gtharness.shards import SPRITE_VISIBLE, Shard, ShardOptions, export_shards
 
 GAMES = ["gunbird", "s1945"]
 # The core's own picture size, so frames compare unresized.
@@ -51,3 +58,99 @@ def test_recordings_replay_and_states_load_alike_in_a_fresh_process(game_id, rep
 @pytest.mark.parametrize("game_id", GAMES)
 def test_a_recording_of_play_replays_in_a_fresh_process(game_id, play_replays):
     play_replays(game_id)
+
+
+# The sprite-label check's run: from the reset, random actions at one frame a step, through
+# attract mode's static screens (credits, titles), where sprites move over a still background.
+SPRITE_FRAMES = 2400
+
+
+def _boxes(shard, frame_index: int, shape: tuple[int, int]) -> np.ndarray:
+    """The union of frame index ``frame_index``'s visible sprite boxes."""
+    mask = np.zeros(shape, bool)
+    for sprite in shard.sprites(frame_index):
+        if sprite["flags"] & SPRITE_VISIBLE:
+            x, y = max(int(sprite["x"]), 0), max(int(sprite["y"]), 0)
+            mask[y : max(int(sprite["y"]) + int(sprite["height"]), 0),
+                 x : max(int(sprite["x"]) + int(sprite["width"]), 0)] = True  # fmt: skip
+    return mask
+
+
+@pytest.mark.parametrize("game_id", GAMES)
+def test_sprite_labels_are_the_frame_s_own(game_id, rom, core, tmp_path):
+    """Each frame's sprite list is the one that frame draws, not its neighbour's: where the
+    background stands still, every pixel that changes from frame f - 1 to f lies in a sprite
+    box of one of the two frames. Shifting the labels a frame either way leaves the leading or
+    trailing edge of each moving sprite uncovered, so the right alignment covers best by a
+    clear margin (docs/recording-format.md, "Sprite labels")."""
+    content = rom(game_id)
+    path = core(game_id)
+    data = path.parent.parent
+    env = RetroEnv.from_game(
+        game_id,
+        data,
+        frameskip=1,
+        obs_size=OBS,
+        action_format="flat",
+        reward=lambda previous, current: 0.0,
+        rom_dir=content.parent,
+        core_path=path,
+        record=Record(
+            directory=tmp_path / "rec",
+            recorder="scripted",
+            player="random",
+            license="CC0-1.0",
+            checks_every=60,
+        ),
+    )
+    rng = np.random.default_rng(5)
+    try:
+        env.reset()
+        for _ in range(SPRITE_FRAMES):
+            env.step(int(rng.integers(0, env.config.n_actions)))
+    finally:
+        env.close()
+    options = ShardOptions(
+        obs_size=OBS,
+        crop=None,
+        orientation=0,
+        frameskip="recorded",
+        filter="all",
+        chunk_samples=256,
+        interpolation="area",
+        sprites=True,
+    )
+    (result,) = export_shards(
+        env.recordings, tmp_path / "shards", data, options, jobs=1, rom_dir=content.parent,
+        core_path=path,
+    )  # fmt: skip
+    assert result.error is None, result.error
+    with Shard(result.shard) as shard:
+        # Unrotated and uncropped, the observation is the native screen.
+        assert shard.sprite_hw == "psikyo" and shard.sprite_screen == (OBS[1], OBS[0])
+        frames = np.concatenate([shard.frames(c) for c in range(shard.frame_chunks)])
+        frames = frames.astype(np.int16)
+        shown = shard.episode_frame.astype(np.int64) - 1  # the frame index each sample shows
+        assert (np.diff(shown) == 1).all()
+        cache: dict[int, np.ndarray] = {}
+
+        def boxes(frame_index: int) -> np.ndarray:
+            if frame_index not in cache:
+                cache[frame_index] = _boxes(shard, frame_index, OBS)
+            return cache[frame_index]
+
+        uncovered = {-1: 0, 0: 0, 1: 0}
+        used = 0
+        for i in range(2, len(frames) - 2):
+            f = int(shown[i])
+            changed = np.abs(frames[i] - frames[i - 1]).sum(-1) > 0
+            near = boxes(f - 2) | boxes(f - 1) | boxes(f) | boxes(f + 1)
+            if not changed.any() or (changed & ~near).any():
+                continue  # nothing moved, or the background did
+            used += 1
+            for shift in uncovered:
+                covered = boxes(f - 1 + shift) | boxes(f + shift)
+                uncovered[shift] += int((changed & ~covered).sum())
+    assert used >= 200, f"only {used} frames with a still background"
+    # Measured 1.66x (gunbird) and 1.77x (s1945) at the pin; one frame late or early is worse.
+    assert uncovered[0] * 1.3 < min(uncovered[-1], uncovered[1]), uncovered

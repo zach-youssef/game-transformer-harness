@@ -20,11 +20,11 @@ history brings in commits whose tree isn't the libretro port (FBNeo's `301a167` 
 | `mednafen_pce_fast` | Gunhed | libretro/beetle-pce-fast-libretro | `2de1ce1c3f237b161c126c54ba407990bb86d1e9` | 2026-10-30 | Fetch translations & Recreate libretro_core_options_intl.h |
 | `fceumm` | Zanac | libretro/libretro-fceumm | `e0f3086a8104f8fbbe49a2615b10401504a9533f` | 2026-11-02 | libretro: send path checks through the frontend VFS (#660) |
 | `genesis_plus_gx` | Lightening Force | libretro/Genesis-Plus-GX | `b9c2316441978d4015ba30e9a95d9b0e6f8ee981` | 2026-11-09 | libretro: define ALIGN_LONG for 32-bit ARM unix builds (#415) |
-| `fbneo` | Battle Garegga, Ketsui, DoDonPachi III / Dai-Ou-Jou Black Label, Gunbird, Strikers 1945 | zach-youssef/FBNeo (`gth`) | `d09bde2c0b0a13198f6e40da644daa03221716e8` | 2026-11-27 | pgm: save Puzzli 2's level-data simulation state in savestates |
+| `fbneo` | Battle Garegga, Ketsui, DoDonPachi III / Dai-Ou-Jou Black Label, Gunbird, Strikers 1945 | zach-youssef/FBNeo (`gth`) | `9ee23cb3fa517959b5e6cb2fd488564bcf5d0fbb` | 2026-11-27 | psikyo: give the sprite list scan variables unique area names |
 
 FBNeo's pin is the head of branch `gth` of our fork: libretro/FBNeo's
 `a836e52198aa5ce1f54be7b050e44872a1223797` (2026-11-10, "(libretro) update files", picked by
-the rule above) and twenty commits, each adding state its savestates left out (Forks, below,
+the rule above) and twenty-two commits. Twenty add state its savestates left out (Forks, below,
 and docs/performance.md, "FBNeo and savestates"): for Battle Garegga `burn_ym2151`
 (`ddb1e8c`), `toaplan` (`904777f`) and `msm6295` (`9fbf243`), for the Psikyo games `psikyo`
 (`b061823`), `burn_ym2610` (`ad94ca3`), `burn_ymf278b` (`e85680d`) and `fm.c` (`f824e12`,
@@ -35,6 +35,8 @@ Mega Drive driver): the sound chips' wrappers `burn_md2612` (`9064755`), `burn_y
 `burn_ym3526` (`4d9384c`) and `burn_y8950` (`8e4de79`), the YM2608's FM core (`fm.c`,
 `b3545fa`), the Y8950's ADPCM unit (`fmopl`, `21ab620`) and two PGM protection devices, the
 4-in-1 bootleg's ROM bank (`pgm`, `c5866a1`) and Puzzli 2's simulation (`pgm`, `d09bde2`).
+The last two expose the named state areas the sprite labels are read from (`8ece753`,
+`9ee23cb`: Forks, below).
 
 FBNeo's upstream commit also fixes its driver tables, so the arcade sets' `game.toml` member
 lists (docs/roms.md, "Content tables") are taken from FBNeo at
@@ -125,8 +127,8 @@ upstream. Anything else (a build flag, a Makefile quirk) is a `case` in the buil
   (`gth-<upstream short hash>`, as the first branch keeps the plain name), with the changes upstream still lacks cherry-picked onto it,
   so the old branch and the commits pinned before stay as they are.
 - Cores that report `git rev-parse --short HEAD` report the fork commit's hash, and FBNeo
-  dates its version with that commit's author date: the build at `d09bde2` reports
-  `v1.0.0.03 261127 GITd09bde2`.
+  dates its version with that commit's author date: the build at `9ee23cb` reports
+  `v1.0.0.03 261127 GIT9ee23cb`.
 - Some of FBNeo's source files have CRLF line endings (`src/burn/drv/psikyo/d_psikyo.cpp`
   among them). Edit them with an editor or tool that keeps them (`git apply`, `sed`, Python
   with `newline=''`): Python's text mode rewrites every line, and the commit's diff becomes
@@ -138,8 +140,7 @@ upstream. Anything else (a build flag, a Makefile quirk) is a `case` in the buil
   libretro port's savestates hold the areas' bytes in scan order, without their names, so
   renaming them changes no savestate: a state saved by the build at `d09bde2` loads in one
   at `9ee23cb` and continues frame-, RAM- and state-identical (checked on Gunbird and
-  Strikers 1945). They sit on `gth` after `d09bde2`, so they're pinned with the next
-  release.
+  Strikers 1945).
 - To try a fork commit before pushing it, pass the build script the local clone's absolute
   path as the repository (Builds, above; a relative one would resolve in the build's clone).
 

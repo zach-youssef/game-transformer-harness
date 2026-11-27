@@ -58,6 +58,9 @@ game's content, found by SHA-1 (docs/roms.md, "Finding files") in the ROM direct
 - no ROM directory is set (`<game>: no ROM directory ...`), as on CI;
 - no file in it has the content's expected SHA-1 (`<game>: <file> isn't in <dir>`).
 
+A skip is quiet: without `GTH_ROM_DIR` (or `rom_dir`) a ROM test run reports only passes and
+`s`s, having checked nothing. Run ROM tests with `-rs` and read that nothing skipped.
+
 A ROM directory that is set but doesn't exist is a misconfiguration, not a missing ROM: the
 fixture raises `ConfigError` rather than skipping, so the mistake is seen. Never add a ROM,
 BIOS file or anything derived from one to `tests/` (docs/roms.md, "Rules").
@@ -98,8 +101,12 @@ commits, run the CI commands (docs/development.md, "Commands") on each one, for 
 
 Judge a run by its exit code, not by its filtered output: `cargo test | grep "test result"`
 exits 0 whatever the tests did. Run a check unpiped (or with `set -o pipefail`) when its
-status matters. Treat any warning as a failure, but only clippy (`-D warnings`) and ruff
-enforce that: nothing makes pytest fail on a warning yet, so read pytest's output too.
+status matters. A panic inside a core's callback (the test core's, or a host callback the test
+core calls) can't unwind across the C boundary, so it aborts the whole test binary: no `test
+result` line for it and none of its later tests run. When reading `cargo test`'s output, look
+for `FAILED` and `panicked` as well as the summary lines. Treat any warning as a failure, but
+only clippy (`-D warnings`) and ruff enforce that: nothing makes pytest fail on a warning yet,
+so read pytest's output too.
 
 ## Known gaps
 
