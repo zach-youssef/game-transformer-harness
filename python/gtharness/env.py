@@ -33,6 +33,11 @@ ActionFormat = Literal["dict", "flat"]
 GAMES_DIR = Path(__file__).resolve().parents[2] / "games"
 """The checkout's ``games/`` directory, the default for `RetroEnv.from_game`."""
 
+INTERPOLATIONS = ("area", "bilinear")
+"""The ``interpolation`` values the env (and the shard exporter) resize frames with."""
+ORIENTATIONS = (0, 90, 270)
+"""Clockwise rotations a game config, a shard export or a protocol can ask for."""
+
 _LIBRARY_SUFFIX = {"win32": ".dll", "darwin": ".dylib"}.get(sys.platform, ".so")
 
 _RECORDING_NUMBERS = itertools.count()

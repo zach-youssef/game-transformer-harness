@@ -11,7 +11,7 @@ TheaterPC only.
 | A crate's logic | Unit tests in the crate (`#[cfg(test)]` modules, or `src/tests.rs`) | `cargo test` |
 | A crate against a loaded core | `crates/<crate>/tests/testcore.rs`, loading `gth-testcore` through `gth_test_support::testcore_path()` | `cargo test` |
 | `_native` bindings (`gth-py`, which has no Rust tests) | `tests/test_native_*.py` | pytest |
-| The Python package: env, recording, shards, CLI, captures, game configs, benchmark | `tests/test_env.py`, `test_record.py`, `test_shards.py`, `test_cli.py`, `test_capture.py`, `test_games.py`, `test_bench.py` | pytest |
+| The Python package: env, recording, shards, CLI, captures, game configs, benchmark, evaluation protocols | `tests/test_env.py`, `test_record.py`, `test_shards.py`, `test_cli.py`, `test_capture.py`, `test_games.py`, `test_bench.py`, `test_protocol.py` | pytest |
 | A game on its real core and the user's ROM (skips without them) | `tests/test_<game-id>.py`, e.g. `test_gunhed.py` | pytest |
 
 Shared pytest fixtures are in `tests/conftest.py`: `testcore_path` (the built test core), `rom`

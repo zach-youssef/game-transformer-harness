@@ -1,0 +1,56 @@
+# jowa2025: JOWA's Atari evaluation (Cheng et al. 2025). Citations are [[cheng2025jointly#...]]
+# in research/kb/papers/ and the paper's Table 16 ("Evaluation settings of Atari", App. E.3,
+# p. 21). The evaluation code (github.com/CJReinforce/JOWA at 8cb02c5) is as the research
+# experiment 2026-11-24-jowa-mac-smoke's plan.md ("Environment port") describes it: a
+# Dopamine-style environment (gym NoFrameskip-v4) and the repo's own AtariPreprocessing (frame
+# skip 4, max-pool, 84x84, INTER_AREA). Fields neither settles are `# guessed:` with the
+# reason. The epsilon-greedy noise 0.001 (Table 16) and the restriction to each game's valid
+# actions (Table 17) belong to the policy, not the protocol.
+
+backend = "libretro"
+# The 5 held-out games (A3; Sec. 5.1, p. 7). Ids are ALE's ROM names with hyphens
+# (docs/games.md), which the Atari game configs (C11) are expected to use.
+games = ["gravitar", "ms-pacman", "pong", "robotank", "yars-revenge"]
+# Frame skip 4 (Table 16; Sec. 5.1, p. 7).
+frameskip = 4
+# No sticky actions (Table 16; A1).
+sticky_prob = 0.0
+# The repo's AtariPreprocessing max-pools (the smoke experiment's plan.md).
+maxpool = true
+# 4 stacked frames (Table 16).
+frame_stack = 4
+# A full action space of 18 discrete actions (Sec. 3.3, p. 4; A1).
+action_set = "atari_full"
+# 108K max frames per episode (Table 16).
+max_episode_frames = 108000
+# Terminal condition: Game Over (Table 16).
+life_loss_terminal = false
+# Scores are the game's own: rewards are clipped for the world model only (A4), and HNS is on
+# raw scores.
+reward_clip = "none"
+# guessed: the name the ALE core's synthetic score variable gets (C10/C11 not written yet).
+score_var = "score"
+# 16 rollouts per game (App. E.3, p. 21); one training run per configuration (A9).
+episodes_per_seed = 16
+# guessed: one env seed (the paper names none); with sticky actions and no-ops off the env
+# has no randomness for it to seed.
+env_seeds = [0]
+policy_seeds = [0]
+
+[obs]
+# 84x84 grayscale (Table 16; A1).
+size = [84, 84]
+# "game": each Atari game config's crop and orientation (docs/games.md).
+crop = "game"
+orientation = "game"
+# The repo's AtariPreprocessing resizes with INTER_AREA (the smoke experiment's plan.md).
+interpolation = "area"
+grayscale = true
+
+[start]
+# "game": the game config's reset (ALE's own reset, through the ALE core).
+reset = "game"
+# guessed: no no-op starts. Table 16 lists none, and the Dopamine-style AtariPreprocessing the
+# code uses has none (Dopamine's no-ops are only in its PPO path); the code at 8cb02c5 wasn't
+# re-read to confirm.
+noop_max = 0

@@ -29,7 +29,7 @@ import numpy as np
 import numpy.typing as npt
 
 from gtharness import _native
-from gtharness.env import core_library, find_content
+from gtharness.env import INTERPOLATIONS, ORIENTATIONS, core_library, find_content
 from gtharness.errors import ConfigError, HarnessError
 
 SHARD_VERSION = 2
@@ -59,7 +59,6 @@ SampleFilter = Literal["all", "playing"]
 LABELS = ("direction", "buttons", "ram", "episode_frame", "segment", "confidence")
 FRAME_LABELS = ("frame_direction", "frame_buttons", "frame_labelled")
 _FILTERS = ("all", "playing")
-_INTERPOLATIONS = ("area", "bilinear")
 _U32 = 2**32
 _EXIT_HOOK = "GTHARNESS_TEST_EXIT_IN_EXPORT"
 """Test hook: a worker exporting the recording named in this variable exits at once, as a
@@ -122,7 +121,7 @@ class ShardOptions:
                 strict=True,
             ):
                 count(name, value, low)
-        if self.orientation not in ("game", 0, 90, 270) or isinstance(self.orientation, bool):
+        if self.orientation not in ("game", *ORIENTATIONS) or isinstance(self.orientation, bool):
             raise ConfigError(f"orientation must be 0, 90, 270 or 'game', not {self.orientation!r}")
         if self.frameskip != "recorded":
             count("frameskip", self.frameskip)
@@ -131,9 +130,9 @@ class ShardOptions:
         count("chunk_samples", self.chunk_samples)
         if not isinstance(self.sprites, bool):
             raise ConfigError(f"sprites must be True or False, not {self.sprites!r}")
-        if self.interpolation not in _INTERPOLATIONS:
+        if self.interpolation not in INTERPOLATIONS:
             raise ConfigError(
-                f"interpolation must be one of {_INTERPOLATIONS}, not {self.interpolation!r}"
+                f"interpolation must be one of {INTERPOLATIONS}, not {self.interpolation!r}"
             )
 
 

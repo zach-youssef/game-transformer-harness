@@ -1,0 +1,52 @@
+# ours-v1: the protocol for our own games (docs/evaluation.md, "Presets").
+# No paper defines it: every value is our choice, with the reason beside it. Plan:
+# baseline-comparison.md, Section 4 ("Protocol spec"). KB ids in [[...]] are notes in
+# research/kb/papers/.
+
+backend = "libretro"
+# guessed: the configured games with a `score` variable and an `episode.terminate` condition
+# today; each game that gets both (G2-G6) joins an ours-v2.
+games = ["gunhed", "zanac"]
+# guessed: the research plan's BC default (frameskip 2 for BC data, open-questions-designs.md);
+# a policy acting at another rate needs its own protocol.
+frameskip = 2
+# Sticky actions as [[machado2018revisiting]] recommends (Sec. 5.2, A2): our cores are
+# deterministic, and a memorising policy collapses under p = 0.25 [[machado2018revisiting#C2]].
+sticky_prob = 0.25
+# guessed: training shards (docs/recording-format.md) render a step's last frame without
+# pooling, so a policy trained on them sees none.
+maxpool = false
+# guessed: the research plan's 2 stacked frames (open-questions-designs.md).
+frame_stack = 2
+# The harness's own action space (docs/actions.md), which our policies use.
+action_set = "harness"
+# guessed: one hour at 60 fps; a one-credit clear of a configured game takes less.
+max_episode_frames = 216000
+# Game over ends an episode, never a lost life [[machado2018revisiting#C8]]; the user's decision.
+life_loss_terminal = false
+# Scores are the game's own (the user's decision).
+reward_clip = "none"
+# The RAM variable both games' configs name `score` (games/<id>/game.toml).
+score_var = "score"
+# guessed: 10 episodes for each of 3 policy seeds (the plan's minimum of 3 seeds, as in X12);
+# one env seed, since the env's RNG runs on from episode to episode.
+episodes_per_seed = 10
+env_seeds = [0]
+policy_seeds = [0, 1, 2]
+
+[obs]
+# guessed: the research plan's default resolution (128x128 everywhere, open-questions-designs.md).
+size = [128, 128]
+# "game": each game config's crop and orientation (docs/games.md).
+crop = "game"
+orientation = "game"
+# guessed: area averaging, the env's and shard exporter's usual choice for shrinking frames.
+interpolation = "area"
+# Colour, as the shards our policies train on are RGB (docs/recording-format.md).
+grayscale = false
+
+[start]
+# "game": each game config's reset script or savestate.
+reset = "game"
+# Sticky actions already randomise the start [[machado2018revisiting]] (Sec. 5.2, 5.3).
+noop_max = 0

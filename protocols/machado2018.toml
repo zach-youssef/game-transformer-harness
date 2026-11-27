@@ -1,0 +1,55 @@
+# machado2018: the ALE evaluation protocol of Machado et al. 2018, our robustness column
+# (baseline-comparison.md, Decision 4a). Citations are [[machado2018revisiting#...]] in
+# research/kb/papers/; fields the paper leaves open are marked `# guessed:` with the reason.
+
+backend = "libretro"
+# guessed: the paper benchmarks 60 games; ours is the Atari pilot set (Decision 3a: the 8
+# held-out games of MGDT and JOWA plus 4 shooters). Ids are ALE's ROM names with hyphens
+# (docs/games.md), which the Atari game configs (C11) are expected to use.
+games = [
+  "alien", "ms-pacman", "pong", "space-invaders", "star-gunner", "gravitar", "robotank",
+  "yars-revenge", "assault", "seaquest", "demon-attack", "phoenix",
+]
+# Frame skip 5 (A1; Table 5, p. 34).
+frameskip = 5
+# Sticky actions, varsigma = 0.25 (A2; Table 5, p. 34).
+sticky_prob = 0.25
+# DQN's frame pooling (Implementation notes: App. B.3, p. 35).
+maxpool = true
+# DQN's 4-frame history (App. B.3, Table 6, p. 35).
+frame_stack = 4
+# The full 18 actions always (A1; Table 5, p. 34).
+action_set = "atari_full"
+# Episodes capped at 18,000 frames, 5 minutes (A2; Table 5, p. 34).
+max_episode_frames = 18000
+# No lives signal; game over ends an episode (A1, C8; Sec. 3.1, p. 6).
+life_loss_terminal = false
+# Scores are the game's own (the user's decision; the paper reports raw scores).
+reward_clip = "none"
+# guessed: the name the ALE core's synthetic score variable gets (C10/C11 not written yet).
+score_var = "score"
+# The average of 100 episodes (A1-A3; Sec. 4.2, pp. 9-10), here of a trained policy rather
+# than the last 100 training episodes: guessed, since we evaluate after training.
+episodes_per_seed = 100
+# guessed: one env seed. Each policy seed's 100 episodes are one RNG stream that runs on from
+# episode to episode, so they are distinct draws; the paper's independent trials are training
+# runs, which policy_seeds stand for.
+env_seeds = [0]
+# guessed: 5 trials, DQN's count (A3; Sec. 6.1, p. 16); Sarsa(lambda)+Blob-PROST had 24.
+policy_seeds = [0, 1, 2, 3, 4]
+
+[obs]
+# guessed: DQN's 84x84 grayscale (Mnih et al. 2015, which App. B.3 follows; not in the KB yet).
+size = [84, 84]
+# "game": each Atari game config's crop and orientation (docs/games.md).
+crop = "game"
+orientation = "game"
+# guessed: area averaging, as the common cv2.INTER_AREA Atari preprocessing does.
+interpolation = "area"
+grayscale = true
+
+[start]
+# "game": the game config's reset (ALE's own reset, through the ALE core).
+reset = "game"
+# Sticky actions replace no-op starts (Sec. 5.2-5.3, pp. 12-15); Table 5 lists none.
+noop_max = 0

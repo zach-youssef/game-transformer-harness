@@ -1,0 +1,50 @@
+# mgdt2022: Multi-Game Decision Transformers' Atari evaluation (Lee et al. 2022). Citations
+# are [[lee2022multigame#...]] in research/kb/papers/; the paper takes its preprocessing from
+# Agarwal et al. (DQN-Replay), which the KB doesn't hold yet (C8), so those fields are
+# `# guessed:` with the reason.
+
+backend = "libretro"
+# The 5 held-out games (A5; Sec. 3.3, p. 4). Ids are ALE's ROM names with hyphens
+# (docs/games.md), which the Atari game configs (C11) are expected to use.
+games = ["alien", "ms-pacman", "pong", "space-invaders", "star-gunner"]
+# guessed: Dopamine's Atari default of 4, as Agarwal et al.'s preprocessing uses.
+frameskip = 4
+# No sticky actions (A9; App. B.4, p. 18).
+sticky_prob = 0.0
+# guessed: Dopamine's preprocessing max-pools the last two frames of a step.
+maxpool = true
+# One frame per timestep; the 4-timestep context stands in for a stack (App. B.1, p. 17).
+frame_stack = 1
+# The shared 18-action set (A1; App. B.4, p. 18).
+action_set = "atari_full"
+# guessed: Dopamine's 27,000 agent steps at frame skip 4.
+max_episode_frames = 108000
+# Game over ends an episode (the user's decision; the paper doesn't say for evaluation).
+life_loss_terminal = false
+# Scores are the game's own: rewards are clipped for training only (A3), and HNS is on raw
+# scores (Sec. 4.1, p. 6).
+reward_clip = "none"
+# guessed: the name the ALE core's synthetic score variable gets (C10/C11 not written yet).
+score_var = "score"
+# 16 rollouts per game (A9; App. B.4, p. 18) from one training seed (A10; Sec. 4.1, p. 6).
+episodes_per_seed = 16
+# guessed: one env seed (the paper names none); with sticky actions and no-ops off the env
+# has no randomness for it to seed.
+env_seeds = [0]
+policy_seeds = [0]
+
+[obs]
+# 84x84 grayscale (A2; Sec. 3.2, p. 4). The JPEG compression of A2 isn't a protocol field.
+size = [84, 84]
+# "game": each Atari game config's crop and orientation (docs/games.md).
+crop = "game"
+orientation = "game"
+# guessed: Dopamine resizes with cv2.INTER_AREA.
+interpolation = "area"
+grayscale = true
+
+[start]
+# "game": the game config's reset (ALE's own reset, through the ALE core).
+reset = "game"
+# guessed: Dopamine's evaluation has no no-op starts.
+noop_max = 0
