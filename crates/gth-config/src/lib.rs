@@ -20,7 +20,7 @@ pub use game::{
     Crop, Episode, FileSpec, GameConfig, Hashes, Member, Orientation, Reset, ResetStep,
     RetroButton, Slot, StateFile,
 };
-pub use lock::{CoreLock, CoresLock, asset_name, library_file, patch_path};
+pub use lock::{CoreLock, CoresLock, asset_name, library_file};
 pub use ram::{Encoding, Location, MemoryId, RamVar};
 pub use ramsearch::{Relation, SearchScript, SearchStep, Space, View};
 pub use roms::{check_file, find_file, rom_dir, sha1_file, sha256_file, user_config_path};

@@ -1,5 +1,2 @@
 # Shell scripts run under bash on Windows runners too (MSYS2), which rejects CRLF.
 *.sh text eol=lf
-
-# Core patches are applied byte for byte (docs/cores.md): no line-ending conversion.
-*.patch -text

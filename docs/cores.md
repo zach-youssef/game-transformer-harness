@@ -2,10 +2,10 @@
 
 The harness runs libretro cores built from pinned commits: upstream's, or for a core the
 harness needs changes in, a commit on a branch of our fork of it (Forks, below).
-`cores.lock` (repo root, schema in docs/games.md) pins each core's repository, commit,
-patches, the `library_version` the build reports and the SHA-256 of each platform's build.
-The cores workflow builds them; `gth cores fetch` puts this platform's builds in a data
-directory and checks them.
+`cores.lock` (repo root, schema in docs/games.md) pins each core's repository, commit, the
+`library_version` the build reports and the SHA-256 of each platform's build. The cores
+workflow builds them; `gth cores fetch` puts this platform's builds in a data directory and
+checks them.
 
 ## Pins
 
@@ -63,14 +63,13 @@ docs/recording-format.md) only when the core file has the pinned hash
 
 ## Builds
 
-`scripts/build-core.sh <name> <repo> <commit> <osx|unix|win> <out_dir> [<patch>...]` builds one
+`scripts/build-core.sh <name> <repo> <commit> <osx|unix|win> <out_dir>` builds one
 core with its own Makefile, upstream's route on every platform (on Windows in an MSYS2 MINGW64 shell
 with MinGW-w64 gcc; the MSVC Makefile targets hard-code VS2017 and still need MSYS make).
 Each core's Makefile and its fixes are a `case` in the script:
 
 - The source is a shallow clone of exactly the commit with `core.abbrev` 7: cores put `git
   rev-parse --short HEAD` into `library_version`, so it must not depend on the clone.
-- The patches, if any, are applied in order and committed on top (Patches, below).
 - `mednafen_pce_fast`: its Makefile passes `GIT_VERSION` to C++ only, but `library_version`
   is set in C, so upstream builds report no commit; the script passes it to C too. On macOS
   its bundled zlib 1.2.11 defines `fdopen` away and clashes with the SDK's `<stdio.h>`, so the
@@ -83,7 +82,8 @@ Local builds work on a Mac with the Xcode command-line tools, for example to try
 
 ```
 scripts/build-core.sh fceumm https://github.com/libretro/libretro-fceumm <commit> osx out
-scripts/build-core.sh fbneo https://github.com/libretro/FBNeo <commit> osx out cores/patches/fbneo/*.patch
+scripts/build-core.sh fbneo https://github.com/zach-youssef/FBNeo <commit> osx out
+scripts/build-core.sh fbneo /abs/path/to/FBNeo <commit> osx out   # a local clone, unpushed
 gth cores check out          # loads every core in out/ and checks its version
 ```
 
@@ -97,34 +97,6 @@ machine's SDK, and a Windows build fails if its DLL imports anything but Windows
 To pass it, Windows builds link with `-static` (in `LDFLAGS`), which links MinGW's runtime
 into the DLL: the Makefiles' `-static-libgcc -static-libstdc++` alone still leave FBNeo
 importing `libwinpthread-1.dll`.
-
-## Patches
-
-A patch fixes something in a core that the harness needs and upstream doesn't have yet, such
-as state a savestate leaves out. Add one only for a fix that belongs upstream, and send it
-upstream too; anything else (a build flag, a Makefile quirk) is a `case` in the build script.
-
-- The file is `cores/patches/<core>/<NNNN>-<what>.patch`, `git diff` output against the pinned
-  commit, starting with a description (what's wrong, why it matters here, its upstream
-  status), which `git apply` skips. `.gitattributes` keeps `*.patch` byte for byte
-  (`-text`), so its hash and its lines are the same on Windows checkouts.
-- `[cores.<core>.patches]` in `cores.lock` maps each file name (letters, digits, `.`, `_`
-  and `-`, since the workflow passes the paths word-split) to its SHA-256
-  (`shasum -a 256 <file>`); they apply in name order. `gth cores plan` fails unless each file
-  has its pinned hash, and lists the paths, which the workflow passes to the build script.
-- The build script applies them with `git apply --index` and commits them with a fixed
-  author, message and the upstream commit's dates, so the patched commit has the same hash
-  everywhere. Cores that report `git rev-parse --short HEAD` then report that commit's hash,
-  which isn't upstream's: FBNeo at `a836e52` with its patches reports `GIT0630faa`. So
-  `library_version` also tells a patched build from an unpatched one, and from one with other
-  patches.
-- The release tag covers the patches (below), so adding, changing or dropping one is a new
-  release, like a bump: clear the core's `artifacts`, set `library_version` to what the
-  patched build reports and release it (Bumping a pin, steps 2 to 4). It invalidates the
-  core's savestates and recordings as a bump does.
-- When bumping a patched core, check whether upstream has merged the fix: if so, drop the
-  patch (file and lock entry) in the bump; if not, check it still applies (the build fails if
-  it doesn't) and refresh it against the new commit.
 
 ## Forks
 
@@ -147,18 +119,17 @@ upstream. Anything else (a build flag, a Makefile quirk) is a `case` in the buil
 - Cores that report `git rev-parse --short HEAD` report the fork commit's hash, and FBNeo
   dates its version with that commit's author date: the build at `9fbf243` reports
   `v1.0.0.03 261127 GIT9fbf243`.
-- To try a fork commit before pushing it, pass the build script the local clone's path as the
-  repository (Builds, above).
+- To try a fork commit before pushing it, pass the build script the local clone's absolute
+  path as the repository (Builds, above; a relative one would resolve in the build's clone).
 
 ## The cores workflow
 
-`.github/workflows/cores.yml` runs on a push that changes `cores.lock`, a patch, the build
-script, the workflow or its setup action, and on manual dispatch:
+`.github/workflows/cores.yml` runs on a push that changes `cores.lock`, the build script, the
+workflow or its setup action, and on manual dispatch:
 
-1. `plan`: `gth cores plan` checks each core's patches against the lock and prints the release
-   tag and each core's source (repository, commit and patches). The tag is `cores-` and 16 hex
-   digits of a SHA-256 over every core's name, repository, commit and patches (each file's
-   name and hash), so writing the hashes into the lock keeps it.
+1. `plan`: `gth cores plan` prints the release tag and each core's source. The tag is
+   `cores-` and 16 hex digits of a SHA-256 over every core's name, repository and commit, so
+   writing the hashes into the lock keeps it.
 2. `build`: every core on macos-latest (arm64), ubuntu-latest and windows-latest, each
    uploaded as the workflow artifact `core-<target>-<name>`.
 3. `check`: per platform, `gth cores check` loads each build without a game and checks its

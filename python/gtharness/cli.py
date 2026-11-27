@@ -154,10 +154,7 @@ def _add_cores_parser(commands: Any) -> None:
         "fresh builds. Hashes are reported, not required.",
     )
     check.add_argument("cores_dir", type=Path)
-    actions.add_parser(
-        "plan",
-        help="check the patches and print the release tag and each core's source as JSON",
-    )
+    actions.add_parser("plan", help="print the release tag and each core's source as JSON")
     release = actions.add_parser(
         "release",
         help="lay out a release from the cores workflow's builds",
@@ -179,7 +176,7 @@ def _cores_main(args: argparse.Namespace) -> int:
     try:
         lock = _native.CoresLock.load(args.lock)
         if args.action == "plan":
-            print(json.dumps(cores.plan(lock, args.lock.parent)))
+            print(json.dumps(cores.plan(lock)))
             return 0
         if args.action == "release":
             filled = cores.release(lock, args.builds, args.out, args.targets)

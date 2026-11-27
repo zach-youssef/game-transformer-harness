@@ -1,6 +1,6 @@
 name: Cores
 
-# Builds every core in cores.lock at its pinned commit, with its patches, for each platform and loads each build
+# Builds every core in cores.lock at its pinned commit for each platform and loads each build
 # without a game (docs/cores.md). Only main publishes: a GitHub release named after the lock's
 # sources (`gth cores plan`), once per tag. Branches upload workflow artifacts only.
 on:
@@ -9,7 +9,6 @@ on:
     branches: ['**']
     paths:
       - cores.lock
-      - cores/patches/**
       - scripts/build-core.sh
       - .github/workflows/cores.yml
       - .github/actions/harness/**
@@ -39,7 +38,7 @@ jobs:
           plan=$(uv run --locked gth cores plan)
           tag=$(jq -r .tag <<<"$plan")
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "cores=$(jq -c '[.cores[] | {name, repo, commit, patches}]' <<<"$plan")" >> "$GITHUB_OUTPUT"
+          echo "cores=$(jq -c '[.cores[] | {name, repo, commit}]' <<<"$plan")" >> "$GITHUB_OUTPUT"
           # A tag's release is built once (docs/cores.md): on main, an existing one is checked
           # with `gth cores fetch` instead of rebuilt.
           if [ "$GITHUB_REF" = refs/heads/main ] && gh release view "$tag" >/dev/null 2>&1; then
@@ -74,9 +73,6 @@ jobs:
       REPO: ${{ matrix.core.repo }}
       COMMIT: ${{ matrix.core.commit }}
       PLATFORM: ${{ matrix.platform }}
-      # The core's patches in the order they apply, checked against the lock by `plan`; paths
-      # in the checkout, whose names the lock limits to [A-Za-z0-9._-] (docs/cores.md, "Patches").
-      PATCHES: ${{ join(matrix.core.patches, ' ') }}
     steps:
       - uses: actions/checkout@v7
 
@@ -89,11 +85,11 @@ jobs:
 
       - if: matrix.platform == 'win'
         shell: msys2 {0}
-        run: scripts/build-core.sh "$NAME" "$REPO" "$COMMIT" win build $PATCHES
+        run: scripts/build-core.sh "$NAME" "$REPO" "$COMMIT" win build
 
       - if: matrix.platform != 'win'
         shell: bash
-        run: scripts/build-core.sh "$NAME" "$REPO" "$COMMIT" "$PLATFORM" build $PATCHES
+        run: scripts/build-core.sh "$NAME" "$REPO" "$COMMIT" "$PLATFORM" build
 
       - uses: actions/upload-artifact@v7
         with:

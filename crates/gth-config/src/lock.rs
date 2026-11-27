@@ -1,6 +1,6 @@
 //! `cores.lock`: the pinned build of each libretro core (docs/cores.md): the upstream commit
-//! the cores workflow builds, the patches it applies on top, the version it reports and the
-//! SHA-256 of each platform's build, which `gth cores fetch` checks.
+//! the cores workflow builds, the version it reports and the SHA-256 of each platform's build,
+//! which `gth cores fetch` checks.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -30,11 +30,6 @@ pub struct CoreLock {
     pub repo: String,
     /// The full commit hash built.
     pub commit: String,
-    /// The patches applied on top of `commit`, in name order: each file's name in
-    /// `cores/patches/<core>/` beside the lock ([`patch_path`]) and its SHA-256. A pin is the
-    /// commit plus these.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub patches: BTreeMap<String, String>,
     /// What `retro_get_system_info` reports as `library_version` for this build.
     pub library_version: String,
     /// SHA-256 of the built library per target triple (e.g. `aarch64-apple-darwin`).
@@ -57,27 +52,6 @@ impl CoresLock {
                     what,
                     format!("{name}: artifact for {target} isn't a SHA-256"),
                 ));
-            }
-            for (file, hash) in &core.patches {
-                // Letters, digits, `.`, `_` and `-` only: the cores workflow passes the paths
-                // to the build script word-split, so no spaces or glob characters.
-                let plain = !file.starts_with('.')
-                    && (file.bytes()).all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b));
-                if !plain || !file.ends_with(".patch") {
-                    return Err(invalid(
-                        what,
-                        format!(
-                            "{name}: patch {file:?} isn't a file name of letters, digits, '.', \
-                             '_' and '-' ending in .patch"
-                        ),
-                    ));
-                }
-                if !is_hex(hash, 64) {
-                    return Err(invalid(
-                        what,
-                        format!("{name}: patch {file} isn't given a SHA-256"),
-                    ));
-                }
             }
         }
         Ok(lock)
@@ -113,16 +87,12 @@ impl CoresLock {
     }
 
     /// The tag of the GitHub release with this lock's builds: `cores-` and 16 hex digits of a
-    /// SHA-256 over each core's name, repository, commit and patches (name and SHA-256). The
-    /// versions and artifact hashes are left out, so writing them into the lock after the
-    /// release keeps its tag; a core without patches hashes as it did before patches existed.
+    /// SHA-256 over each core's name, repository and commit. The versions and artifact hashes
+    /// are left out, so writing them into the lock after the release keeps its tag.
     pub fn release_tag(&self) -> String {
         let mut hasher = Sha256::new();
         for (name, core) in &self.cores {
             hasher.update(format!("{name}\n{}\n{}\n", core.repo, core.commit));
-            for (file, hash) in &core.patches {
-                hasher.update(format!("patch {file} {hash}\n"));
-            }
         }
         format!("cores-{}", &hex(&hasher.finalize())[..16])
     }
@@ -144,30 +114,6 @@ impl CoresLock {
 }
 
 impl CoreLock {
-    /// Core `name`'s patches in the order they apply, as paths relative to the lock's
-    /// directory ([`patch_path`]).
-    pub fn patch_paths(&self, name: &str) -> Vec<String> {
-        (self.patches.keys())
-            .map(|file| patch_path(name, file))
-            .collect()
-    }
-
-    /// Fails unless each of core `name`'s patches under `lock_dir` (the lock's directory) has
-    /// the SHA-256 the lock pins, so a build applies exactly the pinned patches.
-    pub fn check_patches(&self, name: &str, lock_dir: &Path) -> Result<()> {
-        for (file, pinned) in &self.patches {
-            let path = lock_dir.join(patch_path(name, file));
-            let found = sha256_file(&path)?;
-            if &found != pinned {
-                return Err(invalid(
-                    path.display().to_string(),
-                    format!("SHA-256 {found}, but cores.lock pins {pinned} for {name}'s {file}"),
-                ));
-            }
-        }
-        Ok(())
-    }
-
     /// Fails unless `path` is the build of core `name` for `target` that the lock pins.
     pub fn check_artifact(&self, name: &str, target: &str, path: &Path) -> Result<()> {
         let pinned = self.artifacts.get(target).ok_or_else(|| {
@@ -203,13 +149,6 @@ impl CoreLock {
         }
         Ok(())
     }
-}
-
-/// Where patch `file` of core `name` lives, relative to the lock's directory:
-/// `cores/patches/<name>/<file>`, with `/` on every platform (as the cores workflow passes it
-/// to the build script; Windows paths take `/` too).
-pub fn patch_path(name: &str, file: &str) -> String {
-    format!("cores/patches/{name}/{file}")
 }
 
 /// The library file name of core `name` for a target triple, as its Makefile names it and
@@ -351,84 +290,6 @@ x86_64-pc-windows-msvc = "111111111111111111111111111111111111111111111111111111
         let error = lock.core("fceumm").unwrap_err().to_string();
         assert!(error.contains("no core fceumm (it has fbneo)"), "{error}");
         std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    const PATCHED: &str = r#"
-[cores.fbneo.patches]
-"0002-second.patch" = "2222222222222222222222222222222222222222222222222222222222222222"
-"0001-first.patch" = "3333333333333333333333333333333333333333333333333333333333333333"
-"#;
-
-    #[test]
-    fn patches_apply_in_name_order_and_change_the_tag() {
-        let plain = CoresLock::parse(LOCK, "cores.lock").unwrap();
-        let lock = CoresLock::parse(&(LOCK.to_owned() + PATCHED), "cores.lock").unwrap();
-        assert_eq!(CoresLock::parse(&lock.to_toml(), "again").unwrap(), lock);
-        assert!(!plain.to_toml().contains("patches"), "no empty table");
-        let fbneo = &lock.cores["fbneo"];
-        assert_eq!(
-            fbneo.patch_paths("fbneo"),
-            [
-                "cores/patches/fbneo/0001-first.patch",
-                "cores/patches/fbneo/0002-second.patch"
-            ]
-        );
-        assert_ne!(lock.release_tag(), plain.release_tag());
-        let rehashed = CoresLock::parse(&lock.to_toml().replace("3333", "4444"), "x").unwrap();
-        assert_ne!(
-            rehashed.release_tag(),
-            lock.release_tag(),
-            "a patch's hash is in it"
-        );
-
-        for (from, to, reason) in [
-            (
-                "\"0001-first.patch",
-                "\"../0001-first.patch",
-                "isn't a file name",
-            ),
-            ("0001-first.patch", "0001-first.diff", "ending in .patch"),
-            ("0001-first.patch", "0001 first.patch", "isn't a file name"),
-            ("0001-first.patch", "0001-*.patch", "isn't a file name"),
-            ("0001-first.patch", "0001-[a].patch", "isn't a file name"),
-            (
-                "= \"3333",
-                "= \"333",
-                "0001-first.patch isn't given a SHA-256",
-            ),
-        ] {
-            let text = LOCK.to_owned() + &PATCHED.replacen(from, to, 1);
-            let error = CoresLock::parse(&text, "cores.lock")
-                .unwrap_err()
-                .to_string();
-            assert!(error.contains(reason), "{error}");
-        }
-    }
-
-    #[test]
-    fn checks_patch_hashes() {
-        let dir = std::env::temp_dir().join(format!("gth-lock-patches-{}", std::process::id()));
-        let patches = dir.join("cores/patches/fbneo");
-        std::fs::create_dir_all(&patches).unwrap();
-        std::fs::write(patches.join("0001-first.patch"), b"a patch").unwrap();
-        let hash = sha256_file(&patches.join("0001-first.patch")).unwrap();
-        let text = format!("{LOCK}[cores.fbneo.patches]\n\"0001-first.patch\" = \"{hash}\"\n");
-        let lock = CoresLock::parse(&text, "cores.lock").unwrap();
-        lock.cores["fbneo"].check_patches("fbneo", &dir).unwrap();
-
-        std::fs::write(patches.join("0001-first.patch"), b"another patch").unwrap();
-        let error = (lock.cores["fbneo"].check_patches("fbneo", &dir))
-            .unwrap_err()
-            .to_string();
-        assert!(
-            error.contains(&format!("but cores.lock pins {hash}")),
-            "{error}"
-        );
-        std::fs::remove_dir_all(&dir).unwrap();
-        assert!(
-            lock.cores["fbneo"].check_patches("fbneo", &dir).is_err(),
-            "missing"
-        );
     }
 
     #[test]

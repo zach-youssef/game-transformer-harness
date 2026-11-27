@@ -170,5 +170,4 @@ match what the pinned core expects is checked by hash in the audit (above), not 
 the name.
 
 `roms/`, `system/`, `cores/` and `runs/` at the repo root are ignored as well, so a stray copy
-there is never committed. The exception is `cores/patches/`, the source patches applied to
-core builds (docs/cores.md, "Patches"); core binaries are ignored wherever they are.
+there is never committed.
