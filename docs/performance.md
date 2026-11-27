@@ -45,7 +45,11 @@ The benchmark runs each target with its own game config (`bench.target_config`):
 core, content, core options, settle frames, turn and crop, no RAM variables, the four action slots on B, A,
 Y and X, and a reset script that coins and presses start a few times (about 13 seconds), so
 play leaves the title screen in most games. It measures the same thing before and after a
-game's own `game.toml` is written. Actions are uniformly random flat actions
+game's own `game.toml` is written. A game's target keeps the game's `[content]` table
+(`GameConfig.content_toml`), so its recordings identify the content as the game's own do,
+and a clone inside its parent's archive (`in_parent`, `ddpdojblk`), whose path doesn't exist,
+is identified by that archive (docs/recording-format.md); `--content` targets are named by
+the file's size and hashes. Actions are uniformly random flat actions
 (docs/actions.md). Every measurement runs in spawned processes, one core per process.
 
 - **Single process**: one `RetroEnv` with 256x256 observations, at frameskip 1, 2 and 4, in

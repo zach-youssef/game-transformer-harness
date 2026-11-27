@@ -2,17 +2,19 @@
 measurement runs and reports; the real cores' numbers come from manual runs, and
 test_bench_real_rom skips without a ROM directory."""
 
+import hashlib
 import json
 import shutil
 import struct
+import tomllib
 from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from gtharness import bench, cli
-from gtharness.env import core_library
+from gtharness import _native, bench, cli
+from gtharness.env import GAMES_DIR, core_library
 
 TINY = [
     "--steps",
@@ -104,6 +106,42 @@ def test_replay_check_reports_the_desynced_frame(
     checked = bench.replay_check(target, recording)
     assert checked["desync"]["frame"] == tampered
     assert f"frame {tampered}" in checked["desync"]["error"]
+
+
+def test_game_targets_name_the_content_as_the_game_does(data_dir: Path, tmp_path: Path):
+    """A game's target keeps the game's own [content] table, so recordings identify the
+    content as the game's do, and a clone inside its parent's archive (in_parent), whose path
+    doesn't exist, can be benchmarked (docs/performance.md)."""
+    game = _native.GameConfig.load(GAMES_DIR / "testcore" / "game.toml")
+    target = bench.game_target("testcore", data_dir, None)  # GTH_ROM_DIR, from testcore_data
+    assert target.content_path.name == "renamed.gthc"  # found by SHA-1
+    assert target.config().content_toml == game.content_toml
+    result = bench.determinism(target, 40, tmp_path / "out", seed=0)
+    assert result["desync"] is None and result["replayed"] == result["frames"]
+    meta = tomllib.loads((Path(result["recording"]) / "meta.toml").read_text(encoding="utf-8"))
+    sha1 = hashlib.sha1(target.content_path.read_bytes()).hexdigest()
+    assert meta["content"] == {"file": "renamed.gthc", "sha1": sha1}
+
+    # A merged set: the clone has no file of its own, only a place in its parent's archive.
+    games = tmp_path / "games"
+    (games / "merged").mkdir(parents=True)
+    testcore_toml = (GAMES_DIR / "testcore" / "game.toml").read_text(encoding="utf-8")
+    before, rest = testcore_toml.split("[content]")
+    clone = (
+        '[content]\nfile = "gth_testcore_clone.zip"\nin_parent = true\n'
+        'members = [{ name = "clone.bin", size = 1, sha1 = "'
+        + "0" * 40
+        + '", crc32 = "00000000" }]\nparents = ['
+    )
+    (games / "merged" / "game.toml").write_text(
+        before + clone + rest.split("parents = [", 1)[1], encoding="utf-8"
+    )
+    merged = _native.GameConfig.load(games / "merged" / "game.toml")
+    target = bench.game_target("merged", data_dir, None, games)
+    assert target.content_path.name == "gth_testcore_clone.zip"
+    assert not target.content_path.exists()
+    config = target.config()
+    assert config.content_in_parent and config.content_toml == merged.content_toml
 
 
 def test_default_processes_fit_the_machine(monkeypatch: pytest.MonkeyPatch):

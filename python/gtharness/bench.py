@@ -79,17 +79,32 @@ class Target:
         return _native.GameConfig.parse(self.config_toml, f"{self.name} (benchmark config)")
 
 
+def file_content_toml(content: Path) -> str:
+    """A ``[content]`` table naming ``content`` by its size and hashes, for content with no
+    game config."""
+    data = content.read_bytes()
+    lines = [
+        "[content]",
+        f"file = {json.dumps(content.name)}",
+        f"size = {len(data)}",
+        f'sha1 = "{hashlib.sha1(data).hexdigest()}"',
+        f'crc32 = "{zlib.crc32(data):08x}"',
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def target_config(
     core: str,
-    content: Path,
+    content_toml: str,
     *,
     settle_frames: int,
     orientation: int,
     crop: tuple[int, int, int, int] | None,
     core_options: dict[str, str],
 ) -> str:
-    """The benchmark's game config for ``core`` running ``content`` (module docstring)."""
-    data = content.read_bytes()
+    """The benchmark's game config for ``core`` running the content ``content_toml`` (a
+    ``[content]`` table: a game's own, ``GameConfig.content_toml``, or `file_content_toml`)
+    (module docstring)."""
     lines = [
         f"core = {json.dumps(core)}",
         f"settle_frames = {settle_frames}",
@@ -98,11 +113,7 @@ def target_config(
     if crop is not None:
         lines.append(f"crop = [{', '.join(str(value) for value in crop)}]")
     lines += [
-        "[content]",
-        f"file = {json.dumps(content.name)}",
-        f"size = {len(data)}",
-        f'sha1 = "{hashlib.sha1(data).hexdigest()}"',
-        f'crc32 = "{zlib.crc32(data):08x}"',
+        content_toml.rstrip("\n"),
         "[buttons]",
         *(f'{button} = "{slot}"' for button, slot in SLOT_BUTTONS.items()),
         "[reset]",
@@ -131,12 +142,14 @@ def game_target(
 ) -> Target:
     """The core and content of ``games_dir/<game_id>/game.toml``, found as
     `RetroEnv.from_game` finds them, with the game's core options, settle frames, orientation
-    and crop."""
+    and crop. The content is named as the game names it, so a clone inside its parent's
+    archive (``in_parent``), whose path doesn't exist, is identified in recordings by that
+    archive, as for the game's own (docs/recording-format.md)."""
     game = _native.GameConfig.load(games_dir / game_id / "game.toml")
     content = find_content(game, game_id, rom_dir)
     toml = target_config(
         game.core,
-        content,
+        game.content_toml,
         settle_frames=game.settle_frames,
         orientation=game.orientation,
         crop=game.crop,
@@ -152,7 +165,14 @@ def content_target(core: str, content: Path, data_dir: Path) -> Target:
     settle frames, docs/games.md)."""
     if not content.is_file():
         raise ConfigError(f"{content} isn't a file")
-    toml = target_config(core, content, settle_frames=0, orientation=0, crop=None, core_options={})
+    toml = target_config(
+        core,
+        file_content_toml(content),
+        settle_frames=0,
+        orientation=0,
+        crop=None,
+        core_options={},
+    )
     path = _core_path(data_dir, core)
     return Target(content.stem, core, path, content, data_dir / "system", toml)
 

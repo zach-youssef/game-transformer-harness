@@ -379,6 +379,20 @@ impl GameConfig {
         toml::to_string(self).expect("every field serializes to TOML")
     }
 
+    /// The `[content]` table (with its members and parents) as TOML, for a config made from
+    /// this one: the benchmark's (gtharness.bench), which must name the content exactly as
+    /// the game does, so that an `in_parent` clone stays one (docs/performance.md).
+    pub fn content_toml(&self) -> String {
+        #[derive(Serialize)]
+        struct Content<'a> {
+            content: &'a FileSpec,
+        }
+        toml::to_string(&Content {
+            content: &self.content,
+        })
+        .expect("every field serializes to TOML")
+    }
+
     /// The rules serde's types can't express on their own.
     fn validate(&self) -> Result<(), String> {
         if self.core.is_empty() {
@@ -638,6 +652,17 @@ gth_testcore_step = "4"
             GameConfig::parse(&config.to_toml(), "again").unwrap(),
             config
         );
+        // The content table alone reads back as the same spec, in_parent and parents included.
+        for config in [config, GameConfig::parse(&full(), "full").unwrap()] {
+            #[derive(Deserialize)]
+            struct Content {
+                content: FileSpec,
+            }
+            let text = config.content_toml();
+            assert!(text.starts_with("[content]\n"), "{text}");
+            let again: Content = toml::from_str(&text).unwrap();
+            assert_eq!(again.content, config.content);
+        }
         let orphan: String = (merged().lines())
             .filter(|line| !line.starts_with("parents ="))
             .map(|line| format!("{line}\n"))

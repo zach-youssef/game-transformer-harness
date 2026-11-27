@@ -203,6 +203,12 @@ impl GameConfig {
     fn content_in_parent(&self) -> bool {
         self.config.content.in_parent
     }
+
+    /// The `[content]` table as TOML, members and parents included (docs/games.md).
+    #[getter]
+    fn content_toml(&self) -> String {
+        self.config.content_toml()
+    }
 }
 
 /// The ROM directory from `GTH_ROM_DIR` or the user config file, or `None`.
