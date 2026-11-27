@@ -56,10 +56,11 @@ included), and a flags byte whose bit 0 marks the last frame of an agent step (t
 observation shows); the other bits must be 0. The last frame always ends a step.
 
 The mask, not the action, is the canonical input: it is what the core consumed, so replay is
-exact whatever action space produced it. The flags keep the agent's steps: frameskip is the
-distance between step ends, so frame-rate and model-rate data both come from one recording.
-Unified-slot labels for training are derived from the mask with the recording's own
-`game.toml` (below).
+exact whatever action space produced it. Under sticky actions it is the effective mask, the
+previous frame's when the frame stuck, so a sticky episode replays without the env's RNG. The
+flags keep the agent's steps: frameskip is the distance between step ends, so frame-rate and
+model-rate data both come from one recording. Unified-slot labels for training are derived from
+the mask with the recording's own `game.toml` (below).
 
 ### checks.bin
 
@@ -104,14 +105,16 @@ rather than misreading it.
 ## Recording and replaying
 
 - `gth_record::Recorder::create(dir, core, game, content, info)` snapshots the core's state,
-  reloads it (a replay starts by loading it, which clears the frame, so the recording does
-  too; a core that repeats its frame until the first check would otherwise hash a different
-  picture; the reload settles as the replay's does), and writes everything but `meta.toml`; it
-  refuses a core loaded with other settle frames than the game's; `run(core, frames, buttons)` runs one
-  agent step frame by frame, recording each; `finish(core)` writes the last check and
-  `meta.toml`. Any error in `run` is terminal: the core may have run a frame the recording
-  doesn't hold, so later calls, `finish` included, fail with `Error::Failed` and the directory
-  stays incomplete.
+  reloads it (a replay starts by loading it, which clears the frame, so the recording does too;
+  a core that repeats its frame until the first check would otherwise hash a different picture;
+  the reload settles as the replay's does), and writes everything but `meta.toml`; it refuses a
+  core loaded with other settle frames than the game's; `run(core, frames, buttons)` runs one
+  agent step frame by frame, recording each; `run_sticky(core, frames, buttons, sticky_prob,
+  rng)` does so with sticky actions (`Core::run_sticky`), recording each frame's effective
+  mask, the one the core ran with, so the recording replays exactly with no RNG; `finish(core)`
+  writes the last check and `meta.toml`. Any error in `run` is terminal: the core may have run
+  a frame the recording doesn't hold, so later calls, `finish` included, fail with
+  `Error::Failed` and the directory stays incomplete.
 - `Recorder::rewind(RewindMeta { frame, cause, clip })` truncates the recording to its first
   `frame` frames (the end of a step) and their checks, rewrites `inputs.bin` and
   `checks.bin` from the copy it keeps in memory (3 bytes a frame), and appends the
@@ -121,21 +124,23 @@ rather than misreading it.
   far.
 - `RetroEnv(record=Record(...))` records every episode, from the end of its reset's script or
   state load (so the first observation's frames are in it) to the next reset or `close()`, as
-  `<directory>/<game_id>-<UTC time>-<pid>-<n>.gthrec` (`n` numbers the process's
-  recordings); `env.recordings` lists the finished ones. Starting a recording reloads the
-  state (above), so the first frames match the replay rather than an unrecorded run: on a core
-  that repeats its frame, the first observation is blank. It runs through
-  `_native.Core.start_recording` and `finish_recording`, which record every frame `step` and
-  `run_inputs` run. A failed write raises from the `step`, `reset` or `close()` that ran
-  into it and leaves that recording incomplete; the next episode records again. Human play
-  (gth-play, P6) will use the same `Recorder`.
-- `gth_record::Recording::open(dir)` reads and checks a recording;
-  `Replayer::load(recording, core_path, content, system_dir)` loads the core with the
-  recording's core options and settle frames, checks the core version, the content (above) and that every RAM
-  variable is in the core's memory, and loads the start state. `step()` replays one agent
-  step, `run_to_end()` the rest. `_native.Replayer` (`gtharness.record.Replayer`) adds an
-  observation pipeline: its `step()` returns each step's joypad mask, frame count and last
-  frame at any size, crop and rotation.
+  `<directory>/<game_id>-<UTC time>-<pid>-<n>.gthrec` (`n` numbers the process's recordings);
+  `env.recordings` lists the finished ones. Starting a recording reloads the state (above), so
+  the first frames match the replay rather than an unrecorded run: on a core that repeats its
+  frame, the first observation is blank. It runs through `_native.Core.start_recording` and
+  `finish_recording`, which record every frame `step` and `run_inputs` run. The no-op start
+  (`noop_max`) is a step of its own, and under sticky actions (`sticky_prob`) a step's frames
+  hold the masks they ran with, which may be the previous frame's rather than the action's. A
+  failed write raises from the `step`, `reset` or `close()` that ran into it and leaves that
+  recording incomplete; the next episode records again. Human play (gth-play, P6) will use the
+  same `Recorder`.
+- `gth_record::Recording::open(dir)` reads and checks a recording; `Replayer::load(recording,
+  core_path, content, system_dir)` loads the core with the recording's core options and settle
+  frames, checks the core version, the content (above) and that every RAM variable is in the
+  core's memory, and loads the start state. `step()` replays one agent step, `run_to_end()` the
+  rest. `_native.Replayer` (`gtharness.record.Replayer`) adds an observation pipeline: its
+  `step()` returns each step's joypad mask (its first frame's), frame count and last frame at
+  any size, crop and rotation.
 
 A 60 fps minute of random actions at frameskip 4 is about 5.5 KB on the test core (1.8 KB of
 inputs, 2 KB of checks, the rest `meta.toml` and `game.toml`). A real core's start state
@@ -355,10 +360,11 @@ shifting. The last observation has no next frame and isn't a sample.
 
 A frame's action comes from its mask with the recording's `game.toml`
 (`ActionSpace::action_of`, docs/actions.md): the d-pad bits give the direction (opposites
-cancel), and a slot is held when any RetroPad button mapped to it is. When `RetroEnv`
-records, a step holds one mask for all its frames, so at the recorded rate the label is the
-next step's action. At a coarser rate, presses that start and end between two observations
-appear only in the per-frame arrays.
+cancel), and a slot is held when any RetroPad button mapped to it is. When `RetroEnv` records
+without sticky actions, a step holds one mask for all its frames, so at the recorded rate the
+label is the next step's action; with them, the label is what the core ran on the next step's
+first frame, which may still be the previous action. At a coarser rate, presses that start and
+end between two observations appear only in the per-frame arrays.
 
 A sample whose next frame's mask holds a button that maps to no slot (start, select) has no
 label and is dropped (`unlabelled`). A sample filter (`gth_record::SampleFilter`) then

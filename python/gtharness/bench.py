@@ -197,6 +197,9 @@ def make_env(
         obs_size=obs_size,
         action_format="flat",
         reward=_no_reward,
+        sticky_prob=0.0,
+        max_episode_frames=None,
+        noop_max=0,
         reset_state=None,
         record=record,
         game_id=target.name if record is not None else None,
@@ -254,7 +257,7 @@ def _speed_worker(
                 core.unserialize(state)
                 start = time.perf_counter_ns()
                 for mask in masks:
-                    core.step(frameskip, mask)
+                    core.step(frameskip, mask, 0.0)
                 native_ns = (time.perf_counter_ns() - start) / steps
                 core.unserialize(state)
                 start = time.perf_counter_ns()
@@ -294,9 +297,9 @@ class _TimedCore:
         self._core = core
         self.ns = 0
 
-    def step(self, frames: int, buttons: int) -> Any:
+    def step(self, frames: int, buttons: int, sticky_prob: float) -> Any:
         start = time.perf_counter_ns()
-        observation = self._core.step(frames, buttons)
+        observation = self._core.step(frames, buttons, sticky_prob)
         self.ns += time.perf_counter_ns() - start
         return observation
 

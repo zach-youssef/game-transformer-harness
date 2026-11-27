@@ -31,6 +31,9 @@ def test_a_scripted_session_scores_dies_ends_and_replays(rom, core, tmp_path: Pa
         obs_size=OBS,
         action_format="flat",
         reward=score_delta,
+        sticky_prob=0.0,
+        max_episode_frames=None,
+        noop_max=0,
         core_path=core_path,
         record=Record(
             directory=tmp_path,
@@ -120,6 +123,9 @@ def test_the_ship_answers_the_d_pad_from_the_first_action(rom, core):
             obs_size=OBS,
             action_format="flat",
             reward=score_delta,
+            sticky_prob=0.0,
+            max_episode_frames=None,
+            noop_max=0,
             core_path=core_path,
         )
         try:
@@ -147,6 +153,9 @@ def test_an_area_clear_does_not_end_the_episode(rom, core):
         obs_size=OBS,
         action_format="flat",
         reward=score_delta,
+        sticky_prob=0.0,
+        max_episode_frames=None,
+        noop_max=0,
         core_path=core_path,
     )
     try:
@@ -193,6 +202,9 @@ def test_search_script_finds_the_configs_address(rom, core, name: str):
         obs_size=OBS,
         action_format="flat",
         reward=score_delta,
+        sticky_prob=0.0,
+        max_episode_frames=None,
+        noop_max=0,
         core_path=core_path,
     )
     try:

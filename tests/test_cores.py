@@ -224,6 +224,9 @@ def test_recordings_keep_the_lock_entry_of_a_pinned_build(
         "obs_size": (60, 80),
         "action_format": "flat",
         "reward": score_delta,
+        "sticky_prob": 0.0,
+        "max_episode_frames": None,
+        "noop_max": 0,
         "reset_state": None,
         "game_id": "testcore",
     }

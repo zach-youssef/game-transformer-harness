@@ -191,6 +191,9 @@ def test_assert_ram_checks_a_game_s_variables(testcore_path: Path, testcore_data
         obs_size=(16, 16),
         action_format="flat",
         reward=score_delta,
+        sticky_prob=0.0,
+        max_episode_frames=None,
+        noop_max=0,
         core_path=testcore_path,
     )
     try:
@@ -221,6 +224,6 @@ def test_playing_waits_for_the_recording(core: _native.Core, tmp_path: Path):
         search.watch(core, [(A, 1)], 1)
     with pytest.raises(ValueError, match="finish the recording first"):
         _native.RamSearch.run_script(core, script)
-    core.step(3, A)
+    core.step(3, A, 0.0)
     assert search.filter(core, "increased", None) > 0
     assert core.finish_recording() == tmp_path / "a.gthrec"

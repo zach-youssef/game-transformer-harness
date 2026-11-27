@@ -1,9 +1,9 @@
 """RetroEnv: one game on a libretro core behind the gymnasium API (docs/architecture.md).
 
 Each step is two calls into the extension: one runs `frameskip` frames with the action held
-and returns only the last frame, converted to the observation size; the other reads the
-game's RAM variables and evaluates the episode end. One core per process: parallel
-environments are separate processes.
+(sticky actions included) and returns only the last frame, converted to the observation
+size; the other reads the game's RAM variables and evaluates the episode end. One core per
+process: parallel environments are separate processes.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ class RetroEnv(gym.Env[Observation, Action]):
 
     The reward is ``reward(previous_ram, current_ram)`` over each step (`gtharness.rewards`).
     ``terminated`` is the game's ``episode.terminate`` condition on the RAM variables after the
-    step; ``truncated`` is always False (wrap the environment in a time limit for one). Every
+    step; ``truncated`` is True once the episode has run ``max_episode_frames`` frames. Every
     RAM variable's location is checked against the core's memory when the environment is
     made, so a read can fail mid-episode only on bytes that don't decode (a BCD variable
     holding a non-BCD byte), and `step` or `reset` then raises `HarnessError` naming it.
@@ -74,8 +74,26 @@ class RetroEnv(gym.Env[Observation, Action]):
     the state, so the first frames match the replay rather than an unrecorded run (a core that
     repeats its frame shows a blank first observation).
 
+    The evaluation protocol's knobs (docs/evaluation.md) are required arguments, so none is a
+    silent default; the env's random numbers come from one RNG in Rust, seeded by
+    ``reset(seed=...)`` and running on across episodes until seeded again:
+
+    - Sticky actions, ALE's (Machado et al. 2018): on every emulated frame of a step, with
+      probability ``sticky_prob`` the previous frame's RetroPad mask repeats instead of the
+      action's. The frame before an episode's first holds nothing. Recordings keep the masks
+      the core ran with, so a sticky episode replays exactly without the RNG.
+    - No-op starts: with ``noop_max`` > 0, after the reset's script or state load, a number of
+      frames with no button held drawn uniformly from 1..noop_max inclusive (baselines'
+      ``NoopResetEnv``, counted in emulated frames), before the first observation's frames.
+      ``noop_max`` 0: none.
+    - The episode cap: ``truncated`` turns True when the episode has run
+      ``max_episode_frames`` emulated frames, counted from the end of the reset's script or
+      state load (no-ops and the first observation's frames included, the script's not). The
+      step that reaches the cap is shortened to end on it exactly. None: no cap (for tools
+      and captures; evaluations always set one).
+
     ``info["episode_frame"]`` counts the frames run since the last reset, including the
-    reset's own (script and first observation). It is counted here rather than read from the
+    reset's own (script, no-ops and first observation). It is counted here rather than read from the
     core, because gymnasium's ``check_env`` requires the same info after the same seeded reset
     and actions, and the core's own frame count survives resets and savestate loads.
 
@@ -85,12 +103,16 @@ class RetroEnv(gym.Env[Observation, Action]):
         content_path: the game's content file, or None for cores that run without one.
         system_dir: where the core looks for BIOS files.
         frameskip: frames run per step with the action held (>= 1); settable at runtime.
+            With a cap, ``noop_max + frameskip`` must stay below it.
         obs_size: ``(height, width)`` of observations.
         action_format: "dict" or "flat" (above).
         reward: the reward function, for example `gtharness.rewards.score_delta`.
         reset_state: the savestate a ``reset = { state = ... }`` game starts from (the file's
             bytes, checked against its SHA-1 in game.toml); None for a game with a reset
             script.
+        sticky_prob: the sticky-action probability, in [0, 1); 0 turns them off.
+        max_episode_frames: the episode cap in emulated frames (>= 1), or None for none.
+        noop_max: the most no-op frames an episode starts with (>= 0); 0 turns them off.
         interpolation: "area" (averages, best for shrinking) or "bilinear".
         record: where and how to record episodes (`gtharness.record.Record`), or None.
         game_id: the game's directory under ``games/``, kept in recordings; required with
@@ -111,11 +133,28 @@ class RetroEnv(gym.Env[Observation, Action]):
         action_format: ActionFormat,
         reward: Reward,
         reset_state: bytes | None,
+        sticky_prob: float,
+        max_episode_frames: int | None,
+        noop_max: int,
         interpolation: str = "area",
         record: Record | None = None,
         game_id: str | None = None,
     ) -> None:
         super().__init__()
+        if (
+            isinstance(sticky_prob, bool)
+            or not isinstance(sticky_prob, float | int | np.floating | np.integer)
+            or not 0 <= sticky_prob < 1
+        ):
+            raise ValueError(f"sticky_prob must be a number in [0, 1), not {sticky_prob!r}")
+        if not _is_int(noop_max) or noop_max < 0:
+            raise ValueError(f"noop_max must be an integer >= 0, not {noop_max!r}")
+        if max_episode_frames is not None and (
+            not _is_int(max_episode_frames) or max_episode_frames < 1
+        ):
+            raise ValueError(
+                f"max_episode_frames must be an integer >= 1 or None, not {max_episode_frames!r}"
+            )
         if record is not None and not game_id:
             raise ValueError("record needs the game_id")
         if action_format not in ("dict", "flat"):
@@ -134,6 +173,9 @@ class RetroEnv(gym.Env[Observation, Action]):
         missing = [name for name in required if name not in config.ram_names]
         if missing:
             raise ConfigError(f"{base.__name__} needs the RAM variables {missing}")
+        self._sticky_prob = float(sticky_prob)
+        self._noop_max = int(noop_max)
+        self._max_episode_frames = None if max_episode_frames is None else int(max_episode_frames)
         self.frameskip = frameskip
         self._config = config
         self._reward = reward
@@ -143,6 +185,9 @@ class RetroEnv(gym.Env[Observation, Action]):
         self._joypad = config.joypad_table()
         self._button_bits = 1 << np.arange(4, dtype=np.uint32)
         self._episode_frames = 0
+        self._capped_frames = 0
+        """Frames since the reset's script or state load, which the cap counts."""
+        self._seeded = False
         self._ram: dict[str, int] = {}
         self._record = record
         self._game_id = game_id
@@ -199,6 +244,9 @@ class RetroEnv(gym.Env[Observation, Action]):
         obs_size: tuple[int, int],
         action_format: ActionFormat,
         reward: Reward,
+        sticky_prob: float,
+        max_episode_frames: int | None,
+        noop_max: int,
         rom_dir: str | os.PathLike[str] | None = None,
         core_path: str | os.PathLike[str] | None = None,
         games_dir: str | os.PathLike[str] = GAMES_DIR,
@@ -238,6 +286,9 @@ class RetroEnv(gym.Env[Observation, Action]):
             action_format=action_format,
             reward=reward,
             reset_state=state,
+            sticky_prob=sticky_prob,
+            max_episode_frames=max_episode_frames,
+            noop_max=noop_max,
             interpolation=interpolation,
             record=record,
             game_id=game_id,
@@ -254,9 +305,30 @@ class RetroEnv(gym.Env[Observation, Action]):
 
     @frameskip.setter
     def frameskip(self, frames: int) -> None:
-        if isinstance(frames, bool) or not isinstance(frames, int | np.integer) or frames < 1:
+        if not _is_int(frames) or frames < 1:
             raise ValueError(f"frameskip must be an integer >= 1, not {frames!r}")
+        cap = self._max_episode_frames
+        if cap is not None and self._noop_max + frames >= cap:
+            raise ValueError(
+                f"noop_max + frameskip ({self._noop_max} + {frames}) must be below"
+                f" max_episode_frames ({cap}), so the reset leaves the episode a step"
+            )
         self._frameskip = int(frames)
+
+    @property
+    def sticky_prob(self) -> float:
+        """The sticky-action probability."""
+        return self._sticky_prob
+
+    @property
+    def max_episode_frames(self) -> int | None:
+        """The episode cap in emulated frames, or None."""
+        return self._max_episode_frames
+
+    @property
+    def noop_max(self) -> int:
+        """The most no-op frames an episode starts with."""
+        return self._noop_max
 
     @property
     def resets_to_load_state(self) -> bool:
@@ -269,16 +341,25 @@ class RetroEnv(gym.Env[Observation, Action]):
     ) -> tuple[Observation, dict[str, Any]]:
         """Starts an episode: the game's reset savestate, or the state right after loading
         followed by the game's reset script; ``options["state"]`` (bytes from `save_state`)
-        replaces both. Then runs `frameskip` frames with no button held and returns the last.
+        replaces both. Then runs the no-op start (1..noop_max frames with no button held, none
+        when noop_max is 0) and
+        `frameskip` frames with no button held, and returns the last.
 
         Those frames give the first observation a real frame (a core draws only while it runs,
-        and a savestate holds no frame) and keep steps on frameskip boundaries. All of it is
-        deterministic, so episodes from the same start are identical. ``seed`` seeds
-        ``np_random`` only; the emulation has no randomness of its own. A core that can't
-        serialize at load time gets its own soft reset instead, which may keep RAM between
-        episodes; `resets_to_load_state` says which one this core gets.
+        and a savestate holds no frame) and keep steps on frameskip boundaries. The emulation
+        is deterministic; the env's randomness (sticky actions, the no-op count) comes from
+        its RNG. ``seed`` seeds it and ``np_random``; without one the RNG runs on from the last
+        episode (the first reset without a seed seeds it from ``np_random``'s entropy). So
+        ``reset(seed=s)`` followed by the same actions plays the same episode. A core that
+        can't serialize at load time gets its own soft reset instead, which may keep RAM
+        between episodes; `resets_to_load_state` says which one this core gets.
         """
         super().reset(seed=seed)
+        if seed is not None:
+            self._core.seed(seed)
+        elif not self._seeded:
+            self._core.seed(int(self.np_random.integers(2**63)))
+        self._seeded = True
         self._finish_recording()
         self._episode_frames = 0
         state = (options or {}).get("state", self._reset_state)
@@ -290,17 +371,30 @@ class RetroEnv(gym.Env[Observation, Action]):
             self._core.unserialize(state)
         if self._record is not None:
             self._start_recording(self._record)
-        observation = self._run(0)
+        noops = 1 + self._core.random_below(self._noop_max) if self._noop_max else 0
+        if noops:
+            self._core.run_inputs([(0, noops)])
+        self._episode_frames += noops
+        self._capped_frames = noops
+        # No sticky draws: the frame before holds nothing, as the action does.
+        observation = self._run(0, self._frameskip, 0.0)
         self._ram, _ = self._core.read_ram(self._config)
         return observation, self._info()
 
     def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict[str, Any]]:
-        """Holds ``action`` for `frameskip` frames; returns the last frame."""
-        observation = self._run(self._joypad[self._flat(action)])
+        """Holds ``action`` for `frameskip` frames (fewer on the step that reaches the cap),
+        with sticky actions; returns the last frame."""
+        buttons = self._joypad[self._flat(action)]
+        frames = self._frameskip
+        cap = self._max_episode_frames
+        if cap is not None and self._capped_frames < cap:
+            frames = min(frames, cap - self._capped_frames)
+        observation = self._run(buttons, frames, self._sticky_prob)
         ram, terminated = self._core.read_ram(self._config)
         reward = float(self._reward(self._ram, ram))
         self._ram = ram
-        return observation, reward, terminated, False, self._info()
+        truncated = cap is not None and self._capped_frames >= cap
+        return observation, reward, terminated, truncated, self._info()
 
     def save_state(self) -> bytes:
         """The core's savestate, for ``reset(options={"state": ...})``."""
@@ -350,9 +444,10 @@ class RetroEnv(gym.Env[Observation, Action]):
             int(direction), int(buttons.astype(np.uint32) @ self._button_bits)
         )
 
-    def _run(self, buttons: int) -> Observation:
-        observation = self._core.step(self._frameskip, buttons)
-        self._episode_frames += self._frameskip
+    def _run(self, buttons: int, frames: int, sticky_prob: float) -> Observation:
+        observation = self._core.step(frames, buttons, sticky_prob)
+        self._episode_frames += frames
+        self._capped_frames += frames
         return observation
 
     def _start_recording(self, record: Record) -> None:
@@ -379,6 +474,10 @@ class RetroEnv(gym.Env[Observation, Action]):
 
     def _info(self) -> dict[str, Any]:
         return {"episode_frame": self._episode_frames, "ram": dict(self._ram)}
+
+
+def _is_int(value: object) -> bool:
+    return not isinstance(value, bool) and isinstance(value, int | np.integer)
 
 
 def find_content(

@@ -50,6 +50,9 @@ def play(
         obs_size=(60, 80),
         action_format="flat",
         reward=score_delta,
+        sticky_prob=0.0,
+        max_episode_frames=None,
+        noop_max=0,
         core_path=testcore_path,
         record=rec,
     )
@@ -131,6 +134,55 @@ def test_episodes_are_recorded_and_replay_the_same_frames(
     assert len(frames) == 201 and frames[0].shape == (100, 50, 3)
 
 
+def test_a_sticky_episode_with_no_ops_replays_without_its_rng(
+    testcore_path: Path, testcore_data: Path, content: Path, tmp_path: Path
+):
+    """Recordings keep the masks the core ran with, so sticky frames and no-ops replay from
+    the recording alone, checked every frame."""
+    env = RetroEnv.from_game(
+        "testcore",
+        testcore_data,
+        frameskip=FRAMESKIP,
+        obs_size=(60, 80),
+        action_format="flat",
+        reward=score_delta,
+        sticky_prob=0.25,
+        max_episode_frames=400,
+        noop_max=10,
+        core_path=testcore_path,
+        record=record(tmp_path / "recordings", checks_every=1),
+    )
+    rng = np.random.default_rng(8)
+    try:
+        obs, info = env.reset(seed=2)
+        script = sum(frames for _, frames in env.config.reset_inputs or [])
+        noops = info["episode_frame"] - script - FRAMESKIP
+        assert noops > 0
+        observations = [obs]
+        masks = []
+        truncated = False
+        table = env.config.joypad_table()
+        while not truncated:
+            action = int(rng.integers(env.config.n_actions))
+            obs, _, _, truncated, _ = env.step(action)
+            observations.append(obs)
+            masks.append(table[action])
+    finally:
+        env.close()
+    with replayer(env.recordings[0], testcore_path, content) as replay:
+        assert replay.frames == 400
+        replayed = list(replay_all(replay))
+    assert replayed[0][:2] == (0, noops), "the no-ops are a step of their own"
+    replayed = replayed[1:]
+    assert len(replayed) == len(observations)
+    for (_, _, got), want in zip(replayed, observations, strict=True):
+        np.testing.assert_array_equal(got, want)
+    # A replayed step returns its first frame's mask: under sticky actions, sometimes the
+    # previous step's rather than the action's.
+    firsts = [mask for mask, _, _ in replayed[1:]]
+    assert any(first != mask for first, mask in zip(firsts, masks, strict=True))
+
+
 def test_a_tampered_input_raises_desync_error_at_its_frame(
     testcore_path: Path,
     testcore_data: Path,
@@ -179,6 +231,9 @@ def test_a_failed_recording_raises_and_the_next_episode_records(
         obs_size=(60, 80),
         action_format="flat",
         reward=score_delta,
+        sticky_prob=0.0,
+        max_episode_frames=None,
+        noop_max=0,
         core_path=testcore_path,
         record=record(tmp_path),
     )
@@ -208,6 +263,9 @@ def test_recording_needs_its_choices(testcore_path: Path, testcore_data: Path, t
         "obs_size": (60, 80),
         "action_format": "flat",
         "reward": score_delta,
+        "sticky_prob": 0.0,
+        "max_episode_frames": None,
+        "noop_max": 0,
         "reset_state": None,
     }
     with pytest.raises(ValueError, match="game_id"):
@@ -230,7 +288,7 @@ def test_recording_needs_its_choices(testcore_path: Path, testcore_data: Path, t
             core.reset()
         with pytest.raises(ValueError, match="finish the recording first"):
             core.unserialize(core.serialize())
-        core.step(5, 0)
+        core.step(5, 0, 0.0)
         assert core.finish_recording() == tmp_path / "a.gthrec"
         assert core.recording is None
         meta = tomllib.loads((tmp_path / "a.gthrec" / "meta.toml").read_text(encoding="utf-8"))

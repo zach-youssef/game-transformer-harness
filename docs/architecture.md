@@ -62,10 +62,15 @@ reward and evaluates the episode end on them, returning both.
 The frame half of one `RetroEnv.step(action)` (`python/gtharness/env.py`) is one call into
 `_native.Core.step` (`crates/gth-py/src/core.rs`), which releases the GIL and:
 
-1. `gth_core::Core::run_frames(frameskip, buttons)` calls `retro_run` `frameskip` times with
-   the same buttons held. This is where the frame skip happens: the intermediate frames never
-   leave Rust. `frameskip` is an argument of every call, so `RetroEnv.frameskip` can change
-   between steps.
+1. `gth_core::Core::run_sticky(frames, buttons, sticky_prob, rng)` calls `retro_run`
+   `frames` times (`frameskip`, or fewer on the step that reaches the episode cap). On each
+   frame, with probability `sticky_prob` the previous frame's buttons are held again instead
+   of `buttons` (sticky actions, ALE's semantics; the frame before an episode's first holds
+   nothing), drawing from the `gth_core::Rng` the `_native.Core` owns. At 0 it draws nothing
+   and every frame holds `buttons`, as `Core::run_frames` does. This is where the frame skip
+   happens: the intermediate frames never leave Rust. `frameskip` is an argument of every
+   call, so `RetroEnv.frameskip` can change between steps. While recording, the recorder
+   runs the frames and records each one's effective mask.
 2. During each `retro_run`, the core's video callback copies its frame into the host's frame
    buffer (packed rows, in the core's pixel format), reusing the allocation. A duplicate frame
    (`NULL` data, `GET_CAN_DUPE`) keeps the previous one. Audio is counted and dropped (a
@@ -84,12 +89,18 @@ game's RAM variables in Rust and evaluates the episode condition on them, and th
 function (Python) gets the variables before and after the step. So a step is two native
 calls plus the reward call.
 
-`RetroEnv.reset()` loads the game's reset savestate, or restores the state right after
-loading and plays the game's reset script (`options["state"]` replaces both), then runs
-`frameskip` frames with no button held and returns the last one, through the same `step`
-path. A core draws only during `retro_run` and a savestate holds no frame, so without
-those frames the first observation would be black; they are deterministic, so every episode
-from the same start is identical, and `info["episode_frame"]` counts them. The host also
+`RetroEnv.reset(seed=...)` seeds the RNG when given a seed (without one it runs on from the
+last episode), loads the game's reset savestate, or restores the state right after loading
+and plays the game's reset script (`options["state"]` replaces both), runs the no-op start
+(1..`noop_max` frames with no button held, drawn from the RNG; none at `noop_max = 0`), then
+runs `frameskip` frames with no button held and returns the last one, through the same
+`step` path. A core draws only during `retro_run` and a savestate holds no frame, so without
+those frames the first observation would be black. The emulation is deterministic and all
+the env's randomness comes from its seeded RNG, so a seed and the same actions replay an
+episode exactly, and `info["episode_frame"]` counts these frames. The episode cap
+(`max_episode_frames`) counts from the end of the script or state load, no-ops and the first
+observation's frames included: the step that reaches it is shortened to end on it and
+returns `truncated=True`. The host also
 clears its frame after load, reset and unserialize, so an observation never shows a frame
 from before them.
 

@@ -71,6 +71,9 @@ def make(testcore_path: Path, tmp_path: Path, game=None, **kwargs) -> RetroEnv:
         "obs_size": (HEIGHT, WIDTH),
         "action_format": "dict",
         "reward": score_delta,
+        "sticky_prob": 0.0,
+        "max_episode_frames": None,
+        "noop_max": 0,
         "reset_state": None,
     } | kwargs
     return RetroEnv(game or config(), **options)
@@ -187,6 +190,27 @@ def test_constructor_checks_its_choices(testcore_path: Path, tmp_path: Path):
 
     with retro_env(testcore_path, tmp_path, reward=Unhashable()) as env:
         env.reset()
+
+    bad = [
+        ("sticky_prob", 1.0),
+        ("sticky_prob", -0.1),
+        ("sticky_prob", True),
+        ("sticky_prob", float("nan")),
+        ("noop_max", -1),
+        ("noop_max", 1.5),
+        ("max_episode_frames", 0),
+        ("max_episode_frames", 10.0),
+    ]
+    for name, value in bad:
+        with pytest.raises(ValueError, match=name):
+            make(testcore_path, tmp_path, **{name: value})
+    with pytest.raises(ValueError, match=r"noop_max \+ frameskip \(5 \+ 5\) must be below"):
+        make(testcore_path, tmp_path, noop_max=5, frameskip=5, max_episode_frames=10)
+    with retro_env(testcore_path, tmp_path, noop_max=5, max_episode_frames=10) as env:
+        env.frameskip = 4
+        with pytest.raises(ValueError, match="max_episode_frames"):
+            env.frameskip = 5
+        assert (env.sticky_prob, env.noop_max, env.max_episode_frames) == (0.0, 5, 10)
 
 
 def test_ram_variables_are_checked_when_the_env_is_made(testcore_path: Path, tmp_path: Path):
@@ -313,9 +337,16 @@ def test_resize_rotate_and_crop(testcore_path: Path, tmp_path: Path):
         bad_crop.reset()
 
 
+@pytest.mark.parametrize("protocol", ["off", "on"])
 @pytest.mark.parametrize("action_format", ["dict", "flat"])
-def test_gymnasium_check_env(testcore_path: Path, tmp_path: Path, action_format: str):
+def test_gymnasium_check_env(
+    testcore_path: Path, tmp_path: Path, action_format: str, protocol: str
+):
     options = {"obs_size": (64, 64), "frameskip": 2, "action_format": action_format}
+    if protocol == "on":
+        # check_env resets with a seed twice and compares: sticky actions and no-ops must
+        # follow it.
+        options |= {"sticky_prob": 0.25, "noop_max": 7, "max_episode_frames": 50}
     with retro_env(testcore_path, tmp_path, **options) as env:
         check_env(env, skip_render_check=True)
 
@@ -350,3 +381,128 @@ def test_steps_per_second(testcore_path: Path, tmp_path: Path):
         f"\nRetroEnv on gth-testcore: {len(actions) / elapsed:.0f} steps/s"
         f" ({profile} build, frameskip 4, 256x256, RAM read and reward every step)"
     )
+
+
+# Protocol knobs (docs/evaluation.md): sticky actions, no-op starts, the episode cap.
+
+
+def shot_rewards(env: RetroEnv, pairs: int) -> list[tuple[float, float]]:
+    """Steps nothing, then the shot, ``pairs`` times; each pair's two rewards. The test core
+    scores 1 per frame A is held."""
+    return [(env.step(act())[1], env.step(act(shot=1))[1]) for _ in range(pairs)]
+
+
+def test_sticky_actions_repeat_the_previous_frame_at_their_probability(
+    testcore_path: Path, tmp_path: Path
+):
+    with retro_env(testcore_path, tmp_path, obs_size=(8, 8), sticky_prob=0.25) as env:
+        env.reset(seed=0)
+        pairs = shot_rewards(env, 2000)
+    # At frameskip 1, a nothing step scoring 0 held nothing (it can stick on the shot before
+    # it, and then holds A). The next shot step then scores 0 exactly when its frame sticks,
+    # and its draw is independent of the ones before: Binomial(n, 0.25) over those steps.
+    shots = [shot for nothing, shot in pairs if nothing == 0.0]
+    assert set(shots) == {0.0, 1.0}
+    n, stuck = len(shots), shots.count(0.0)
+    assert n > 1000, n
+    bound = 5 * (n * 0.25 * 0.75) ** 0.5
+    assert abs(stuck - 0.25 * n) < bound, (stuck, n, bound)
+
+
+def test_sticky_frames_within_a_step_and_off_at_0(testcore_path: Path, tmp_path: Path):
+    with retro_env(testcore_path, tmp_path, obs_size=(8, 8), frameskip=4, sticky_prob=0.5) as env:
+        env.reset(seed=1)
+        rewards = {shot for _, shot in shot_rewards(env, 500)}
+    # A shot step holds A from its first unstuck frame on: 4 - k frames, k stuck frames first.
+    assert rewards <= {0.0, 1.0, 2.0, 3.0, 4.0}
+    assert {1.0, 2.0, 3.0, 4.0} <= rewards, "a step sticks for some of its frames"
+    with retro_env(testcore_path, tmp_path, obs_size=(8, 8), frameskip=4) as env:
+        env.reset(seed=1)
+        assert {shot for _, shot in shot_rewards(env, 50)} == {4.0}, "sticky_prob 0: never"
+
+
+def play_seeded(env: RetroEnv, seed: int | None, steps: int) -> tuple[list[Any], bytes]:
+    """An episode from ``reset(seed=seed)`` with fixed actions: its rewards and frame counts,
+    and a hash of its observations."""
+    obs, info = env.reset(seed=seed)
+    digest = hashlib.sha1(obs.tobytes())
+    trace: list[Any] = [info["episode_frame"]]
+    for i in range(steps):
+        obs, reward, *_ = env.step(act(direction=RIGHT if i % 3 else NEUTRAL, shot=i % 2))
+        digest.update(obs.tobytes())
+        trace.append(reward)
+    return trace, digest.digest()
+
+
+def test_sticky_actions_and_no_ops_follow_the_seed(testcore_path: Path, tmp_path: Path):
+    options = {"obs_size": (32, 32), "frameskip": 2, "sticky_prob": 0.25, "noop_max": 30}
+    with retro_env(testcore_path, tmp_path, **options) as env:
+        first = play_seeded(env, 3, 200)
+        continued = play_seeded(env, None, 200)
+        assert play_seeded(env, 3, 200) == first, "the same seed plays the same episode"
+        assert continued != first, "without a seed the RNG runs on"
+        assert play_seeded(env, None, 200) == continued, "...as it did after the first"
+        assert play_seeded(env, 4, 200) != first
+    with retro_env(testcore_path, tmp_path, **options) as env:
+        assert play_seeded(env, 3, 200) == first, "a new env with the same seed"
+
+
+def test_no_op_starts_are_uniform_in_1_to_noop_max(testcore_path: Path, tmp_path: Path):
+    with retro_env(
+        testcore_path, tmp_path, obs_size=(8, 8), frameskip=2, noop_max=3, max_episode_frames=10
+    ) as env:
+        counts = [0] * 4
+        _, info = env.reset(seed=0)
+        for _ in range(600):
+            # The one-frame script, the no-ops, then frameskip frames for the observation.
+            noops = info["episode_frame"] - 1 - 2
+            counts[noops] += 1
+            _, info = env.reset()
+        _, seeded = env.reset(seed=11)
+        assert env.reset(seed=11)[1] == seeded
+    # Binomial(600, 1/3): 200 expected for each of 1..3, standard deviation 11.5; 5 sigma.
+    assert counts[0] == 0, "no-op starts have at least one frame"
+    assert all(abs(count - 200) < 58 for count in counts[1:]), counts
+    with retro_env(testcore_path, tmp_path, obs_size=(8, 8), noop_max=0) as env:
+        assert all(env.reset(seed=seed)[1]["episode_frame"] == 2 for seed in range(20)), (
+            "noop_max 0: none"
+        )
+    with retro_env(testcore_path, tmp_path, obs_size=(8, 8), noop_max=1) as env:
+        assert all(env.reset(seed=seed)[1]["episode_frame"] == 3 for seed in range(20))
+
+
+def test_no_ops_hold_nothing(testcore_path: Path, tmp_path: Path):
+    with retro_env(testcore_path, tmp_path, noop_max=20, max_episode_frames=None) as env:
+        obs, info = env.reset(seed=5)
+        noops = info["episode_frame"] - 2
+        assert 1 <= noops <= 20
+        assert frame_number(obs) == 2 + noops
+        assert info["ram"]["score"] == 0, "nothing held"
+
+
+def test_the_cap_truncates_on_its_frame(testcore_path: Path, tmp_path: Path):
+    with retro_env(
+        testcore_path, tmp_path, obs_size=(8, 8), frameskip=3, max_episode_frames=10
+    ) as env:
+        _, info = env.reset(seed=0)
+        assert info["episode_frame"] == 1 + 3, "the script's frame isn't capped"
+        results = [env.step(act(shot=1)) for _ in range(3)]
+        assert [r[3] for r in results] == [False, False, True]
+        assert [r[1] for r in results] == [3.0, 3.0, 1.0], "the last step stops on the cap"
+        assert results[-1][4]["episode_frame"] == 1 + 10
+        _, info = env.reset()
+        assert not env.step(act())[3], "a reset starts the count again"
+    with retro_env(
+        testcore_path, tmp_path, obs_size=(8, 8), noop_max=6, max_episode_frames=40
+    ) as env:
+        for seed in range(5):
+            _, info = env.reset(seed=seed)
+            frames = info["episode_frame"] - 1
+            truncated = False
+            while not truncated:
+                _, _, _, truncated, info = env.step(act())
+                frames += 1
+            assert frames == 40 and info["episode_frame"] == 41, "no-ops count"
+    with retro_env(testcore_path, tmp_path, obs_size=(8, 8)) as env:
+        env.reset(seed=0)
+        assert not any(env.step(act())[3] for _ in range(500)), "None: no cap"

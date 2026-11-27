@@ -164,6 +164,9 @@ def replay_and_cold_load(rom, core, tmp_path: Path) -> Callable[..., ColdLoad]:
             obs_size=obs,
             action_format="flat",
             reward=_no_reward,
+            sticky_prob=0.0,
+            max_episode_frames=None,
+            noop_max=0,
             core_path=core_path,
             record=Record(
                 directory=tmp_path / "recordings",

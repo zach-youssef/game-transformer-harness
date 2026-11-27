@@ -92,8 +92,11 @@ path, so the env imports it from `_native` directly.
 - `reset()` returns to the state right after loading (gth-core's load snapshot, or
   `retro_reset` for cores that can't serialize then; docs/libretro.md, "Host").
   `resets_to_load_state` (also on `RetroEnv`) says which one the core gets.
-- `step(frames, buttons)` runs the frames and returns the last one as a new observation array,
-  all with the GIL released (architecture.md, "Frame lifecycle").
+- `step(frames, buttons, sticky_prob)` runs the frames, with sticky actions at
+  `sticky_prob` (0 for none), and returns the last one as a new observation array, all with
+  the GIL released (architecture.md, "Frame lifecycle"). `seed(seed)` seeds the core's RNG
+  (`gth_core::Rng`; 0 until seeded), which sticky actions and `random_below(n)` (a uniform
+  integer in `0..n`, for no-op starts) draw from; it runs on across resets and loads.
 - `read_ram(config)` decodes the game's RAM variables into a `dict[str, int]` and evaluates
   the episode condition on them, returning `(ram, terminated)`: one call per step for both.
   `check_ram(config)` raises if a variable isn't in the core's memory (`RetroEnv` calls it
@@ -117,12 +120,12 @@ path, so the env imports it from `_native` directly.
 
 ## Replayer
 
-`_native.Replayer` (`gth-py/src/record.rs`, re-exported as `gtharness.record.Replayer`) owns
-a `gth_record::Replayer`, which owns its core, and an observation pipeline taking the same
+`_native.Replayer` (`gth-py/src/record.rs`, re-exported as `gtharness.record.Replayer`) owns a
+`gth_record::Replayer`, which owns its core, and an observation pipeline taking the same
 explicit arguments as `Core`'s. `step()` replays one agent step (GIL released) and returns
-`(joypad mask, frames, observation)`, or `None` at the end; `run_to_end()` verifies the rest without
-rendering. A desync raises `DesyncError`. Like `Core`, it holds the process's one core slot
-until `close()`.
+`(joypad mask of its first frame, frames, observation)`, or `None` at the end; `run_to_end()`
+verifies the rest without rendering. A desync raises `DesyncError`. Like `Core`, it holds the
+process's one core slot until `close()`.
 
 ## Shards
 

@@ -35,6 +35,9 @@ def shard(testcore_path: Path, testcore_data: Path, tmp_path: Path, zstd_raw_fra
         obs_size=(60, 80),
         action_format="flat",
         reward=score_delta,
+        sticky_prob=0.0,
+        max_episode_frames=None,
+        noop_max=0,
         core_path=testcore_path,
         record=Record(
             directory=tmp_path / "rec",

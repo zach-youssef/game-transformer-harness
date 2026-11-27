@@ -52,6 +52,9 @@ def main() -> None:
         obs_size=(height, width),
         action_format="flat",
         reward=no_reward,
+        sticky_prob=0.0,
+        max_episode_frames=None,
+        noop_max=0,
         core_path=core_path,
     )
     try:
@@ -75,9 +78,9 @@ def main() -> None:
         )
         try:
             core.unserialize(state)
-            np.save(out / f"fresh-first-{settle}.npy", core.step(1, 0))
+            np.save(out / f"fresh-first-{settle}.npy", core.step(1, 0, 0.0))
             if settle == game.settle_frames and settled_frames:
-                core.step(settled_frames - 1, 0)
+                core.step(settled_frames - 1, 0, 0.0)
                 (out / "fresh-settled-state").write_bytes(core.serialize())
         finally:
             core.close()

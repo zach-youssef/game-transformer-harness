@@ -129,6 +129,9 @@ def search(args: argparse.Namespace) -> dict[str, Any]:
         obs_size=(16, 16),  # unused: the search reads memory, not frames
         action_format="flat",
         reward=lambda previous, current: 0.0,
+        sticky_prob=0.0,
+        max_episode_frames=None,
+        noop_max=0,
         rom_dir=args.rom_dir,
         core_path=args.core_path,
         games_dir=args.games_dir,

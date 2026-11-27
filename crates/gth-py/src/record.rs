@@ -63,9 +63,9 @@ impl Replayer {
         })
     }
 
-    /// Replays the next agent step and returns its joypad mask, its frame count and its last
-    /// frame as an observation, or `None` at the end. Raises `DesyncError` at the first check
-    /// that differs.
+    /// Replays the next agent step and returns its first frame's joypad mask, its frame count
+    /// and its last frame as an observation, or `None` at the end. Raises `DesyncError` at the
+    /// first check that differs.
     #[allow(clippy::type_complexity)]
     fn step<'py>(
         mut slf: PyRefMut<'py, Self>,

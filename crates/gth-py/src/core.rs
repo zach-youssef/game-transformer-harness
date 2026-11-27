@@ -16,14 +16,15 @@ use crate::cores::CoresLock;
 use crate::errors;
 use crate::frame::{into_rgb8_array, rgb8_buffer};
 
-/// The loaded core (`None` once closed), its observation pipeline and the recording in
-/// progress, if any.
+/// The loaded core (`None` once closed), its observation pipeline, the recording in
+/// progress, if any, and the environment's random numbers (sticky actions, no-ops).
 #[pyclass(module = "gtharness._native")]
 pub struct Core {
     core: Option<gth_core::Core>,
     pipeline: gth_frame::Pipeline,
     content_path: Option<PathBuf>,
     recorder: Option<gth_record::Recorder>,
+    rng: gth_core::Rng,
 }
 
 fn closed() -> errors::Error {
@@ -118,6 +119,31 @@ impl Core {
                 Ok(())
             }
         });
+        self.after_run(result)
+    }
+
+    /// Runs one sticky step (`gth_core::Core::run_sticky`), through the recorder while
+    /// recording.
+    fn run_sticky(
+        &mut self,
+        py: Python<'_>,
+        frames: u32,
+        buttons: u16,
+        sticky_prob: f64,
+    ) -> errors::Result<()> {
+        let core = self.core.as_mut().ok_or_else(closed)?;
+        let (recorder, rng) = (&mut self.recorder, &mut self.rng);
+        let result = py.detach(|| match recorder {
+            Some(recorder) => recorder.run_sticky(core, frames, buttons, sticky_prob, rng),
+            None => {
+                core.run_sticky(frames, buttons, sticky_prob, rng);
+                Ok(())
+            }
+        });
+        self.after_run(result)
+    }
+
+    fn after_run(&mut self, result: gth_record::Result<()>) -> errors::Result<()> {
         if result.is_err() {
             // A failed recorder refuses to go on (gth_record::Error::Failed): drop it, leaving
             // its directory incomplete, so the next episode can record again.
@@ -163,20 +189,30 @@ impl Core {
             pipeline,
             content_path,
             recorder: None,
+            rng: gth_core::Rng::new(0),
         })
     }
 
-    /// Runs `frames` frames with `buttons` held (port 0 joypad bitmask) and returns the last
-    /// one as a `uint8[obs_height, obs_width, 3]` observation. While recording, this is one
-    /// recorded step.
+    /// Runs `frames` frames with `buttons` held (port 0 joypad bitmask), each frame keeping
+    /// the previous frame's buttons instead with probability `sticky_prob` (sticky actions,
+    /// drawn from the core's RNG, `seed`), and returns the last one as a
+    /// `uint8[obs_height, obs_width, 3]` observation. While recording, this is one recorded
+    /// step of the buttons each frame ran with.
     fn step<'py>(
         mut slf: PyRefMut<'py, Self>,
         frames: u32,
         buttons: u16,
+        sticky_prob: f64,
     ) -> errors::Result<Bound<'py, PyArray3<u8>>> {
         let py = slf.py();
+        if !(0.0..1.0).contains(&sticky_prob) {
+            return Err(PyValueError::new_err(format!(
+                "sticky_prob must be in [0, 1), not {sticky_prob}"
+            ))
+            .into());
+        }
         let this = &mut *slf;
-        this.run(py, &[(buttons, frames)])?;
+        this.run_sticky(py, frames, buttons, sticky_prob)?;
         let core = this.core.as_ref().expect("checked by run");
         render(py, core, &mut this.pipeline)
     }
@@ -185,6 +221,20 @@ impl Core {
     /// each is a recorded step.
     fn run_inputs(&mut self, py: Python<'_>, inputs: Vec<(u16, u32)>) -> errors::Result<()> {
         self.run(py, &inputs)
+    }
+
+    /// Seeds the RNG behind sticky actions and `random_below` (0 until seeded). It runs on
+    /// across resets and savestate loads until it is seeded again.
+    fn seed(&mut self, seed: u64) {
+        self.rng = gth_core::Rng::new(seed);
+    }
+
+    /// A uniform integer in `0..n` from the RNG (`seed`), such as a no-op start's length.
+    fn random_below(&mut self, n: u64) -> errors::Result<u64> {
+        if n == 0 {
+            return Err(PyValueError::new_err("random_below needs n >= 1").into());
+        }
+        Ok(self.rng.below(n))
     }
 
     /// Starts recording (docs/recording-format.md) into the new directory `directory`, from

@@ -61,6 +61,9 @@ def play(
         obs_size=(60, 80),
         action_format="flat",
         reward=score_delta,
+        sticky_prob=0.0,
+        max_episode_frames=None,
+        noop_max=0,
         core_path=testcore_path,
         games_dir=games_dir,
         record=Record(

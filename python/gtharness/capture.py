@@ -149,6 +149,9 @@ def capture(
         obs_size=(16, 16),  # nothing looks at the observations
         action_format="flat",
         reward=_no_reward,
+        sticky_prob=0.0,
+        max_episode_frames=None,
+        noop_max=0,
         rom_dir=rom_dir,
         core_path=core_path,
         games_dir=games_dir,
