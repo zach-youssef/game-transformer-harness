@@ -1,10 +1,11 @@
 # Cores
 
-The harness runs libretro cores built from pinned upstream commits, with our patches on top
-where upstream lacks a fix we need (below). `cores.lock` (repo root, schema in docs/games.md)
-pins each core's repository, commit, patches, the `library_version` the build reports and the
-SHA-256 of each platform's build. The cores workflow builds them; `gth cores
-fetch` puts this platform's builds in a data directory and checks them.
+The harness runs libretro cores built from pinned commits: upstream's, or for a core the
+harness needs changes in, a commit on a branch of our fork of it (Forks, below).
+`cores.lock` (repo root, schema in docs/games.md) pins each core's repository, commit,
+patches, the `library_version` the build reports and the SHA-256 of each platform's build.
+The cores workflow builds them; `gth cores fetch` puts this platform's builds in a data
+directory and checks them.
 
 ## Pins
 
@@ -19,15 +20,16 @@ history brings in commits whose tree isn't the libretro port (FBNeo's `301a167` 
 | `mednafen_pce_fast` | Gunhed | libretro/beetle-pce-fast-libretro | `2de1ce1c3f237b161c126c54ba407990bb86d1e9` | 2026-10-30 | Fetch translations & Recreate libretro_core_options_intl.h |
 | `fceumm` | Zanac | libretro/libretro-fceumm | `e0f3086a8104f8fbbe49a2615b10401504a9533f` | 2026-11-02 | libretro: send path checks through the frontend VFS (#660) |
 | `genesis_plus_gx` | Lightening Force | libretro/Genesis-Plus-GX | `b9c2316441978d4015ba30e9a95d9b0e6f8ee981` | 2026-11-09 | libretro: define ALIGN_LONG for 32-bit ARM unix builds (#415) |
-| `fbneo` | Battle Garegga, Ketsui, DoDonPachi III / Dai-Ou-Jou Black Label, Gunbird, Strikers 1945 | libretro/FBNeo | `a836e52198aa5ce1f54be7b050e44872a1223797` | 2026-11-10 | (libretro) update files |
+| `fbneo` | Battle Garegga, Ketsui, DoDonPachi III / Dai-Ou-Jou Black Label, Gunbird, Strikers 1945 | zach-youssef/FBNeo (`gth`) | `9fbf24334c267d87dcee3265002be63b83bfcba4` | 2026-11-27 | msm6295: save the render position and interpolated samples in savestates |
 
-FBNeo carries three patches, each adding state its savestates left out:
-`0001-ym2151-scan-render-position.patch`, `0002-toaplan-scan-previous-scanline.patch` and
-`0003-msm6295-scan-render-position.patch` (below and docs/performance.md, "FBNeo and
-savestates").
+FBNeo's pin is the head of branch `gth` of our fork: libretro/FBNeo's
+`a836e52198aa5ce1f54be7b050e44872a1223797` (2026-11-10, "(libretro) update files", picked by
+the rule above) and three commits, each adding state its savestates left out (Forks, below,
+and docs/performance.md, "FBNeo and savestates"): `burn_ym2151` (`ddb1e8c`), `toaplan`
+(`904777f`) and `msm6295` (`9fbf243`).
 
-FBNeo's commit also fixes its driver tables, so the arcade sets' `game.toml` member lists
-(docs/roms.md, "Content tables") are taken from FBNeo at
+FBNeo's upstream commit also fixes its driver tables, so the arcade sets' `game.toml` member
+lists (docs/roms.md, "Content tables") are taken from FBNeo at
 `a836e52198aa5ce1f54be7b050e44872a1223797` until FBNeo is bumped.
 
 ## Fetching
@@ -124,6 +126,30 @@ upstream too; anything else (a build flag, a Makefile quirk) is a `case` in the 
   patch (file and lock entry) in the bump; if not, check it still applies (the build fails if
   it doesn't) and refresh it against the new commit.
 
+## Forks
+
+A change to a core that the harness needs, such as state a savestate leaves out, is a commit
+on a branch of our fork of the core on GitHub (under `zach-youssef`, keeping upstream's
+repository name, e.g. `zach-youssef/FBNeo`), and `cores.lock` pins the fork's repository and
+that commit. The changes stay in the fork; we don't send them
+upstream. Anything else (a build flag, a Makefile quirk) is a `case` in the build script.
+
+- The branch starts at the upstream commit the rule in Pins picks, with one commit per change
+  whose message says what was wrong and why it matters to the harness. A core's first branch is `gth` (FBNeo's is). The
+  fork's default branch stays upstream's.
+- Never rewrite a pinned fork commit or its history (no amend, rebase or force-push of its
+  branch), and never delete its branch: releases, recordings and savestates were made from
+  it, and rebuilding a release (below) fetches it again. Change a core with new commits on top
+  and pin the new head as a bump (Bumping a pin).
+- Bumping a forked core to a newer upstream commit takes a new branch from that commit
+  (`gth-<upstream short hash>`, as the first branch keeps the plain name), with the changes upstream still lacks cherry-picked onto it,
+  so the old branch and the commits pinned before stay as they are.
+- Cores that report `git rev-parse --short HEAD` report the fork commit's hash, and FBNeo
+  dates its version with that commit's author date: the build at `9fbf243` reports
+  `v1.0.0.03 261127 GIT9fbf243`.
+- To try a fork commit before pushing it, pass the build script the local clone's path as the
+  repository (Builds, above).
+
 ## The cores workflow
 
 `.github/workflows/cores.yml` runs on a push that changes `cores.lock`, a patch, the build
@@ -157,7 +183,8 @@ after publication.
 
 ## Bumping a pin
 
-1. Pick the commit by the rule above and change its `commit` in `cores.lock`. Clear the
+1. Pick the commit by the rule above (for a forked core, the head of a new fork branch from it:
+   Forks, above) and change its `commit` in `cores.lock`. Clear the
    core's `[cores.<name>.artifacts]` hashes, which are for the old build.
 2. Set `library_version` to what the new build reports: build it locally and run `gth cores
    check` (above), or push and read the `check` job's output, which fails and prints the

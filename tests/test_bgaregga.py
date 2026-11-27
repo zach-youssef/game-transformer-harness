@@ -5,17 +5,17 @@ make both depend on what the process ran before a load:
 
 - the palette FBNeo's Toaplan drivers draw with, which settling fixes (docs/games.md, "Settle
   frames");
-- the YM2151's render position, which our first core patch adds to the state (docs/cores.md,
-  "Patches"); without it an attract-mode replay desyncs in the sound CPU's RAM after about
-  800 frames;
-- the scanline the Toaplan scanline register last returned, which our second patch adds;
+- the YM2151's render position, which the first commit on our FBNeo fork adds to the state
+  (docs/cores.md, "Forks"); without it an attract-mode replay desyncs in the sound CPU's RAM
+  after about 800 frames;
+- the scanline the Toaplan scanline register last returned, which the second commit adds;
   without it a replay of play (the benchmark's coin, start and random actions) desyncs by a
   line of the raster split after about 870 frames, with RAM still identical;
-- the MSM6295's resampling position and the samples it interpolates between, which our third
-  patch adds; without it the same replay desyncs in the Z80's RAM after about 3340 frames.
+- the MSM6295's resampling position and the samples it interpolates between, which the third
+  commit adds; without it the same replay desyncs in the Z80's RAM after about 3340 frames.
 
 Skips without the ROM or the pinned core, as on CI (docs/testing.md); an FBNeo build without
-the patches isn't the pinned one, so it skips too."""
+the fork's commits isn't the pinned one, so it skips too."""
 
 import subprocess
 import sys

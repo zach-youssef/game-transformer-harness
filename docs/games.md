@@ -132,8 +132,8 @@ original run showed: that one used the palette from the frame before the state, 
 state doesn't hold, so on a frame where the palette changes the two differ. The frames after
 it are exact, which is why gth-play's rewind seek (docs/human-play.md) replays 1 +
 `settle_frames` frames past a savestate. Recordings and replays settle alike, so recordings
-replay with no desync (for `bgaregga` together with FBNeo's patches, docs/cores.md,
-"Patches", which add state whose loss the frames after a load don't recover from).
+replay with no desync (for `bgaregga` together with our FBNeo fork's commits, docs/cores.md, "Forks", which add
+state whose loss the frames after a load don't recover from).
 
 Set it to the fewest frames that make the first frame after a load the same whatever ran
 before (1 for the FBNeo games above), checked on the game's ROM as

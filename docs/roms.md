@@ -110,8 +110,9 @@ The work is `GameConfig::audit` in `gth-config` (`audit.rs`); the CLI is
 
 FBNeo's driver tables list each member's name, size and CRC-32 but no SHA-1, which `members`
 needs, so the arcade tables take each member's name, size and CRC-32 from FBNeo at the
-`cores.lock` pin (`a836e52`, docs/cores.md), the core that loads them, and its SHA-1 from
-MAME's driver for the same set, used only where MAME's CRC-32 and size match FBNeo's:
+`cores.lock` pin (upstream `a836e52`, which our fork's commits leave alone, docs/cores.md),
+the core that loads them, and its SHA-1 from MAME's driver for the same set, used only where
+MAME's CRC-32 and size match FBNeo's:
 
 | Sets | FBNeo `a836e52` | MAME 0.289 |
 |---|---|---|

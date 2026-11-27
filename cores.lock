@@ -1,19 +1,11 @@
 # Pinned libretro core builds. docs/cores.md says how to bump a pin.
 
 [cores.fbneo]
-repo = "https://github.com/libretro/FBNeo"
-commit = "a836e52198aa5ce1f54be7b050e44872a1223797"
-library_version = "v1.0.0.03 261110 GIT0630faa"
-
-[cores.fbneo.patches]
-"0001-ym2151-scan-render-position.patch" = "a2a471bebf8fe4262b7079c72f990a7b208d2107d762bf7f1091af87609a50b3"
-"0002-toaplan-scan-previous-scanline.patch" = "0dc7a2fa2674d614af80642eba7490364c3d5e8531ec4e7fa662cc7d15392646"
-"0003-msm6295-scan-render-position.patch" = "6c39a66692b9b99b7bfdb77d4fbbd0a233ec12bc04a46ad80b16f3a648d22326"
+repo = "https://github.com/zach-youssef/FBNeo"
+commit = "9fbf24334c267d87dcee3265002be63b83bfcba4"
+library_version = "v1.0.0.03 261127 GIT9fbf243"
 
 [cores.fbneo.artifacts]
-aarch64-apple-darwin = "abcc6be22ff8f07408edd520cb1b3f8e94f4028d138588afd50ee23c07b2c813"
-x86_64-pc-windows-msvc = "7630fa78ebe3efbd0e43d725ddc0289e6f4e4ba1f6fc4af0b6255499714627d7"
-x86_64-unknown-linux-gnu = "cd59d9b7c35e2a047c451f6fc2b7f9f91d873d941a6f87c6c8a8c29d3c29020c"
 
 [cores.fceumm]
 repo = "https://github.com/libretro/libretro-fceumm"

@@ -139,7 +139,7 @@ Processes at once, 256x256 observations: total frames/s (and per process).
 | bgaregga | 36004 | 36004 | none | 17.0 | 16.2 |
 
 The numbers are from one run with no builds running (`pgrep -f '[c]argo|[r]ustc'` logged
-every second). An earlier run the same day, with a local build of the same patched FBNeo
+every second). An earlier run the same day, with a local build of the same FBNeo source
 before its release, agreed within about 2% for single-process frames/s (Battle Garegga
 included), except Gunhed, about 6% slower then; its 9-process totals were 2-5% lower for
 every target. Save and load times vary by a few µs between runs. What they show:
@@ -187,26 +187,27 @@ leaves out, add `read_ram` work proportional to the variables read).
 
 Battle Garegga (`fbneo`) replays in a fresh process on the pinned build: FBNeo's savestates
 left out four pieces of state, so a loaded state went on differently depending on what the
-process had run before the load. Settling after a load and three core patches deal with
-them. Each was found by running the same inputs live and from a loaded state in a fresh
-process, comparing the frame, the RAM and the whole savestate after every frame, and naming
-the first differing savestate bytes by the scan area that wrote them (a diagnostic build
-logging each `BurnArea`):
+process had run before the load. Settling after a load and three commits on our FBNeo fork
+deal with them. Each was found by running the same inputs live and from a loaded state in a
+fresh process, comparing the frame, the RAM and the whole savestate after every frame, and
+naming the first differing savestate bytes by the scan area that wrote them (a diagnostic
+build logging each `BurnArea`):
 
 | What the state left out | Symptom without it | Fix |
 |---|---|---|
 | The palette the Toaplan GP9001 drivers draw with, computed after each frame (CAVE's `ket` and `ddp3` too) | The first frame after a load uses the palette the process last drew: desync at frame 1 | `settle_frames = 1` (docs/games.md, "Settle frames") |
-| The YM2151's render position and carried samples (`burn_ym2151.cpp`); the game's YM2151 IRQ is timed by rendered samples | The Z80 takes its IRQ at other points: attract mode desyncs in the Z80 RAM at about frame 810 | patch `0001-ym2151-scan-render-position.patch` |
-| The scanline the Toaplan scanline register last returned (`toaplan.h`), which sets its new-line bit | The 68000 polls for a different number of cycles: play desyncs at frame 870, one row of the raster split off, with RAM identical | patch `0002-toaplan-scan-previous-scanline.patch` |
-| The MSM6295's render position and interpolated samples (`msm6295.cpp`) | Samples end at other points, changing the status the Z80 reads: play desyncs in the Z80 RAM at about frame 3340 | patch `0003-msm6295-scan-render-position.patch` |
+| The YM2151's render position and carried samples (`burn_ym2151.cpp`); the game's YM2151 IRQ is timed by rendered samples | The Z80 takes its IRQ at other points: attract mode desyncs in the Z80 RAM at about frame 810 | fork commit `ddb1e8c` (`burn_ym2151`) |
+| The scanline the Toaplan scanline register last returned (`toaplan.h`), which sets its new-line bit | The 68000 polls for a different number of cycles: play desyncs at frame 870, one row of the raster split off, with RAM identical | fork commit `904777f` (`toaplan`) |
+| The MSM6295's render position and interpolated samples (`msm6295.cpp`) | Samples end at other points, changing the status the Z80 reads: play desyncs in the Z80 RAM at about frame 3340 | fork commit `9fbf243` (`msm6295`) |
 
-The patches are in the pinned FBNeo build (release `cores-afa730086cb24842`, docs/cores.md,
-"Patches") until upstream has them. On it, with settling, the 36004-frame recording above
-replays fully (as did two more input seeds checked by hand on a local build of the same
-patches), and `tests/test_bgaregga.py` checks that attract mode and play replay and that
-loaded states match on the user's ROM. The costs: the state grows from 126 KB to 159 KB
-(almost all of it the YM2151's carried samples), and a load takes about 244 µs instead of 6,
-since it runs the settle frame.
+The pinned FBNeo build is our fork's `gth` branch with these commits (docs/cores.md,
+"Forks"). They were first released as patches applied to upstream's `a836e52` at build time
+(release `cores-afa730086cb24842`, the same source). On that build, with settling, the
+36004-frame recording above replays fully (as did two more input seeds checked by hand on a
+local build of the same changes), and `tests/test_bgaregga.py` checks that attract mode and
+play replay and that loaded states match on the user's ROM. The costs: the state grows from
+126 KB to 159 KB (almost all of it the YM2151's carried samples), and a load takes about
+244 µs instead of 6, since it runs the settle frame.
 
 Still open: Psikyo games (`gunbird`, `s1945`) differ after a load even with 1 to 4 settle
 frames, so they leave out more state, not traced yet. Other sound chips' wrappers may share
