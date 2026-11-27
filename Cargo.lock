@@ -698,6 +698,7 @@ dependencies = [
  "gth-config",
  "gth-core",
  "gth-frame",
+ "gth-sprites",
  "gth-test-support",
  "rawzip",
  "serde",

@@ -13,7 +13,7 @@ Read this before adding or changing anything it exports.
 - Python code imports the exceptions from `gtharness.errors` and `Replayer` from
   `gtharness.record`, the modules that re-export them, never from `_native`. Classes and
   functions with no re-export (`Core`, `GameConfig`, `RamSearch`, `rom_dir`,
-  `user_config_path`, `export_shard`, `decode_frames`) are used from `_native` directly, by
+  `user_config_path`, `export_shard`, `decode_frames`, `decode_sprites`) are used from `_native` directly, by
   the package's own modules (`env.py`, `cli.py`, `ramsearch.py`, `shards.py`) and tests.
 - Test hooks, which let pytest drive a convention before a real binding uses it, have
   underscore names and live in `gth-py/src/testing.rs`. Only `tests/` calls them.
@@ -129,9 +129,11 @@ until `close()`.
 `_native.export_shard` (`gth-py/src/shard.rs`) opens a recording, loads its core, runs
 `gth_record::export` with the GIL released and returns the counts as a dict; the core is
 unloaded when it returns. Its arguments are the `Replayer`'s plus the output path, the
-frameskip (`None` for the recording's steps), the filter's name and the chunk size; nothing
-has a default. `_native.decode_frames(data, samples, height, width, path)` decodes one frame
-chunk (GIL released). `gtharness.shards` calls both: one spawned process per recording for
+frameskip (`None` for the recording's steps), the filter's name, the chunk size and
+`sprites`; nothing has a default. `_native.decode_frames(data, samples, height, width, path)`
+decodes one frame chunk and `_native.decode_sprites(data, records, path)` one sprite chunk,
+as `bytes` that `gtharness.shards` views with `SPRITE_DTYPE` (GIL released). `gtharness.shards`
+calls them: one spawned process per recording for
 the export, and `Shard`/`batches` for reading (docs/recording-format.md, "Training shards").
 
 ## GameConfig

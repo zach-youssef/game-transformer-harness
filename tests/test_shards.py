@@ -2,6 +2,8 @@
 with `export_shards` and read back with `Shard` and `batches` give the environment's own
 observations, each with the action the env was given next."""
 
+import json
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -9,11 +11,19 @@ import pytest
 
 from gtharness._native import GameConfig
 from gtharness.cli import main
-from gtharness.env import RetroEnv
-from gtharness.errors import ConfigError
+from gtharness.env import GAMES_DIR, RetroEnv
+from gtharness.errors import ConfigError, HarnessError
 from gtharness.record import Record
 from gtharness.rewards import score_delta
-from gtharness.shards import _EXIT_HOOK, Shard, ShardOptions, batches, export_shards
+from gtharness.shards import (
+    _EXIT_HOOK,
+    SPRITE_DTYPE,
+    SPRITE_VISIBLE,
+    Shard,
+    ShardOptions,
+    batches,
+    export_shards,
+)
 
 FRAMESKIP = 3
 STEPS = 150
@@ -28,12 +38,18 @@ def options(**changes) -> ShardOptions:
         "filter": "all",
         "chunk_samples": 32,
         "interpolation": "area",
+        "sprites": False,
     } | changes
     return ShardOptions(**fields)
 
 
 def play(
-    testcore_path: Path, testcore_data: Path, out: Path, episodes: int, idle: int
+    testcore_path: Path,
+    testcore_data: Path,
+    out: Path,
+    episodes: int,
+    idle: int,
+    games_dir: Path = GAMES_DIR,
 ) -> tuple[list[Path], list[list[np.ndarray]], list[list[tuple[int, int]]]]:
     """Records ``episodes`` episodes of ``idle`` neutral steps, then random flat actions.
     Returns the recordings, each episode's observations (reset's first) and its actions as
@@ -46,6 +62,7 @@ def play(
         action_format="flat",
         reward=score_delta,
         core_path=testcore_path,
+        games_dir=games_dir,
         record=Record(
             directory=out, recorder="scripted", player="random", license="CC0-1.0", checks_every=60
         ),
@@ -235,6 +252,7 @@ def test_a_worker_that_dies_fails_only_its_recording(
         ({"filter": "some"}, "filter"),
         ({"chunk_samples": 0}, "chunk_samples"),
         ({"interpolation": "cubic"}, "interpolation"),
+        ({"sprites": "yes"}, "sprites"),
     ],
 )
 def test_options_are_checked_before_exporting(change: dict, message: str):
@@ -272,6 +290,8 @@ def test_gth_export_shards(
         "all",
         "--chunk-samples",
         "64",
+        "--sprites",
+        "no",
         "--jobs",
         "1",
         "--core-path",
@@ -295,3 +315,104 @@ def test_gth_export_shards(
         assert option.removeprefix("--").replace("-", "_") in capsys.readouterr().err
     with pytest.raises(SystemExit):
         main(args[: args.index("--filter")])  # The filter is required.
+
+
+def sprite_games(tmp_path: Path) -> Path:
+    """A games directory whose testcore game has the test core's sprite list on (docs/
+    libretro.md, "Test core")."""
+    text = (GAMES_DIR / "testcore" / "game.toml").read_text(encoding="utf-8")
+    text = text.replace("\n[content]", 'sprite_hw = "testcore"\n\n[content]', 1)
+    text += 'gth_testcore_sprites = "on"\n'
+    game = tmp_path / "games" / "testcore" / "game.toml"
+    game.parent.mkdir(parents=True)
+    game.write_text(text, encoding="utf-8")
+    assert GameConfig.load(game).sprite_hw == "testcore"
+    return tmp_path / "games"
+
+
+def test_a_shard_holds_every_frame_s_sprite_list(
+    testcore_path: Path, testcore_data: Path, tmp_path: Path
+):
+    games = sprite_games(tmp_path)
+    paths, *_ = play(testcore_path, testcore_data, tmp_path / "rec", 1, 0, games)
+    shards = {}
+    for frameskip in ("recorded", 5):
+        sprites = options(frameskip=frameskip, sprites=True)
+        (result,) = export_shards(
+            paths,
+            tmp_path / f"s{frameskip}",
+            testcore_data,
+            sprites,
+            jobs=1,
+            core_path=testcore_path,
+        )
+        assert result.error is None and result.summary is not None
+        shards[frameskip] = result
+    with Shard(shards["recorded"].shard) as shard, Shard(shards[5].shard) as other:
+        frames = int(shard.meta["frames"])
+        assert (shard.sprite_hw, shard.sprite_screen) == ("testcore", (320, 240))
+        offsets = shard.sprite_offsets
+        assert len(offsets) == frames + 1 and offsets[0] == 0
+        assert int(offsets[-1]) == shards["recorded"].summary["sprites"]
+        records = np.concatenate([shard.sprite_chunk(c) for c in range(shard.sprite_chunks)])
+        assert records.dtype == SPRITE_DTYPE and len(records) == offsets[-1]
+        # Every frame draws the square's marker first, 4x4 and on screen.
+        for frame in (0, 1, frames // 2, frames - 1):
+            list_ = shard.sprites(frame)
+            np.testing.assert_array_equal(list_, records[offsets[frame] : offsets[frame + 1]])
+            assert (int(list_[0]["width"]), int(list_[0]["height"])) == (4, 4)
+            assert list_[0]["flags"] & SPRITE_VISIBLE
+        # The sprite index is per replayed frame, whatever the observation rate.
+        assert len(other) != len(shard)
+        np.testing.assert_array_equal(other.sprite_offsets, offsets)
+        np.testing.assert_array_equal(other.sprites(frames - 1), shard.sprites(frames - 1))
+        with pytest.raises(IndexError):
+            shard.sprites(frames)
+
+    # A game without sprite_hw is refused before anything is exported.
+    plain, *_ = play(testcore_path, testcore_data, tmp_path / "plain", 1, 0)
+    with pytest.raises(ConfigError, match="no sprite_hw"):
+        export_shards(
+            plain,
+            tmp_path / "none",
+            testcore_data,
+            options(sprites=True),
+            jobs=1,
+            core_path=testcore_path,
+        )
+    assert not (tmp_path / "none").exists()
+
+
+def test_a_version_1_shard_reads_without_sprites(
+    testcore_path: Path, testcore_data: Path, tmp_path: Path
+):
+    paths, *_ = play(testcore_path, testcore_data, tmp_path / "rec", 1, 0)
+    (result,) = export_shards(
+        paths, tmp_path / "shards", testcore_data, options(), jobs=1, core_path=testcore_path
+    )
+    # Version 1's meta.json: no sprite fields.
+    old = tmp_path / "old.npz"
+    with zipfile.ZipFile(result.shard) as source, zipfile.ZipFile(old, "w") as target:
+        for item in source.infolist():
+            data = source.read(item)
+            if item.filename == "meta.json":
+                meta = json.loads(data)
+                meta["shard_version"] = 1
+                for key in ("sprite_hw", "sprite_screen", "sprite_chunk_frames", "sprite_chunks"):
+                    assert meta.pop(key) is None
+                data = json.dumps(meta).encode()
+            target.writestr(item, data)
+    # Without sprite lists, in either version, every sprite accessor says so.
+    for path in (old, result.shard):
+        with Shard(path) as shard:
+            assert len(shard) == STEPS and shard.sprite_hw is None
+            assert shard.frames(0).shape[0] == 32
+            for read in (
+                lambda: shard.sprite_offsets,
+                lambda: shard.sprite_screen,
+                lambda: shard.sprite_chunks,
+                lambda: shard.sprite_chunk(0),
+                lambda: shard.sprites(0),
+            ):
+                with pytest.raises(HarnessError, match="no sprite lists"):
+                    read()

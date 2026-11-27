@@ -11,8 +11,8 @@ native calls, and the reward function) and only orchestrates.
 |---|---|---|
 | `gth-core` | The libretro host: load a core dynamic library, answer its callbacks, run frames (including frame skip), savestates, RAM and memory-map reads, RAM search (`ramsearch.rs`). | Python, windowing, audio output |
 | `gth-frame` | Per-frame pixel ops: pixel format to RGB8, crop, tate rotation, resize to the model size, all into caller-provided buffers. | Anything core-specific |
-| `gth-record` | The recording format (docs/recording-format.md): `Recorder` writes the start state, per-frame joypad masks and desync checks; `Recording` and `Replayer` read and re-run them; `export` renders a recording into a training shard (`shard.rs`). | Frame storage in recordings (frames are re-rendered by replaying) |
-| `gth-sprites` | Sprite-list labels: `SpriteStream` binds a board's decoder (`sprite_hw`) to a core's named state areas (docs/libretro.md, "Named areas") and reads the list the next frame draws, one `Sprite` record each. | Observations: labels are training targets only |
+| `gth-record` | The recording format (docs/recording-format.md): `Recorder` writes the start state, per-frame joypad masks and desync checks; `Recording` and `Replayer` read and re-run them; `export` renders a recording into a training shard (`shard.rs`), with its sprite lists from `gth-sprites` when asked. | Frame storage in recordings (frames are re-rendered by replaying) |
+| `gth-sprites` | Sprite-list labels (docs/recording-format.md, "Sprite labels"): `SpriteStream` binds a board's decoder (`sprite_hw`) to a core's named state areas (docs/libretro.md, "Named areas") and reads the list the next frame draws, one `Sprite` record each. | Observations: labels are training targets only |
 | `gth-config` | Config types (serde + TOML): `game.toml`, `cores.lock`, the action space, RAM variables, RAM search scripts and their views and relations; finding and auditing the user's ROM and BIOS files by hash. | Emulation and frame data |
 | `gth-build-info` | `build_info()`, the harness build recorded in datasets' metadata (version, git commit and dirty flag, target, profile, rustc), captured by its build script: one function behind `_native.build_info()` and `gth-play`'s recordings (docs/native.md, "Build info"). | Anything else: its build script reruns whenever a crate changes |
 | `gth-py` | The PyO3 extension module `gtharness._native`: glue that converts types and errors. | Logic: it goes in the crate it belongs to |
@@ -28,7 +28,7 @@ The Python package `gtharness` (in `python/gtharness/`) orchestrates:
 | `env.py` | `RetroEnv`, the gymnasium environment, and `RetroEnv.from_game` (below) |
 | `rewards.py` | Reward functions on RAM variables (`score_delta`), and `REQUIRED_RAM`, the variables each built-in one reads, checked when an env is made |
 | `record.py` | `Record` (where and how `RetroEnv` records) and `Replayer` (docs/recording-format.md) |
-| `shards.py` | Training shards (docs/recording-format.md): `export_shards` (one process per recording) and `gth export-shards`; `Shard` and `batches`, the PyTorch-free reader, whose batches hold no RAM |
+| `shards.py` | Training shards (docs/recording-format.md): `export_shards` (one process per recording) and `gth export-shards`; `Shard` and `batches`, the PyTorch-free reader, whose batches hold no RAM and no sprite lists |
 | `ramsearch.py` | RAM search on an environment's core, `assert_ram` for game tests, and `gth ram-search` (docs/games.md, "RAM search"); a developer tool, never policy input |
 | `bench.py` | `gth bench`: speed, savestate and determinism benchmarks of real cores (docs/performance.md) |
 | `cli.py` | The `gth` command (`gth audit`, docs/roms.md; `gth ram-search`; `gth export-shards`; `gth cores`; `gth bench`) |

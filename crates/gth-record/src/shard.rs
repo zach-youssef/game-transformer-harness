@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 
 use gth_config::{Action, ActionSpace, Direction};
 use gth_frame::{Filter, Pipeline, Rect, Rotation};
+use gth_sprites::{Sprite, SpriteStream};
 use rawzip::ZipArchiveWriter;
 use serde::{Deserialize, Serialize};
 
@@ -20,12 +21,16 @@ use crate::replay::Replayer;
 use crate::{Error, Result, format_error, io_error};
 
 /// The shard format version this build writes (`meta.json`'s `shard_version`).
-pub const SHARD_VERSION: u32 = 1;
+pub const SHARD_VERSION: u32 = 2;
 
 /// zstd level of the frame chunks. Frames are written once per export and read every epoch,
 /// so decompression speed (the same at every level) matters most; level 3 keeps compression
 /// well ahead of replay.
 pub const FRAME_ZSTD_LEVEL: i32 = 3;
+
+/// Replayed frames per sprite chunk (`sprites_00000.zst`, ...): about 4096 x 100 records of
+/// 18 bytes on a busy Psikyo screen, 7 MB raw, so a reader decodes a minute of play at once.
+pub const SPRITE_CHUNK_FRAMES: u32 = 4096;
 
 /// Where observations are taken: at the recording's own step ends, or every `k` frames from
 /// the start of the recording (the model's rate, independent of the rate it was recorded at).
@@ -135,6 +140,10 @@ pub struct ShardOptions {
     /// Samples per zstd frame chunk: larger chunks compress better, smaller ones let a reader
     /// decode less to reach one sample.
     pub chunk_samples: NonZeroU32,
+    /// Whether to write every replayed frame's sprite list (docs/recording-format.md, "Sprite
+    /// labels"). The export fails, saying why, if the game has no `sprite_hw` or the core
+    /// can't give its sprite list.
+    pub sprites: bool,
     /// The exporting harness build (`_native.build_info()`).
     pub harness: BTreeMap<String, String>,
 }
@@ -177,6 +186,19 @@ pub struct ShardMeta {
     /// Whether `episode.terminate` holds at the last sample's observation: the shard ends at
     /// game over.
     pub terminated: bool,
+    /// The board whose sprite lists the shard holds (`game.toml`'s `sprite_hw`), or `None`
+    /// when it holds none (and the other `sprite_*` fields are `None` too).
+    #[serde(default)]
+    pub sprite_hw: Option<String>,
+    /// `[width, height]` of the native screen the sprite coordinates are in: before `crop`,
+    /// `orientation` and the resize.
+    #[serde(default)]
+    pub sprite_screen: Option<[u32; 2]>,
+    /// Replayed frames per sprite chunk; the last chunk holds the rest.
+    #[serde(default)]
+    pub sprite_chunk_frames: Option<u32>,
+    #[serde(default)]
+    pub sprite_chunks: Option<u32>,
     /// The recording's `meta.toml`; for `idm` shards, `None`.
     pub recording: Option<Meta>,
     /// The exporting harness build.
@@ -195,6 +217,8 @@ pub struct ShardSummary {
     /// Labelled samples the filter dropped.
     pub filtered: u64,
     pub frame_chunks: u32,
+    /// Sprite records written, over every frame (0 without sprites).
+    pub sprites: u64,
     /// The shard's size in bytes.
     pub bytes: u64,
 }
@@ -202,6 +226,11 @@ pub struct ShardSummary {
 /// The member holding frame chunk `index`.
 pub fn chunk_name(index: u32) -> String {
     format!("frames_{index:05}.zst")
+}
+
+/// The member holding sprite chunk `index`.
+pub fn sprite_chunk_name(index: u32) -> String {
+    format!("sprites_{index:05}.zst")
 }
 
 /// Replays `replayer`'s recording from its start state to the end and writes the shard to
@@ -279,6 +308,24 @@ fn write_shard(
     let mut last_kept = None::<u64>;
     let mut segment = 0u32;
 
+    let mut sprites = if options.sprites {
+        let hw = recording.game.sprite_hw.ok_or_else(|| {
+            mismatch(
+                replayer,
+                format!(
+                    "game {} has no sprite labels: its game.toml (as recorded) has no \
+                     sprite_hw (docs/games.md)",
+                    recording.meta.game_id
+                ),
+            )
+        })?;
+        let stream = SpriteStream::bind(hw, replayer.core_mut())
+            .map_err(|error| mismatch(replayer, error.to_string()))?;
+        Some(Sprites::new(stream))
+    } else {
+        None
+    };
+
     let mut write_chunk = |zip: &mut ZipArchiveWriter<_>, chunk: &mut Vec<u8>, index: u32| {
         compressed.clear();
         compressed.reserve(zstd::zstd_safe::compress_bound(chunk.len()));
@@ -287,7 +334,20 @@ fn write_shard(
         write_member(zip, &chunk_name(index), &compressed)
     };
 
-    while let Some(input) = replayer.run_frame()? {
+    loop {
+        // The list the next frame draws, read before it runs (gth_sprites).
+        let more = replayer.frame() < replayer.recording().inputs.len() as u64;
+        if let Some(sprites) = sprites.as_mut().filter(|_| more) {
+            sprites
+                .read(replayer.core_mut())
+                .map_err(|error| mismatch(replayer, error.to_string()))?;
+        }
+        let Some(input) = replayer.run_frame()? else {
+            break;
+        };
+        if let Some(sprites) = sprites.as_mut() {
+            sprites.end_frame(&mut zip).map_err(io)?;
+        }
         let action = space.action_of(input.buttons);
         labels.push_frame(action);
         if let Some(observation) = pending.take() {
@@ -356,6 +416,9 @@ fn write_shard(
     let samples = labels.direction.len();
     let ram_columns = ram_names.len();
     labels.write(&mut zip, ram_columns).map_err(io)?;
+    if let Some(sprites) = sprites.as_mut() {
+        sprites.finish(&mut zip).map_err(io)?;
+    }
     let recording = replayer.recording();
     let meta = ShardMeta {
         shard_version: SHARD_VERSION,
@@ -393,6 +456,10 @@ fn write_shard(
         chunk_samples: options.chunk_samples.get(),
         frame_chunks,
         terminated: samples > 0 && last_terminated,
+        sprite_hw: sprites.as_ref().map(|s| s.stream.hw().name().into()),
+        sprite_screen: sprites.as_ref().map(|s| s.stream.screen()),
+        sprite_chunk_frames: sprites.as_ref().map(|_| SPRITE_CHUNK_FRAMES),
+        sprite_chunks: sprites.as_ref().map(|s| s.chunks),
         recording: Some(recording.meta.clone()),
         harness: options.harness.clone(),
     };
@@ -412,6 +479,7 @@ fn write_shard(
         unlabelled,
         filtered,
         frame_chunks,
+        sprites: sprites.as_ref().map_or(0, |s| s.records),
         bytes,
     })
 }
@@ -432,6 +500,78 @@ struct Observation {
     episode_frame: u64,
     /// Frames since the previous observation (or the start).
     frames: u32,
+}
+
+/// Every replayed frame's sprite list: `sprite_offsets.npy` (`uint64[frames + 1]`, frame
+/// index `i`'s records are `offsets[i]..offsets[i + 1]`, as the per-frame arrays) and the
+/// records in zstd chunks of [`SPRITE_CHUNK_FRAMES`] frames.
+struct Sprites {
+    stream: SpriteStream,
+    /// The list read for the frame about to run.
+    list: Vec<Sprite>,
+    offsets: Vec<u64>,
+    records: u64,
+    /// The current chunk's records, encoded.
+    chunk: Vec<u8>,
+    chunk_frames: u32,
+    chunks: u32,
+    compressor: zstd::bulk::Compressor<'static>,
+}
+
+impl Sprites {
+    fn new(stream: SpriteStream) -> Sprites {
+        Sprites {
+            stream,
+            list: Vec::new(),
+            offsets: vec![0],
+            records: 0,
+            chunk: Vec::new(),
+            chunk_frames: 0,
+            chunks: 0,
+            compressor: zstd::bulk::Compressor::new(FRAME_ZSTD_LEVEL)
+                .expect("zstd level 3 is valid"),
+        }
+    }
+
+    fn read(&mut self, core: &mut gth_core::Core) -> gth_sprites::Result<()> {
+        self.stream.read(core, &mut self.list)
+    }
+
+    /// Appends the list read before the frame that just ran.
+    fn end_frame<W: Write>(&mut self, zip: &mut ZipArchiveWriter<W>) -> io::Result<()> {
+        for sprite in &self.list {
+            sprite.encode(&mut self.chunk);
+        }
+        self.records += self.list.len() as u64;
+        self.offsets.push(self.records);
+        self.chunk_frames += 1;
+        if self.chunk_frames == SPRITE_CHUNK_FRAMES {
+            self.write_chunk(zip)?;
+        }
+        Ok(())
+    }
+
+    fn write_chunk<W: Write>(&mut self, zip: &mut ZipArchiveWriter<W>) -> io::Result<()> {
+        let compressed = self.compressor.compress(&self.chunk)?;
+        write_member(zip, &sprite_chunk_name(self.chunks), &compressed)?;
+        self.chunk.clear();
+        self.chunk_frames = 0;
+        self.chunks += 1;
+        Ok(())
+    }
+
+    /// Writes the last chunk (if it holds a frame) and the offsets.
+    fn finish<W: Write>(&mut self, zip: &mut ZipArchiveWriter<W>) -> io::Result<()> {
+        if self.chunk_frames > 0 {
+            self.write_chunk(zip)?;
+        }
+        let offsets: Vec<u8> = self.offsets.iter().flat_map(|v| v.to_le_bytes()).collect();
+        write_member(
+            zip,
+            "sprite_offsets.npy",
+            &npy("<u8", &[self.offsets.len()], &offsets),
+        )
+    }
 }
 
 /// The per-sample and per-frame arrays, written as `.npy` members after the frames.
@@ -556,7 +696,26 @@ fn npy(descr: &str, shape: &[usize], data: &[u8]) -> Vec<u8> {
 /// its size: `samples * height * width * 3` bytes. Fails with [`Error::Format`] if the chunk
 /// is corrupt or another size.
 pub fn decode_frames(data: &[u8], out: &mut [u8], path: &Path) -> Result<()> {
-    let bad = |reason: String| format_error(path, format!("frame chunk {reason}"));
+    decode_exact(data, out, path, "frame chunk")
+}
+
+/// Decodes a sprite chunk (a member of the shard at `path`) holding `records` records
+/// ([`gth_sprites::RECORD_SIZE`] bytes each). Fails with [`Error::Format`] if the chunk is
+/// corrupt or holds another number of bytes.
+pub fn decode_sprites(data: &[u8], records: usize, path: &Path) -> Result<Vec<u8>> {
+    let len = records
+        .checked_mul(gth_sprites::RECORD_SIZE)
+        .ok_or_else(|| format_error(path, format!("sprite chunk of {records} records")))?;
+    let mut out = Vec::new();
+    out.try_reserve_exact(len)
+        .map_err(|error| format_error(path, format!("sprite chunk of {len} bytes: {error}")))?;
+    out.resize(len, 0);
+    decode_exact(data, &mut out, path, "sprite chunk")?;
+    Ok(out)
+}
+
+fn decode_exact(data: &[u8], out: &mut [u8], path: &Path, what: &str) -> Result<()> {
+    let bad = |reason: String| format_error(path, format!("{what} {reason}"));
     let mut decoder = zstd::stream::read::Decoder::with_buffer(data)
         .map_err(|error| bad(format!("can't be decoded: {error}")))?;
     decoder

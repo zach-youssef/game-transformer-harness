@@ -1,4 +1,4 @@
-//! Sprite-list labels: each frame's hardware
+//! Sprite-list labels (docs/recording-format.md, "Sprite labels"): each frame's hardware
 //! sprite table, decoded from the core's named state areas (docs/libretro.md, "Named areas")
 //! into one record per sprite. They are training targets only, never a policy's input.
 //!

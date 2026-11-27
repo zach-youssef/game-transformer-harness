@@ -20,8 +20,9 @@ pub use meta::{
 pub use recorder::{Recorder, RecordingInfo};
 pub use replay::{Recording, Replayer};
 pub use shard::{
-    FRAME_ZSTD_LEVEL, KeepAll, Playing, SHARD_VERSION, SampleFilter, ShardMeta, ShardOptions,
-    ShardSummary, StepInfo, Steps, chunk_name, decode_frames, export, filter_by_name,
+    FRAME_ZSTD_LEVEL, KeepAll, Playing, SHARD_VERSION, SPRITE_CHUNK_FRAMES, SampleFilter,
+    ShardMeta, ShardOptions, ShardSummary, StepInfo, Steps, chunk_name, decode_frames,
+    decode_sprites, export, filter_by_name, sprite_chunk_name,
 };
 
 /// Everything that can go wrong writing, reading or replaying a recording. Not

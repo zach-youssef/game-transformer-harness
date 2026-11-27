@@ -40,7 +40,7 @@ pub struct GameConfig {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub core_options: BTreeMap<String, String>,
     /// The board whose hardware sprite list gth-sprites decodes into training labels, or
-    /// `None` when the game has no sprite stream.
+    /// `None` when the game has no sprite stream (docs/recording-format.md, "Sprite labels").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sprite_hw: Option<SpriteHw>,
 }

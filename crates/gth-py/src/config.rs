@@ -66,6 +66,12 @@ impl GameConfig {
         Some((crop.x, crop.y, crop.width, crop.height))
     }
 
+    /// The board whose sprite list labels shards (`psikyo`, `testcore`), or `None`.
+    #[getter]
+    fn sprite_hw(&self) -> Option<&'static str> {
+        self.config.sprite_hw.map(|hw| hw.name())
+    }
+
     #[getter]
     fn core_options(&self) -> BTreeMap<String, String> {
         self.config.core_options.clone()

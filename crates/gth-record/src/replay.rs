@@ -229,6 +229,12 @@ impl Replayer {
         &self.core
     }
 
+    /// The core, for reads that need `&mut` (named areas, `gth_sprites`). Running frames or
+    /// loading states through it would desync the replay, so it stays in the crate.
+    pub(crate) fn core_mut(&mut self) -> &mut Core {
+        &mut self.core
+    }
+
     /// Frames replayed so far.
     pub fn frame(&self) -> u64 {
         self.frame

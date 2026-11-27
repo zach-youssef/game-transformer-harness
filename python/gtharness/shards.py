@@ -3,11 +3,12 @@ them, in parallel, and reading them back as numpy batches without PyTorch.
 
 A shard holds one episode at the model's observation size and rate: each sample is an
 observation and the action the player chose after seeing it, and `segment` marks where
-dropped samples leave gaps. The replay and the
-per-frame work (rendering, compression, decoding) are Rust (`_native.export_shard`,
-`_native.decode_frames`); this module picks the files, runs one process per recording and
-assembles batches. Shards hold the game's RAM variables for rewards and validation, but
-`batches` leaves them out: game RAM is never a policy's input.
+dropped samples leave gaps. The replay and the per-frame work (rendering, compression,
+decoding) are Rust (`_native.export_shard`, `_native.decode_frames`,
+`_native.decode_sprites`); this module picks the files, runs one process per recording and
+assembles batches. Shards hold the game's RAM variables for rewards and validation, and may
+hold each frame's hardware sprite list as a training target, but `batches` leaves both out:
+neither is ever a policy's input.
 """
 
 from __future__ import annotations
@@ -31,8 +32,28 @@ from gtharness import _native
 from gtharness.env import core_library, find_content
 from gtharness.errors import ConfigError, HarnessError
 
-SHARD_VERSION = 1
-"""The shard format version this module reads (`gth_record::SHARD_VERSION`)."""
+SHARD_VERSION = 2
+"""The shard format version the harness writes (`gth_record::SHARD_VERSION`)."""
+READ_VERSIONS = (1, 2)
+"""The shard versions `Shard` reads: version 1 is version 2 without sprite lists."""
+
+SPRITE_DTYPE = np.dtype(
+    [
+        ("x", "<i2"),
+        ("y", "<i2"),
+        ("width", "<u2"),
+        ("height", "<u2"),
+        ("code", "<u4"),
+        ("palette", "<u2"),
+        ("cols", "u1"),
+        ("rows", "u1"),
+        ("priority", "u1"),
+        ("flags", "u1"),
+    ]
+)
+"""One sprite record (docs/recording-format.md, "Sprite labels"), 18 bytes, packed."""
+SPRITE_FLIP_X, SPRITE_FLIP_Y, SPRITE_VISIBLE, SPRITE_ZOOMED = 1, 2, 4, 8
+"""Bits of a record's ``flags``."""
 
 SampleFilter = Literal["all", "playing"]
 LABELS = ("direction", "buttons", "ram", "episode_frame", "segment", "confidence")
@@ -62,6 +83,8 @@ class ShardOptions:
         chunk_samples: samples per frame chunk: larger compresses better, smaller decodes less
             to reach one sample.
         interpolation: "area" or "bilinear".
+        sprites: whether to write every frame's sprite list (docs/recording-format.md,
+            "Sprite labels"); the game must have a ``sprite_hw`` and the core must give it.
 
     Raises:
         ConfigError: if a field is out of range, before anything is exported.
@@ -74,6 +97,7 @@ class ShardOptions:
     filter: SampleFilter
     chunk_samples: int
     interpolation: str
+    sprites: bool
 
     def __post_init__(self) -> None:
         def count(name: str, value: object, low: int = 1) -> None:
@@ -105,6 +129,8 @@ class ShardOptions:
         if self.filter not in _FILTERS:
             raise ConfigError(f"filter must be one of {_FILTERS}, not {self.filter!r}")
         count("chunk_samples", self.chunk_samples)
+        if not isinstance(self.sprites, bool):
+            raise ConfigError(f"sprites must be True or False, not {self.sprites!r}")
         if self.interpolation not in _INTERPOLATIONS:
             raise ConfigError(
                 f"interpolation must be one of {_INTERPOLATIONS}, not {self.interpolation!r}"
@@ -137,7 +163,10 @@ def export_shards(
     Files are found as `RetroEnv.from_game` finds them: the content by SHA-1 under
     ``rom_dir``, BIOS files in ``data_dir/system`` and the core in ``data_dir/cores`` unless
     ``core_path`` is given. Raises `ConfigError` before exporting anything if a recording's
-    files are missing or a shard already exists. A recording that fails to export (a desync,
+    files are missing, a shard already exists, or ``options.sprites`` is set and a
+    recording's game has no ``sprite_hw``. A core that can't give the sprite list (one without
+    the named-area interface, docs/libretro.md) fails that recording's export, with the
+    reason. A recording that fails to export (a desync,
     or a crash that kills its process) doesn't stop the others: its result carries the error
     and it leaves no shard.
     """
@@ -191,6 +220,11 @@ def _task(
         raise ConfigError(f"{recording}: not a complete recording: {error}") from error
     config = _native.GameConfig.load(recording / "game.toml")
     what = f"{recording.name} ({meta.get('game_id')})"
+    if options.sprites and config.sprite_hw is None:
+        raise ConfigError(
+            f"{what}: no sprite labels: its game.toml (as recorded) has no sprite_hw"
+            " (docs/games.md)"
+        )
     content = find_content(config, what, rom_dir) if "content" in meta else None
     height, width = options.obs_size
     return {
@@ -207,6 +241,7 @@ def _task(
         "frameskip": None if options.frameskip == "recorded" else options.frameskip,
         "filter": options.filter,
         "chunk_samples": options.chunk_samples,
+        "sprites": options.sprites,
     }
 
 
@@ -226,10 +261,10 @@ class Shard:
         self._npz = np.load(self.path, allow_pickle=False)
         try:
             self.meta: dict[str, Any] = json.loads(self._npz["meta.json"])
-            if self.meta.get("shard_version") != SHARD_VERSION:
+            if self.meta.get("shard_version") not in READ_VERSIONS:
                 raise HarnessError(
                     f"{self.path}: shard version {self.meta.get('shard_version')}, but this"
-                    f" harness reads {SHARD_VERSION}"
+                    f" harness reads {READ_VERSIONS}"
                 )
         except BaseException:
             self._npz.close()
@@ -287,6 +322,72 @@ class Shard:
                 raise HarnessError(f"{self.path}: {name} has {len(array)} {what}, not {length}")
             self._labels[name] = array
         return self._labels[name]
+
+    @property
+    def sprite_hw(self) -> str | None:
+        """The board whose sprite lists the shard holds, or None when it holds none."""
+        return self.meta.get("sprite_hw")
+
+    @property
+    def sprite_screen(self) -> tuple[int, int]:
+        """``(width, height)`` of the native screen the sprite coordinates are in: before
+        the shard's crop, orientation and resize."""
+        width, height = self._sprite_meta("sprite_screen")
+        return int(width), int(height)
+
+    @property
+    def sprite_offsets(self) -> npt.NDArray[np.uint64]:
+        """``uint64[frames + 1]``: frame index i's records (frame i + 1, as the per-frame
+        arrays) are ``offsets[i]:offsets[i + 1]`` of all the records."""
+        self._sprite_meta("sprite_hw")
+        if "sprite_offsets" not in self._labels:
+            offsets = self._npz["sprite_offsets.npy"]
+            frames = int(self.meta["frames"])
+            if len(offsets) != frames + 1 or (frames and offsets[0] != 0):
+                raise HarnessError(
+                    f"{self.path}: sprite_offsets has {len(offsets)} entries, not {frames + 1}"
+                )
+            self._labels["sprite_offsets"] = offsets
+        return self._labels["sprite_offsets"]
+
+    @property
+    def sprite_chunks(self) -> int:
+        return int(self._sprite_meta("sprite_chunks"))
+
+    def sprite_chunk_range(self, chunk: int) -> range:
+        """The frame indices sprite chunk ``chunk`` holds."""
+        if not 0 <= chunk < self.sprite_chunks:
+            raise IndexError(f"{self.path}: no sprite chunk {chunk} of {self.sprite_chunks}")
+        step = int(self.meta["sprite_chunk_frames"])
+        return range(chunk * step, min((chunk + 1) * step, int(self.meta["frames"])))
+
+    def sprite_chunk(self, chunk: int) -> npt.NDArray[np.void]:
+        """Sprite chunk ``chunk``'s records, decoded, as a `SPRITE_DTYPE` array: the frames
+        of `sprite_chunk_range`, from ``sprite_offsets[range.start]`` on."""
+        frames = self.sprite_chunk_range(chunk)
+        offsets = self.sprite_offsets
+        records = int(offsets[frames.stop] - offsets[frames.start])
+        data = _native.decode_sprites(self._npz[f"sprites_{chunk:05}.zst"], records, self.path)
+        return np.frombuffer(data, dtype=SPRITE_DTYPE)
+
+    def sprites(self, frame: int) -> npt.NDArray[np.void]:
+        """Frame index ``frame``'s sprite list (frame ``frame + 1``), in the board's list
+        order, as a `SPRITE_DTYPE` array. Decodes its whole chunk; read `sprite_chunk` to go
+        through many frames."""
+        chunk_frames = int(self._sprite_meta("sprite_chunk_frames"))
+        frames = int(self.meta["frames"])
+        if not 0 <= frame < frames:
+            raise IndexError(f"{self.path}: no frame index {frame} of {frames}")
+        chunk = frame // chunk_frames
+        start = self.sprite_chunk_range(chunk).start
+        offsets = self.sprite_offsets
+        base = int(offsets[start])
+        return self.sprite_chunk(chunk)[int(offsets[frame]) - base : int(offsets[frame + 1]) - base]
+
+    def _sprite_meta(self, key: str) -> Any:
+        if self.meta.get("sprite_hw") is None:
+            raise HarnessError(f"{self.path}: the shard holds no sprite lists")
+        return self.meta[key]
 
     @property
     def direction(self) -> npt.NDArray[np.uint8]:
@@ -415,6 +516,12 @@ def add_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     parser.add_argument("--filter", choices=["all", "playing"], required=True)
     parser.add_argument("--chunk-samples", type=int, required=True, help="samples per frame chunk")
+    parser.add_argument(
+        "--sprites",
+        choices=["yes", "no"],
+        required=True,
+        help="write every frame's sprite list (needs the game's sprite_hw)",
+    )
     parser.add_argument("--interpolation", choices=["area", "bilinear"], default="area")
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1, help="default: CPU count")
     parser.add_argument(
@@ -445,6 +552,7 @@ def _options(args: argparse.Namespace) -> ShardOptions:
         filter=args.filter,
         chunk_samples=args.chunk_samples,
         interpolation=args.interpolation,
+        sprites=args.sprites == "yes",
     )
 
 

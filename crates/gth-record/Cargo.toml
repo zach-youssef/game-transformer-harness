@@ -15,6 +15,7 @@ workspace = true
 gth-config = { path = "../gth-config" }
 gth-core = { path = "../gth-core" }
 gth-frame = { path = "../gth-frame" }
+gth-sprites = { path = "../gth-sprites" }
 rawzip = "0.5.3"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"

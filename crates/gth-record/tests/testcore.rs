@@ -490,6 +490,7 @@ fn a_recording_exports_to_a_shard_of_its_steps() {
         interpolation: gth_frame::Filter::Area,
         steps,
         chunk_samples: NonZeroU32::new(16).unwrap(),
+        sprites: false,
         harness: BTreeMap::from([("version".into(), "test".into())]),
     };
     let out = dir.0.join("export.npz");
@@ -535,6 +536,11 @@ fn a_recording_exports_to_a_shard_of_its_steps() {
         (Some(4), 90, [60, 80])
     );
     assert_eq!(meta.ram_names, game.ram.keys().cloned().collect::<Vec<_>>());
+    assert_eq!(
+        (meta.sprite_hw, meta.sprite_screen, meta.sprite_chunks),
+        (None, None, None)
+    );
+    assert!(!members.keys().any(|name| name.starts_with("sprite")));
     assert_eq!(
         (meta.label_source.as_str(), meta.filter.as_str()),
         ("replay", "all")
@@ -736,6 +742,7 @@ fn an_export_that_fails_leaves_no_shard() {
         interpolation: gth_frame::Filter::Area,
         steps: gth_record::Steps::Every(NonZeroU32::new(1).unwrap()),
         chunk_samples: NonZeroU32::new(8).unwrap(),
+        sprites: false,
         harness: BTreeMap::new(),
     };
     let error =
@@ -815,4 +822,158 @@ fn a_rewound_recording_replays_as_one_run() {
     assert_eq!(recording.meta.branch, None);
     let mut replayer = replay(&path, &content).unwrap();
     assert_eq!(replayer.run_to_end().unwrap(), frames);
+}
+
+/// The testcore game with its sprite list on (docs/libretro.md, "Test core").
+fn sprite_game() -> GameConfig {
+    let mut game = game();
+    game.sprite_hw = Some(gth_config::SpriteHw::Testcore);
+    game.core_options
+        .insert("gth_testcore_sprites".into(), "on".into());
+    game
+}
+
+fn sprite_options(steps: gth_record::Steps) -> gth_record::ShardOptions {
+    gth_record::ShardOptions {
+        obs_height: 30,
+        obs_width: 40,
+        crop: None,
+        rotation: gth_frame::Rotation::None,
+        interpolation: gth_frame::Filter::Area,
+        steps,
+        chunk_samples: NonZeroU32::new(64).unwrap(),
+        sprites: true,
+        harness: BTreeMap::new(),
+    }
+}
+
+fn export_sprites(
+    game: &GameConfig,
+    path: &Path,
+    content: &Path,
+    steps: gth_record::Steps,
+    out: &Path,
+) -> gth_record::Result<gth_record::ShardSummary> {
+    let mut replayer = replay_game(game, path, content)?;
+    gth_record::export(
+        &mut replayer,
+        &sprite_options(steps),
+        &mut gth_record::KeepAll,
+        out,
+    )
+}
+
+/// Every replayed frame's sprite list (docs/recording-format.md, "Sprite labels"): frame index
+/// i's records are the list read before frame i + 1 ran, the same at every observation rate.
+#[test]
+fn a_shard_holds_every_frame_s_sprite_list() {
+    let _serial = serial();
+    let dir = TempDir::new();
+    let game = sprite_game();
+    let frames = u64::from(gth_record::SPRITE_CHUNK_FRAMES) + 300;
+    let (path, _) = record_game(&game, &dir.0, frames, 60, &mut Rng(9));
+    let content = content(&dir.0);
+    let every = |k| gth_record::Steps::Every(NonZeroU32::new(k).unwrap());
+    let out = dir.0.join("sprites.npz");
+    let summary = export_sprites(&game, &path, &content, every(4), &out).unwrap();
+    let members = shard_members(&out);
+    let meta: gth_record::ShardMeta = serde_json::from_slice(&members["meta.json"]).unwrap();
+    assert_eq!(meta.sprite_hw.as_deref(), Some("testcore"));
+    assert_eq!(meta.sprite_screen, Some([320, 240]));
+    assert_eq!(
+        (meta.sprite_chunk_frames, meta.sprite_chunks),
+        (Some(gth_record::SPRITE_CHUNK_FRAMES), Some(2))
+    );
+
+    // The direct replay's lists, read before each frame.
+    let recording = Recording::open(&path).unwrap();
+    let mut core = load(&game, &content);
+    core.unserialize(&recording.start_state).unwrap();
+    let stream =
+        gth_sprites::SpriteStream::bind(gth_config::SpriteHw::Testcore, &mut core).unwrap();
+    let mut list = Vec::new();
+    let (mut offsets, mut records) = (vec![0u64], Vec::new());
+    for input in &recording.inputs {
+        stream.read(&mut core, &mut list).unwrap();
+        list.iter().for_each(|sprite| sprite.encode(&mut records));
+        offsets.push(offsets.last().unwrap() + list.len() as u64);
+        core.run_frames(1, input.buttons);
+    }
+    drop(core);
+    assert_eq!(offsets.len() as u64, frames + 1);
+    // Lives (the markers after the square's) change during the recording.
+    assert!(offsets.windows(2).any(|w| w[1] - w[0] > 1));
+    assert_eq!(summary.sprites, *offsets.last().unwrap());
+
+    let shard_offsets: Vec<u64> = npy_data(&members["sprite_offsets.npy"])
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|b| u64::from_le_bytes(*b))
+        .collect();
+    assert_eq!(shard_offsets, offsets);
+    let chunk_frames = gth_record::SPRITE_CHUNK_FRAMES as usize;
+    let mut decoded = Vec::new();
+    for chunk in 0..2 {
+        let first = offsets[chunk * chunk_frames];
+        let end = offsets[((chunk + 1) * chunk_frames).min(frames as usize)];
+        decoded.extend(
+            gth_record::decode_sprites(
+                &members[&gth_record::sprite_chunk_name(chunk as u32)],
+                (end - first) as usize,
+                &out,
+            )
+            .unwrap(),
+        );
+    }
+    assert_eq!(decoded, records);
+
+    // The sprite members don't depend on the observation rate.
+    for steps in [every(1), every(7), gth_record::Steps::Recorded] {
+        let other = dir.0.join("other.npz");
+        export_sprites(&game, &path, &content, steps, &other).unwrap();
+        let other_members = shard_members(&other);
+        for (name, data) in &members {
+            if name.starts_with("sprite") {
+                assert_eq!(&other_members[name], data, "{name} at {steps:?}");
+            }
+        }
+        std::fs::remove_file(&other).unwrap();
+    }
+}
+
+/// `sprites: true` fails, saying why and leaving no shard, when the game has no `sprite_hw`
+/// or the core can't give its list.
+#[test]
+fn a_sprite_export_without_a_sprite_stream_says_why() {
+    let _serial = serial();
+    let dir = TempDir::new();
+    let content = content(&dir.0);
+    let out = dir.0.join("none.npz");
+    let every = gth_record::Steps::Every(NonZeroU32::new(1).unwrap());
+
+    let plain = game();
+    let (path, _) = record_game(&plain, &dir.0, 20, 60, &mut Rng(2));
+    let error = export_sprites(&plain, &path, &content, every, &out).unwrap_err();
+    assert!(matches!(error, Error::Mismatch { .. }), "{error}");
+    assert!(error.to_string().contains("no sprite_hw"), "{error}");
+    assert!(!out.exists() && !dir.0.join("none.npz.partial").exists());
+
+    // sprite_hw set, but the core never offered its areas (the sprites option is off).
+    let mut no_areas = game();
+    no_areas.sprite_hw = Some(gth_config::SpriteHw::Testcore);
+    std::fs::remove_dir_all(&path).unwrap();
+    let (path, _) = record_game(&no_areas, &dir.0, 20, 60, &mut Rng(2));
+    let error = export_sprites(&no_areas, &path, &content, every, &out).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("no testcore sprite stream from core gth-testcore"),
+        "{error}"
+    );
+    assert!(
+        error.to_string().contains("named-area interface"),
+        "{error}"
+    );
+    assert!(!out.exists());
 }

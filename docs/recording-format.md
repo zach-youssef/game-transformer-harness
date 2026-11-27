@@ -174,6 +174,7 @@ One shard is one `.npz` file: a zip archive whose members are stored uncompresse
 | `frames_00000.zst`, `frames_00001.zst`, ... | The frames, `chunk_samples` samples per member (the last holds the rest): one zstd frame (level 3) of the raw `uint8[n, H, W, 3]` pixels, RGB, row-major. `np.load` returns a member that isn't `.npy` as bytes; `_native.decode_frames` decodes it. |
 | `direction.npy`, `buttons.npy`, `ram.npy`, `episode_frame.npy`, `segment.npy`, `confidence.npy` | The per-sample arrays (below). |
 | `frame_direction.npy`, `frame_buttons.npy`, `frame_labelled.npy` | The per-frame arrays (below). |
+| `sprite_offsets.npy`, `sprites_00000.zst`, ... | Only with sprite lists: every replayed frame's hardware sprite list (below, "Sprite labels"). |
 | `meta.json` | The per-shard fields (below). |
 
 Frames are chunked rather than stored one per member, because consecutive frames of a game
@@ -224,7 +225,7 @@ work at the emulator's rate or need the presses between observations; sample i's
 
 | Field | Meaning |
 |---|---|
-| `shard_version` | `gth_record::SHARD_VERSION` (1). |
+| `shard_version` | `gth_record::SHARD_VERSION` (2; version 1 is version 2 without the `sprite_*` fields and members, and `Shard` reads both). |
 | `source_id` | The recording's directory name, or the video's id. |
 | `episode_id` | The episode's index in its source: 0 for a recording, which holds one episode. |
 | `game_id`, `fps` | From the recording. |
@@ -236,11 +237,67 @@ work at the emulator's rate or need the presses between observations; sample i's
 | `samples`, `frames` | Sample count, and frames replayed (the per-frame arrays' length). |
 | `chunk_samples`, `frame_chunks` | Samples per frame chunk, and chunk count. |
 | `terminated` | Whether `episode.terminate` holds at the last sample's observation: the shard ends at game over. |
+| `sprite_hw` | The board whose sprite lists the shard holds (the recording's `game.toml` `sprite_hw`), or `null` without sprite lists; then the other `sprite_*` fields are `null` too. |
+| `sprite_screen` | `[width, height]` of the native screen the sprite coordinates are in (the board's screen, which binding checks is the core's `base_width` and `base_height`, so a rotated core output is refused): before `crop`, `orientation` and the resize. |
+| `sprite_chunk_frames`, `sprite_chunks` | Frames per sprite chunk (`gth_record::SPRITE_CHUNK_FRAMES`, 4096; the last holds the rest), and chunk count. |
 | `recording` | The recording's `meta.toml` as JSON (license, player, core, content, the recording harness build). |
 | `harness` | The exporting harness build (`_native.build_info()`). |
 
 A per-slot confidence (direction and each button) may replace `confidence` if the IDM can
 give one; that is a new `shard_version`.
+
+### Sprite labels
+
+Shards can hold each replayed frame's hardware sprite table: what the board's sprite chip
+drew, one record per sprite, as a training target (for an auxiliary head that locates the
+player, enemies and bullets). Like RAM, it is never a policy's input: `batches` leaves it out.
+
+The lists come from the driver's own buffers, not RAM: a game's `sprite_hw` (docs/games.md)
+names the board, and `gth-sprites` decodes its buffers through the core's named state areas
+(docs/libretro.md, "Named areas"). Boards so far:
+
+| `sprite_hw` | Games | Core |
+|---|---|---|
+| `psikyo` | Psikyo's 68EC020 boards: `gunbird`, `s1945` (and the other `psikyo.cpp` sets) | our FBNeo fork (docs/cores.md, "Forks") |
+| `testcore` | the test core, with `gth_testcore_sprites = "on"` (docs/libretro.md, "Test core") | `gth_testcore` |
+
+Boards double-buffer the list: Psikyo's driver copies sprite RAM into one buffer at each
+vblank and draws the other. The decoder reads the buffer the next frame draws, so the list
+read just before frame f runs is exactly what frame f shows. It reads before every frame, so
+the lists don't depend on `frameskip` or the filter: `sprite_offsets` lines up with the
+per-frame arrays, and a later per-frame (or per-sample) field, such as audio, sits beside it
+without touching it.
+
+Members:
+
+| Member | Holds |
+|---|---|
+| `sprite_offsets.npy` | `uint64[frames + 1]`: frame index i's records (frame i + 1, as the per-frame arrays) are records `offsets[i]` to `offsets[i + 1]` of the whole list, so frame index i's list is empty when they're equal. |
+| `sprites_00000.zst`, ... | The records of `sprite_chunk_frames` frames each (chunk c: frame indices `c * sprite_chunk_frames` onwards, records from `offsets[c * sprite_chunk_frames]`), one zstd frame (level 3) each; `_native.decode_sprites` decodes one. |
+
+A record is 18 bytes, little-endian and packed (`gtharness.shards.SPRITE_DTYPE`,
+`gth_sprites::Sprite::encode`), in the board's list order:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `x`, `y` | `int16` | The box's top-left corner in native screen pixels (`sprite_screen`); negative or past the screen when it hangs off an edge. |
+| `width`, `height` | `uint16` | The box as drawn, after the board's zoom. |
+| `code` | `uint32` | The board's tile code of the first tile (Psikyo: the tile LUT index). |
+| `palette` | `uint16` | The board's palette number (Psikyo: 0-31). |
+| `cols`, `rows` | `uint8` | Tiles across and down (Psikyo: 1-8). |
+| `priority` | `uint8` | The board's priority level (Psikyo: 0-3, FBNeo's layer order). |
+| `flags` | `uint8` | Bit 0 flip x, bit 1 flip y, bit 2 visible (the box overlaps the screen; boards keep off-screen sprites in their lists), bit 3 zoomed. Visible says where the box is, not that anything shows: a box of transparent tiles, or one drawn under a higher tilemap, is still visible. |
+
+Coordinates stay native: mapping them through the shard's crop, orientation and resize to the
+observation is the consumer's (training, P10), so one shard serves any target layout.
+For Psikyo, a sprite of `cols` x `rows` 16-pixel tiles is `16 * cols` wide, or with zoom
+`z = xzoom` it starts `(cols * z + 3) / 4` pixels right of `x` and is `cols * (32 - z) / 2`
+wide (likewise down), as FBNeo's `PsikyoSpriteRender` draws it.
+
+`--sprites yes` refuses (`ConfigError`, before anything runs) a recording whose `game.toml`
+has no `sprite_hw`; a core that can't give the list (a stock core without the named-area
+interface, or a game whose board areas it lacks) fails that recording's export with the
+reason, leaving no shard.
 
 ### Labels and samples
 
@@ -287,7 +344,7 @@ is whole; a desync or any error removes the partial file.
 writes `DIR/<recording>.npz` for each recording. Every choice that shapes the samples is a
 required option: `--obs-size H W`, `--crop game|none|X Y W H`, `--orientation game|0|90|270`
 (`game` takes each recording's `game.toml`), `--frameskip N|recorded`, `--filter
-all|playing` and `--chunk-samples N`; only `--interpolation` defaults (`area`, as
+all|playing`, `--chunk-samples N` and `--sprites yes|no` (above, "Sprite labels"); only `--interpolation` defaults (`area`, as
 `RetroEnv`). Content, BIOS files and the core are found as `RetroEnv.from_game` finds them.
 A shard doesn't carry `[branch]`: to keep rewind clips (deaths) out of a training set, or
 to label them, pick the recordings by their `meta.toml` before exporting.
@@ -303,7 +360,9 @@ the Mac.
 
 `gtharness.shards.Shard(path)` reads one shard: `meta`, the per-sample arrays (`direction`,
 `buttons`, `ram`, `episode_frame`, `segment`, `confidence`), the per-frame arrays
-(`frame_direction`, `frame_buttons`, `frame_labelled`) and `frames(chunk)`. `batches(paths,
+(`frame_direction`, `frame_buttons`, `frame_labelled`) and `frames(chunk)`; with sprite
+lists, `sprite_hw`, `sprite_screen`, `sprite_offsets`, `sprite_chunk(chunk)` (a chunk's
+records) and `sprites(frame_index)` (one frame's). `batches(paths,
 batch_size, rng=..., buffer_chunks=...)` yields every sample once as dicts of numpy arrays:
 with a `numpy.random.Generator` it visits frame chunks in random order and shuffles within
 `buffer_chunks` decoded chunks; with `rng=None` it keeps the order. Batches hold `frame`,

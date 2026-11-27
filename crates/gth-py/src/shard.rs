@@ -1,5 +1,6 @@
-//! `_native.export_shard` and `_native.decode_frames`: training shards (docs/recording-format.md,
-//! "Training shards"), written by `gth_record::export` and read back by `gtharness.shards`.
+//! `_native.export_shard`, `_native.decode_frames` and `_native.decode_sprites`: training
+//! shards (docs/recording-format.md, "Training shards"), written by `gth_record::export` and
+//! read back by `gtharness.shards`.
 
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -7,7 +8,7 @@ use std::path::PathBuf;
 use numpy::PyArray4;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyBytes, PyDict};
 
 use crate::core::{filter as interpolation_filter, rotation};
 use crate::errors;
@@ -16,7 +17,9 @@ use crate::frame::{into_rgb8_frames, rgb8_frames_buffer};
 /// Replays the recording in `recording_dir` on its own core (one per process; the arguments
 /// before `out_path` are `_native.Replayer`'s) and writes its shard to `out_path`, replacing
 /// any file there. `frameskip` takes an observation every that many frames, or at the
-/// recording's own step ends when `None`; `filter` is `"all"` or `"playing"`. Returns the export's counts.
+/// recording's own step ends when `None`; `filter` is `"all"` or `"playing"`; `sprites` writes
+/// every frame's sprite list, raising `ConfigError` with the reason when the game or core has
+/// none. Returns the export's counts.
 /// Raises `DesyncError` if the replay desyncs, leaving no shard.
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
@@ -35,6 +38,7 @@ fn export_shard<'py>(
     frameskip: Option<u32>,
     filter: &str,
     chunk_samples: u32,
+    sprites: bool,
 ) -> errors::Result<Bound<'py, PyDict>> {
     let steps = match frameskip {
         None => gth_record::Steps::Recorded,
@@ -63,6 +67,7 @@ fn export_shard<'py>(
         interpolation: interpolation_filter(interpolation)?,
         steps,
         chunk_samples,
+        sprites,
         harness: gth_build_info::build_info_owned(),
     };
     let summary = py.detach(|| {
@@ -82,6 +87,7 @@ fn export_shard<'py>(
     dict.set_item("unlabelled", summary.unlabelled)?;
     dict.set_item("filtered", summary.filtered)?;
     dict.set_item("frame_chunks", summary.frame_chunks)?;
+    dict.set_item("sprites", summary.sprites)?;
     dict.set_item("bytes", summary.bytes)?;
     Ok(dict)
 }
@@ -106,8 +112,24 @@ fn decode_frames<'py>(
     Ok(into_rgb8_frames(py, buffer, samples, height, width))
 }
 
+/// Decodes a sprite chunk of the shard at `path` holding `records` records into their bytes
+/// (18 each, docs/recording-format.md, "Sprite labels"), which `gtharness.shards` views as a
+/// structured array. Raises `HarnessError` if the chunk is corrupt or holds another number of
+/// bytes.
+#[pyfunction]
+fn decode_sprites<'py>(
+    py: Python<'py>,
+    data: &[u8],
+    records: usize,
+    path: PathBuf,
+) -> errors::Result<Bound<'py, PyBytes>> {
+    let bytes = py.detach(|| gth_record::decode_sprites(data, records, &path))?;
+    Ok(PyBytes::new(py, &bytes))
+}
+
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(export_shard, module)?)?;
     module.add_function(wrap_pyfunction!(decode_frames, module)?)?;
+    module.add_function(wrap_pyfunction!(decode_sprites, module)?)?;
     Ok(())
 }
