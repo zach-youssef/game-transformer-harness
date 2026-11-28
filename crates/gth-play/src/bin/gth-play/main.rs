@@ -41,12 +41,26 @@ fn rewind_frames(seconds: f64, fps: f64) -> Result<u64, String> {
     Ok(frames)
 }
 
+/// `--record-from-reset` records a reference credit, which a rewind would make two timelines
+/// (`[[rewind]]`): refused at launch, not after the credit is played.
+fn check_record_from_reset(record_from_reset: bool, rewind_seconds: f64) -> Result<(), String> {
+    if record_from_reset && rewind_seconds > 0.0 {
+        return Err(format!(
+            "--record-from-reset records a reference credit, which takes no rewinds: give \
+             --rewind-seconds 0, not {rewind_seconds}"
+        ));
+    }
+    Ok(())
+}
+
 const USAGE: &str = "\
 usage:
   gth-play GAME_ID --games-dir DIR --data-dir DIR --lock FILE --out DIR --player NAME
            --license SPDX --checks-every N --rewind-seconds S [--rom-dir DIR] [--core PATH]
-           [--quit-after FRAMES]
+           [--record-from-reset] [--quit-after FRAMES]
       Play GAME_ID in a window; the record hotkey records to --out (docs/human-play.md).
+      --record-from-reset runs the game's reset and starts recording there, paused: a
+      reference credit's start (docs/human-play.md, \"Reference credits\").
       While recording, a death (the game's lives dropping) or the rewind hotkey rewinds S
       seconds (0: never, at most 600) and keeps the rewound frames as a clip.
   gth-play --verify RECORDING --data-dir DIR [--rom-dir DIR] [--core PATH]
@@ -57,26 +71,37 @@ usage:
   gth-play --headless-smoke --core PATH --games-dir DIR --out DIR
       Run the player's frame loop on the test core with scripted input; record 600 frames.";
 
-/// Parsed `--name value` options after the positional argument.
+/// Parsed `--name value` options and `--name` flags after the positional argument.
 struct Options {
     positional: Option<String>,
     values: Vec<(String, String)>,
+    flags: Vec<String>,
 }
 
 impl Options {
-    fn parse(args: &[String], allowed: &[&str]) -> Result<Options, String> {
+    /// `allowed` take a value; `flags` take none.
+    fn parse(args: &[String], allowed: &[&str], flags: &[&str]) -> Result<Options, String> {
         let mut options = Options {
             positional: None,
             values: Vec::new(),
+            flags: Vec::new(),
         };
         let mut args = args.iter();
         while let Some(arg) = args.next() {
             if let Some(name) = arg.strip_prefix("--") {
-                if !allowed.contains(&name) {
+                let given = |options: &Options| {
+                    options.values.iter().any(|(n, _)| n == name)
+                        || options.flags.iter().any(|n| n == name)
+                };
+                if !allowed.contains(&name) && !flags.contains(&name) {
                     return Err(format!("unknown option --{name}"));
                 }
-                if options.values.iter().any(|(n, _)| n == name) {
+                if given(&options) {
                     return Err(format!("--{name} given twice"));
+                }
+                if flags.contains(&name) {
+                    options.flags.push(name.to_owned());
+                    continue;
                 }
                 let value = args.next().ok_or(format!("--{name} needs a value"))?;
                 options.values.push((name.to_owned(), value.clone()));
@@ -87,6 +112,10 @@ impl Options {
             }
         }
         Ok(options)
+    }
+
+    fn flag(&self, name: &str) -> bool {
+        self.flags.iter().any(|n| n == name)
     }
 
     fn get(&self, name: &str) -> Option<&str> {
@@ -142,7 +171,7 @@ fn main() -> ExitCode {
 }
 
 fn smoke(args: &[String]) -> Result<(), String> {
-    let options = Options::parse(args, &["core", "games-dir", "out"])?;
+    let options = Options::parse(args, &["core", "games-dir", "out"], &[])?;
     let dir = gth_play::smoke::run(
         &options.path("core")?,
         &options.path("games-dir")?,
@@ -153,7 +182,7 @@ fn smoke(args: &[String]) -> Result<(), String> {
 }
 
 fn verify(args: &[String]) -> Result<(), String> {
-    let options = Options::parse(args, &["data-dir", "rom-dir", "core"])?;
+    let options = Options::parse(args, &["data-dir", "rom-dir", "core"], &[])?;
     let dir = PathBuf::from(options.positional("RECORDING")?);
     let frames = game::verify(&dir, &options.game_paths()?)?;
     println!("{}: {frames} frames replayed, no desync", dir.display());
@@ -172,6 +201,7 @@ fn measure_latency(args: &[String]) -> Result<(), String> {
             "buttons",
             "frames",
         ],
+        &[],
     )?;
     let game_id = options.positional("GAME_ID")?;
     options.required("games-dir")?;
@@ -212,6 +242,7 @@ fn play(args: &[String]) -> Result<(), String> {
             "rewind-seconds",
             "quit-after",
         ],
+        &["record-from-reset"],
     )?;
     let game_id = options.positional("GAME_ID")?;
     let quit_after = options
@@ -224,13 +255,21 @@ fn play(args: &[String]) -> Result<(), String> {
         .parse::<NonZeroU32>()
         .map_err(|e| format!("--checks-every: {e}"))?;
     let rewind_seconds = parse_rewind_seconds(options.required("rewind-seconds")?)?;
+    check_record_from_reset(options.flag("record-from-reset"), rewind_seconds)?;
     let lock_path = options.path("lock")?;
     let (dir, player, license) = (
         options.path("out")?,
         options.required("player")?.to_owned(),
         options.required("license")?.to_owned(),
     );
-    let loaded = game::load(game_id, &options.game_paths()?)?;
+    let paths = options.game_paths()?;
+    let loaded = game::load(game_id, &paths)?;
+    // Read before the window opens, so a missing reset state fails at once.
+    let reset_state = if options.flag("record-from-reset") {
+        Some(game::reset_state(&loaded.game, game_id, &paths.data_dir)?)
+    } else {
+        None
+    };
     eprintln!(
         "gth-play: {game_id} on {} ({})",
         loaded.core.system_info().library_name,
@@ -293,6 +332,14 @@ fn play(args: &[String]) -> Result<(), String> {
              rewind hotkey"
         ),
     }
+    if let Some(state) = reset_state {
+        session.record_from_reset(state.as_deref())?;
+        let (dir, _) = session.recording().expect("just started");
+        eprintln!(
+            "gth-play: recording from the game's reset to {}, paused: press pause to play",
+            dir.display()
+        );
+    }
     app::run(session, screen, game_id, quit_after)
 }
 
@@ -313,5 +360,37 @@ mod tests {
         assert_eq!(rewind_frames(600.0, 59.82), Ok(35892));
         let error = rewind_frames(0.004, 60.0).unwrap_err();
         assert!(error.contains("under one frame"), "{error}");
+    }
+
+    #[test]
+    fn a_credit_from_the_reset_takes_no_rewinds() {
+        assert_eq!(check_record_from_reset(true, 0.0), Ok(()));
+        assert_eq!(check_record_from_reset(false, 3.0), Ok(()));
+        let error = check_record_from_reset(true, 3.0).unwrap_err();
+        assert!(
+            error.contains("--record-from-reset") && error.contains("--rewind-seconds 0"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn flags_take_no_value() {
+        let args = |text: &str| text.split(' ').map(String::from).collect::<Vec<_>>();
+        let options = Options::parse(&args("game --flag --out dir"), &["out"], &["flag"]).unwrap();
+        assert!(options.flag("flag"));
+        assert_eq!(options.get("out"), Some("dir"));
+        assert_eq!(options.positional("GAME_ID"), Ok("game"));
+        let options = Options::parse(&args("game --out dir"), &["out"], &["flag"]).unwrap();
+        assert!(!options.flag("flag"));
+        for (bad, why) in [
+            ("--flag --flag", "--flag given twice"),
+            ("--flag x", "unexpected argument x"),
+            ("--other", "unknown option --other"),
+        ] {
+            let error = Options::parse(&args(&format!("game {bad}")), &["out"], &["flag"])
+                .err()
+                .unwrap();
+            assert_eq!(error, why);
+        }
     }
 }

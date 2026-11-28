@@ -499,6 +499,31 @@ impl Session {
         Ok(events)
     }
 
+    /// Puts the game where an evaluation episode starts, as `RetroEnv.reset` does before its
+    /// first observation: the state right after loading (`Core::reset`), then the game's
+    /// reset script, or `reset_state` ([`game::reset_state`](crate::game::reset_state)) for a
+    /// savestate reset. Then starts a recording there and pauses, so the player unpauses
+    /// when ready: a reference credit's start (docs/human-play.md, "Reference credits").
+    /// Fails if a recording is running, or `reset_state` doesn't fit the game's reset.
+    pub fn record_from_reset(&mut self, reset_state: Option<&[u8]>) -> Result<Vec<Event>> {
+        if self.recorder.is_some() {
+            return Err("a recording is running: finish it before recording from the reset".into());
+        }
+        self.core.reset();
+        match (self.game.reset_inputs(), reset_state) {
+            (Some(script), None) => self.core.run_inputs(&script),
+            (None, Some(state)) => self
+                .core
+                .unserialize(state)
+                .map_err(|error| format!("cannot load the reset state: {error}"))?,
+            (Some(_), Some(_)) => return Err("the game resets by script, not a state".into()),
+            (None, None) => return Err("the game resets from a state, and none was given".into()),
+        }
+        let started = self.toggle_recording()?;
+        self.paused = true;
+        Ok(vec![started, Event::Paused(true)])
+    }
+
     /// Starts a recording from the current state (written into it), or finishes the
     /// running one.
     pub fn toggle_recording(&mut self) -> Result<Event> {

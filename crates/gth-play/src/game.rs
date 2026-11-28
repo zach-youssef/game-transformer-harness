@@ -53,6 +53,25 @@ pub fn pinned_core(
     Ok(lock.pinned(&game.core, target, core_path).cloned())
 }
 
+/// The game's reset savestate (`[reset] state`, docs/games.md) from
+/// `<data_dir>/states/<game_id>/`, checked against its SHA-1, as `RetroEnv.from_game` reads
+/// it; `None` for a script reset.
+pub fn reset_state(
+    game: &GameConfig,
+    game_id: &str,
+    data_dir: &Path,
+) -> Result<Option<Vec<u8>>, String> {
+    let gth_config::Reset::State(spec) = &game.reset else {
+        return Ok(None);
+    };
+    let path = data_dir.join("states").join(game_id).join(&spec.file);
+    let state = std::fs::read(&path)
+        .map_err(|error| format!("{game_id}: no reset state {}: {error}", path.display()))?;
+    spec.check(&state)
+        .map_err(|error| format!("{game_id}: {error}"))?;
+    Ok(Some(state))
+}
+
 /// Reads `<games_dir>/<game_id>/game.toml`.
 pub fn load_config(games_dir: &Path, game_id: &str) -> Result<GameConfig, String> {
     GameConfig::load(&games_dir.join(game_id).join("game.toml")).map_err(|e| e.to_string())

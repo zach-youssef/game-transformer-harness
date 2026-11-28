@@ -389,3 +389,49 @@ fn a_rewind_length_past_the_cap_is_refused() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("from 0 to 600"), "{stderr}");
 }
+
+/// `--record-from-reset`: whatever was played before, the recording starts at the state a
+/// fresh core has after the game's reset (what `gth reference-scores` checks), paused.
+#[test]
+fn a_recording_from_the_reset_starts_where_an_episode_does() {
+    let _serial = serial();
+    let out = TempDir::new();
+    let mut session = session(&out.0, None);
+    for _ in 0..10 {
+        session.run_frame(RetroButton::A.bit()).unwrap();
+    }
+    assert_eq!(
+        gth_play::game::reset_state(&game(), "testcore", &out.0).unwrap(),
+        None,
+        "a script reset reads no state"
+    );
+    let error = session.record_from_reset(Some(b"state")).unwrap_err();
+    assert!(error.contains("resets by script"), "{error}");
+    assert!(session.recording().is_none());
+
+    let events = session.record_from_reset(None).unwrap();
+    let [Event::RecordingStarted(dir), Event::Paused(true)] = events.as_slice() else {
+        panic!("{events:?}");
+    };
+    let dir = dir.clone();
+    assert!(!session.run_frame(0).unwrap(), "paused at the reset");
+    let error = session.record_from_reset(None).unwrap_err();
+    assert!(error.contains("a recording is running"), "{error}");
+    session.toggle_pause();
+    for _ in 0..5 {
+        session.run_frame(RetroButton::A.bit()).unwrap();
+    }
+    session.close().unwrap();
+    drop(session);
+
+    let mut fresh = load();
+    fresh.reset();
+    fresh.run_inputs(&game().reset_inputs().unwrap());
+    let expected = fresh.serialize().unwrap();
+    drop(fresh);
+    let recording = Recording::open(&dir).unwrap();
+    assert_eq!(recording.start_state, expected);
+    assert_eq!(recording.meta.frames, 5);
+    let mut replayer = Replayer::new(recording, load()).unwrap();
+    assert_eq!(replayer.run_to_end().unwrap(), 5);
+}

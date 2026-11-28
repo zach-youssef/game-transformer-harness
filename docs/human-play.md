@@ -145,6 +145,30 @@ examples. No bomb is used for you: bomb after a rewind yourself if it makes sens
   goes on unrewound. A recording that can't be rewritten stops and stays incomplete, as any
   failed write does. A ring savestate that fails warns too, and rewinds reach less far.
 
+## Reference credits
+
+A reference credit is one credit played by a person under an evaluation protocol's rules:
+it starts where the protocol's episodes start, the game's reset, and runs to game over, with
+no rewinds. Record one with:
+
+```sh
+target/release/gth-play gunhed --games-dir games --data-dir <data_dir> --lock cores.lock \
+    --out <recordings_dir> --player <your name> --license CC-BY-4.0 --checks-every 60 \
+    --rewind-seconds 0 --record-from-reset
+```
+
+- `--record-from-reset` runs the game's `[reset]` as `RetroEnv.reset` does (the state just
+  after loading, then the reset script, or the reset savestate from
+  `<data_dir>/states/<game_id>/`, checked against its SHA-1), starts the recording there at
+  once and pauses: press **P** to play. Pressing **R** later records from wherever play is,
+  which is not a reference credit.
+- `--rewind-seconds 0`: a rewound recording (`[[rewind]]`) or a clip (`[branch]`) is not a
+  single credit, so `--record-from-reset` refuses any other length at launch. Loading the
+  practice state (**2**) finishes the recording, so the rest of play is not in it.
+- Play one credit to game over and keep playing a moment past it, then press **R** (or
+  **Escape**). The score is read where the game's `episode.terminate` first holds, so what
+  comes after doesn't count; a recording that stops before game over is refused.
+
 ## Bindings
 
 One TOML file per controller in `<config dir>/bindings/`, next to the user config file
@@ -295,5 +319,7 @@ rest. minifb would need cpal and gilrs anyway and lacks monitor and DPI queries.
   recording, the next one starts from the loaded state), `[core.lock]` kept only with the
   pinned core (the test core standing in for a pinned build, in a lock written with its
   hash), `--rewind-seconds` refused past 600 (main.rs unit-tests the bounds and a length
-  under one frame), and the latency probe on the test core.
+  under one frame), a recording from the reset (`--record-from-reset`: its start state is a
+  fresh core's after the reset script, whatever was played before; it starts paused; main.rs
+  unit-tests that it refuses rewinds), and the latency probe on the test core.
 - The window, the audio device and gamepads are checked by hand: CI has none of them.
