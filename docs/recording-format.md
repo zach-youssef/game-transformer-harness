@@ -138,9 +138,15 @@ rather than misreading it.
   core_path, content, system_dir)` loads the core with the recording's core options and settle
   frames, checks the core version, the content (above) and that every RAM variable is in the
   core's memory, and loads the start state. `step()` replays one agent step, `run_to_end()` the
-  rest. `_native.Replayer` (`gtharness.record.Replayer`) adds an observation pipeline: its
-  `step()` returns each step's joypad mask (its first frame's), frame count and last frame at
-  any size, crop and rotation.
+  rest. `run_until_terminated(game, cap)` replays frame by frame until a game config's
+  `episode.terminate` first holds, `cap` frames are replayed or the recording ends, and
+  returns where it stopped with that config's RAM variables there (the config may be today's
+  `games/<id>/game.toml` rather than the recording's own, so its variables are checked against
+  the core's memory first). `_native.Replayer` (`gtharness.record.Replayer`)
+  adds an observation pipeline: its `step()` returns each step's joypad mask (its first
+  frame's), frame count and last frame at any size, crop and rotation, and it has
+  `run_until_terminated(config, cap)`, which with `cap` at most the frames replayed returns the
+  RAM without replaying.
 
 A 60 fps minute of random actions at frameskip 4 is about 5.5 KB on the test core (1.8 KB of
 inputs, 2 KB of checks, the rest `meta.toml` and `game.toml`). A real core's start state

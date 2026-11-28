@@ -1120,3 +1120,89 @@ fn a_sprite_export_without_a_sprite_stream_says_why() {
     );
     assert!(!out.exists());
 }
+
+/// Records `frames` frames from the reset script's end, A (the test core's scoring button)
+/// held on every frame for which `hold` is true, one frame per step as gth-play records.
+fn record_holding(dir: &Path, frames: u64, hold: impl Fn(u64) -> bool) -> PathBuf {
+    let game = game();
+    let content = content(dir);
+    let mut core = load(&game, &content);
+    core.run_inputs(&game.reset_inputs().unwrap());
+    let path = dir.join(format!("hold-{frames}.gthrec"));
+    let mut recorder = Recorder::create(&path, &mut core, &game, Some(&content), info(5)).unwrap();
+    for frame in 0..frames {
+        let buttons = if hold(frame) { RetroButton::A.bit() } else { 0 };
+        recorder.run(&mut core, 1, buttons).unwrap();
+    }
+    recorder.finish(&mut core).unwrap()
+}
+
+#[test]
+fn a_replay_stops_where_the_episode_first_terminates() {
+    let _serial = serial();
+    let dir = TempDir::new();
+    let game = game();
+    let content = content(&dir.0);
+    // A held on every other frame: the score climbs past 20 well inside 200 frames.
+    let path = record_holding(&dir.0, 200, |frame| frame % 2 == 0);
+
+    // The first terminated frame, found frame by frame.
+    let mut replayer = replay(&path, &content).unwrap();
+    let first = loop {
+        replayer
+            .run_frame()
+            .unwrap()
+            .expect("terminates before the end");
+        let ram = replayer.read_ram_vars().unwrap();
+        if game.terminated(&ram).unwrap() {
+            break (replayer.frame(), ram);
+        }
+    };
+    drop(replayer);
+    assert!(first.0 > 1 && first.0 < 200, "{first:?}");
+
+    let mut replayer = replay(&path, &content).unwrap();
+    let stopped = replayer.run_until_terminated(&game, 1_000).unwrap();
+    assert_eq!(
+        stopped,
+        gth_record::Stopped {
+            frame: first.0,
+            ram: first.1.clone(),
+            terminated: true
+        }
+    );
+    assert_eq!(replayer.frame(), first.0, "nothing replayed past it");
+    drop(replayer);
+
+    // The cap comes first: stopped there, not terminated.
+    let mut replayer = replay(&path, &content).unwrap();
+    let capped = replayer.run_until_terminated(&game, first.0 - 1).unwrap();
+    assert_eq!((capped.frame, capped.terminated), (first.0 - 1, false));
+    assert!(capped.ram["score"] < first.1["score"]);
+    drop(replayer);
+
+    // The recording ends first: stopped at its last frame.
+    let short = record_holding(&dir.0, first.0 - 1, |frame| frame % 2 == 0);
+    let mut replayer = replay(&short, &content).unwrap();
+    let ended = replayer.run_until_terminated(&game, 1_000).unwrap();
+    assert_eq!((ended.frame, ended.terminated), (first.0 - 1, false));
+    assert_eq!(
+        ended.ram, capped.ram,
+        "the same frames as the capped replay"
+    );
+    drop(replayer);
+
+    // Another config's variables are checked against the core's memory first.
+    let mut far = game.clone();
+    let mut score = far.ram["score"];
+    score.location = gth_config::Location::Memory {
+        memory: MemoryId::SystemRam,
+        offset: 1 << 30,
+    };
+    far.ram.insert("score".into(), score);
+    let mut replayer = replay(&path, &content).unwrap();
+    assert!(matches!(
+        replayer.run_until_terminated(&far, 1_000),
+        Err(Error::Core(gth_core::Error::Ram { .. }))
+    ));
+}

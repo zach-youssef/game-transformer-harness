@@ -114,6 +114,18 @@ impl Recording {
     }
 }
 
+/// Where [`Replayer::run_until_terminated`] stopped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stopped {
+    /// Frames replayed in all.
+    pub frame: u64,
+    /// The game's RAM variables after that frame, by name.
+    pub ram: BTreeMap<String, i64>,
+    /// Whether `episode.terminate` held there; false when the cap or the recording's end
+    /// stopped the replay first.
+    pub terminated: bool,
+}
+
 /// Re-runs a [`Recording`] on a core, step by step, comparing every check: the first one that
 /// differs is an [`Error::Desync`] naming the frames since the previous check. The core is
 /// the replayer's own, so nothing else can run it in between; render frames from
@@ -272,6 +284,31 @@ impl Replayer {
     /// For rewards, labels and validation, never a policy's input.
     pub fn read_ram_vars(&mut self) -> Result<BTreeMap<String, i64>> {
         Ok(self.core.read_ram_vars(&self.recording.game.ram)?)
+    }
+
+    /// Replays frame by frame, verifying checks, until `game`'s `episode.terminate` first
+    /// holds after a frame, the replay has run `cap` frames in all, or the recording ends,
+    /// whichever comes first. `game` gives the RAM variables and the condition: it may be
+    /// another config of the same game than the recording's own (today's `games/<id>`), so
+    /// its variables are checked against the core's memory first ([`gth_core::Error::Ram`]).
+    /// For scoring a replayed episode (`gtharness.reference`), never a policy's input.
+    pub fn run_until_terminated(&mut self, game: &GameConfig, cap: u64) -> Result<Stopped> {
+        self.core.check_ram_vars(&game.ram)?;
+        while self.frame < cap && self.run_frame()?.is_some() {
+            let ram = self.core.read_ram_vars(&game.ram)?;
+            if game.terminated(&ram)? {
+                return Ok(Stopped {
+                    frame: self.frame,
+                    ram,
+                    terminated: true,
+                });
+            }
+        }
+        Ok(Stopped {
+            frame: self.frame,
+            ram: self.core.read_ram_vars(&game.ram)?,
+            terminated: false,
+        })
     }
 
     /// Replays the rest of the recording; returns the number of frames replayed in all.

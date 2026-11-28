@@ -18,7 +18,7 @@ pub use meta::{
     RewindCause, RewindMeta, StartMeta,
 };
 pub use recorder::{Recorder, RecordingInfo};
-pub use replay::{Recording, Replayer};
+pub use replay::{Recording, Replayer, Stopped};
 pub use shard::{
     FRAME_ZSTD_LEVEL, KeepAll, Playing, SHARD_VERSION, SPRITE_CHUNK_FRAMES, SampleFilter,
     ShardMeta, ShardOptions, ShardSummary, StepInfo, Steps, chunk_name, decode_frames,

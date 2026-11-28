@@ -1,6 +1,7 @@
 //! `_native.Replayer`: a `gth_record::Replayer` with an observation pipeline, so a recording's
 //! frames are re-rendered at any size, crop and rotation (docs/recording-format.md).
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use numpy::PyArray3;
@@ -93,6 +94,24 @@ impl Replayer {
     fn run_to_end(&mut self, py: Python<'_>) -> errors::Result<u64> {
         let replayer = self.replayer_mut()?;
         Ok(py.detach(|| replayer.run_to_end())?)
+    }
+
+    /// Replays until `config`'s `episode.terminate` first holds after a frame, `cap` frames
+    /// have been replayed in all, or the recording ends; returns the frames replayed, `config`'s
+    /// RAM variables there and whether the condition held. `config` may be another config of
+    /// the recording's game (today's game.toml). With `cap` at most `frame`, it replays nothing
+    /// and returns the RAM now. Raises `DesyncError` at a check that differs, `HarnessError` if
+    /// a variable isn't in the core's memory or doesn't decode.
+    fn run_until_terminated(
+        &mut self,
+        py: Python<'_>,
+        config: PyRef<'_, GameConfig>,
+        cap: u64,
+    ) -> errors::Result<(u64, BTreeMap<String, i64>, bool)> {
+        let replayer = self.replayer_mut()?;
+        let game = &config.config;
+        let stopped = py.detach(|| replayer.run_until_terminated(game, cap))?;
+        Ok((stopped.frame, stopped.ram, stopped.terminated))
     }
 
     /// Frames replayed so far.

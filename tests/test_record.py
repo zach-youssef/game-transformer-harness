@@ -304,3 +304,47 @@ def test_recording_needs_its_choices(testcore_path: Path, testcore_data: Path, t
         assert "content" not in meta
     finally:
         core.close()
+
+
+def test_a_replay_runs_until_the_episode_terminates(
+    testcore_path: Path, testcore_data: Path, content: Path, tmp_path: Path
+):
+    """The test core scores while A is held and terminates at score >= 20: the env sees it at
+    a step's end, the replay at the frame, inside that step."""
+    env = RetroEnv.from_game(
+        "testcore",
+        testcore_data,
+        frameskip=FRAMESKIP,
+        obs_size=(60, 80),
+        action_format="flat",
+        reward=score_delta,
+        sticky_prob=0.0,
+        max_episode_frames=None,
+        noop_max=0,
+        maxpool=False,
+        grayscale=False,
+        core_path=testcore_path,
+        record=record(tmp_path / "recordings", checks_every=7),
+    )
+    try:
+        _, info = env.reset()
+        frames, terminated = FRAMESKIP, False
+        while not terminated:
+            _, _, terminated, _, info = env.step(1)  # the shot slot: A
+            frames += FRAMESKIP
+        for _ in range(5):  # played on past the end, as a human may
+            env.step(0)
+    finally:
+        env.close()
+    config = env.config
+    with replayer(env.recordings[0], testcore_path, content) as replay:
+        # A cap of 0 replays nothing: the RAM at the start state.
+        assert replay.run_until_terminated(config, 0)[0::2] == (0, False)
+        start = replay.run_until_terminated(config, 0)[1]
+        assert start["score"] == 3, "the reset script's score"
+        frame, ram, held = replay.run_until_terminated(config, 10**6)
+        assert held and config.terminated(ram)
+        assert frames - FRAMESKIP < frame <= frames
+        assert ram["score"] <= info["ram"]["score"]
+    with replayer(env.recordings[0], testcore_path, content) as replay:
+        assert replay.run_until_terminated(config, frame - 1)[0::2] == (frame - 1, False)
