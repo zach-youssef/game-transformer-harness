@@ -235,6 +235,27 @@ class Gray(Chunks):
         assert obs.shape == (3, 12, 10, 1) and obs.dtype == np.uint8
         return np.array([1 * 16 + 1, 1, 0][: self.chunk], dtype=np.int64)
 
+class Atari(Chunks):
+    """Chunks in ALE's action numbers (atari_full): UPFIRE, FIRE, NOOP are the flat actions
+    Chunks plays."""
+
+    obs_requirements = ObsRequirements(
+        size=(12, 10), grayscale=False, maxpool=None, frame_stack=3, frameskip=2,
+        action_set="atari_full",
+    )
+
+    def __init__(self, *, policy_seed, actions=(10, 1, 0)):
+        super().__init__(policy_seed=policy_seed)
+        self.actions = actions
+
+    def reset(self, seed, game):
+        assert game.n_actions == 18 and game.game_id == "testcore"
+        assert game.mapped_slots == ("shot", "bomb", "aux1", "aux2")
+
+    def act(self, obs):
+        assert obs.shape == (3, 12, 10, 3) and obs.dtype == np.uint8
+        return list(self.actions)
+
 class Wrong:
     def __init__(self, *, policy_seed):
         self.id = ""
@@ -308,6 +329,39 @@ def test_chunks_play_one_action_per_step(
         meta = tomllib.loads((out / row["recording"] / "meta.toml").read_text(encoding="utf-8"))
         assert meta["player"] == f"chunks-v1 checkpoint={checkpoint} seed={row['policy_seed']}"
     check_results(out)
+
+
+def test_atari_actions_are_mapped_onto_the_pad(
+    testcore_path: Path, testcore_data: Path, tmp_path: Path, policy_module: str
+):
+    # ALE's UPFIRE, FIRE, NOOP map to the flat actions Chunks plays (docs/actions.md), so the
+    # two runs play the same episodes.
+    for name, action_set in (("Chunks", "harness"), ("Atari", "atari_full")):
+        run(
+            testcore_path,
+            testcore_data,
+            tmp_path / name,
+            f"{policy_module}:{name}",
+            action_set=action_set,
+        )
+        check_results(tmp_path / name)
+    played = [rows(tmp_path / name) for name in ("Chunks", "Atari")]
+    for row in played[0] + played[1]:
+        del row["policy_id"]
+    assert played[0] == played[1]
+    assert {tuple(row["mapped_slots_used"]) for row in played[1]} == {("shot",)}
+    # 18 is past ALE's last action.
+    with pytest.raises(EvaluationFailed, match=r"returned action 18, outside 0\.\.18"):
+        evaluate(
+            protocol(action_set="atari_full"),
+            f"{policy_module}:Atari",
+            tmp_path / "past",
+            testcore_data,
+            policy_kwargs={"actions": [1, 18]},
+            record=None,
+            jobs=1,
+            core_path=testcore_path,
+        )
 
 
 def test_policy_requirements_are_checked_against_the_protocol(
@@ -396,7 +450,7 @@ def test_the_first_failure_stops_the_run_at_once(
         ({"max_episode_frames": 7}, r"noop_max \+ frameskip \(5 \+ 2\) must be below"),
         ({"games": ("testcore", "no-such-game")}, "no-such-game: no game config"),
         ({"score_var": "lives"}, "score_var 'lives' isn't one of its RAM variables"),
-        ({"action_set": "atari_full"}, "plays only harness actions"),
+        ({"action_set": "atari_minimal"}, "plays only harness, atari_full actions"),
         ({"reset": "ab" * 20}, "start.reset"),
         ({"crop": (0, 0, 10, 10)}, r"obs.crop \(0, 0, 10, 10\) differs"),
         ({"orientation": 0}, "obs.orientation 0 differs"),

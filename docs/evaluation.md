@@ -102,7 +102,7 @@ A policy is what `gth evaluate` plays (below). `gtharness.policies.Policy` has:
 | `checkpoint_sha256` | The SHA-256 of the weights it loaded, or None for a policy without weights. |
 | `obs_requirements` | An `ObsRequirements`: `size`, `grayscale`, `maxpool`, `frame_stack`, `frameskip` and `action_set`, each the protocol value the policy needs, or None for any. All are required, so "any" is written down. |
 | `reset(seed, game)` | Starts an episode: `seed` an int seeds the policy's randomness, None lets it run on. `game` is a `GameInfo` (`game_id`, `n_actions`, `mapped_slots`). It clears the policy's per-episode state. |
-| `act(obs)` | One flat action (`direction * 16 + buttons`), or a chunk: a non-empty 1-D sequence of them, played one per step before `act` is called again. An episode that ends mid-chunk drops the rest. |
+| `act(obs)` | One action in `0..n_actions`, or a chunk: a non-empty 1-D sequence of them, played one per step before `act` is called again. An episode that ends mid-chunk drops the rest. Under `action_set = "harness"` an action is a flat action (`direction * 16 + buttons`, `n_actions` the game's); under `"atari_full"` it is ALE's action number (`n_actions` 18), which the runner turns into a flat action with `GameConfig.from_atari` (docs/actions.md, "Atari": direction and `shot`, never `bomb`, `aux1` or `aux2`). |
 
 `MODULE:NAME` is called as `NAME(policy_seed=seed, **kwargs)`, once per policy seed. The
 protocol's policy seeds stand for training runs (`policy_seeds` above), so a trained model
@@ -188,7 +188,8 @@ Nothing is written, and no episode starts, until all of these pass (`ConfigError
 field or game otherwise):
 
 - The env supports every setting (`maxpool` and `obs.grayscale` go to `RetroEnv.from_game`
-  as they are). `action_set` must be `harness` (Atari's sets need the Atari action map),
+  as they are). `action_set` must be `harness` or `atari_full` (`atari_minimal` needs the
+  games' minimal action sets, which no game config has yet),
   `start.reset` must be `"game"`, and an explicit `obs.crop` or `obs.orientation` must equal the game config's, since the env
   uses the game's.
 - `start.noop_max + frameskip < max_episode_frames`: the env's rule, so the reset (no-ops and

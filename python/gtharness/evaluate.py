@@ -40,6 +40,7 @@ from gtharness.protocol import EvalProtocol
 from gtharness.record import Record
 
 __all__ = [
+    "ATARI_ACTIONS",
     "RESULTS_FORMAT",
     "SUPPORTED_ACTION_SETS",
     "EvaluationFailed",
@@ -55,8 +56,13 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 RESULTS_FORMAT = 1
 """``run.json``'s ``format``: bumped whenever a results file's fields change."""
 
-SUPPORTED_ACTION_SETS = ("harness",)
-"""The protocol action sets the runner can play: Atari's need the Atari action map (C13)."""
+SUPPORTED_ACTION_SETS = ("harness", "atari_full")
+"""The protocol action sets the runner can play. ``atari_minimal`` waits for the games'
+minimal action sets, which no game config has yet."""
+
+ATARI_ACTIONS = 18
+"""ALE's full action set: under ``atari_full`` a policy acts in ``0..18`` (docs/actions.md,
+"Atari")."""
 
 EPISODE_FIELDS = (
     "game",
@@ -132,7 +138,8 @@ def check_protocol(
     if protocol.action_set not in SUPPORTED_ACTION_SETS:
         raise ConfigError(
             f"action_set {protocol.action_set!r}: the runner plays only"
-            f" {', '.join(SUPPORTED_ACTION_SETS)} actions (Atari's need the Atari action map)"
+            f" {', '.join(SUPPORTED_ACTION_SETS)} actions (no game config has a minimal"
+            " action set yet)"
         )
     if protocol.start.reset != "game":
         raise ConfigError(
@@ -445,7 +452,12 @@ def _play(task: dict[str, Any]) -> dict[str, Any]:
     config = env.config
     # info["episode_frame"] counts the reset script's frames, which the cap doesn't.
     script_frames = sum(frames for _, frames in config.reset_inputs or [])
-    game = GameInfo(game_id, config.n_actions, tuple(config.mapped_slots))
+    # The policy's actions: flat ones, or ALE's numbers mapped onto the pad (docs/actions.md).
+    if protocol.action_set == "atari_full":
+        n_actions, to_flat = ATARI_ACTIONS, config.from_atari
+    else:
+        n_actions, to_flat = config.n_actions, int
+    game = GameInfo(game_id, n_actions, tuple(config.mapped_slots))
     rows: list[dict[str, Any]] = []
     act_ns = calls = steps_total = 0
     try:
@@ -466,7 +478,7 @@ def _play(task: dict[str, Any]) -> dict[str, Any]:
                     act_ns += time.perf_counter_ns() - begin
                     calls += 1
                     pending.extend(_actions(chosen, game.n_actions, task["policy"]))
-                action = pending.popleft()
+                action = to_flat(pending.popleft())
                 pressed |= config.decode(action)[1]
                 obs, _, terminated, truncated, info = env.step(action)
                 stack.append(obs)
@@ -503,7 +515,8 @@ def _play(task: dict[str, Any]) -> dict[str, Any]:
 
 
 def _actions(chosen: Any, n_actions: int, spec: str) -> list[int]:
-    """`Policy.act`'s result as a list of flat actions; ValueError if it isn't one."""
+    """`Policy.act`'s result as a list of actions in ``0..n_actions``; ValueError if it
+    isn't one."""
     if isinstance(chosen, int | np.integer) and not isinstance(chosen, bool):
         actions = [int(chosen)]
     elif isinstance(chosen, Sequence | np.ndarray) and not isinstance(chosen, str | bytes):
