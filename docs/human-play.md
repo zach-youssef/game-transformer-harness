@@ -147,9 +147,9 @@ examples. No bomb is used for you: bomb after a rewind yourself if it makes sens
 
 ## Reference credits
 
-A reference credit is one credit played by a person under an evaluation protocol's rules:
-it starts where the protocol's episodes start, the game's reset, and runs to game over, with
-no rewinds. Record one with:
+A reference credit is one credit played by a person under an evaluation protocol's rules
+(docs/evaluation.md, "Human reference"): it starts where the protocol's episodes start, the
+game's reset, and runs to game over, with no rewinds. Record one with:
 
 ```sh
 target/release/gth-play gunhed --games-dir games --data-dir <data_dir> --lock cores.lock \
@@ -168,6 +168,9 @@ target/release/gth-play gunhed --games-dir games --data-dir <data_dir> --lock co
 - Play one credit to game over and keep playing a moment past it, then press **R** (or
   **Escape**). The score is read where the game's `episode.terminate` first holds, so what
   comes after doesn't count; a recording that stops before game over is refused.
+- Score the credits with `gth reference-scores <data_dir> RECORDING... --protocol P --out
+  ref.json` (docs/evaluation.md, "Human reference"); record at least 5 per game, since fewer
+  is flagged as noisy.
 
 ## Bindings
 

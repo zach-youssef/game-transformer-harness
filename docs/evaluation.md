@@ -242,3 +242,48 @@ policy seed, env seed and episode, with these fields in this order:
 | `jobs` | Pairs of seeds played at once. |
 | `episodes`, `steps`, `policy_calls` | Totals over the run. |
 | `policy_ms_per_step` | Time spent in `act`, over all steps, in milliseconds per step (a chunk's time is spread over its steps). |
+
+## Human reference
+
+A human reference score is what a person scores in one credit under a protocol, next to the
+agents' scores under it. `gth reference-scores` (`gtharness.reference`) reads it from
+recordings, by replay:
+
+```sh
+gth reference-scores <data_dir> <recordings_dir>/gunhed-*.gthrec --protocol ours-v1 --out ref.json
+```
+
+Record the credits with `gth-play --record-from-reset --rewind-seconds 0`
+(docs/human-play.md, "Reference credits"). A recording is a reference credit when:
+
+- its `recorder` is `human`, with no `[[rewind]]` and no `[branch]` (rewinds and their clips
+  aren't one credit), and its game is one of the protocol's;
+- it starts at the game's reset: its start state's SHA-1 equals a fresh core's after the
+  game's reset script (or reset savestate), which is where `RetroEnv` starts an episode;
+- it reaches the first frame where the game's `episode.terminate` holds, or the protocol's
+  `max_episode_frames`, before it ends. The replay stops there; the frames after it don't
+  count. A credit cut at the cap is `truncated`, as an agent's episode would be.
+
+Anything else is refused with the recording named (exit status 2): the output only ever holds
+credits that follow the rule. The score is the protocol's `score_var` where the replay
+stopped minus at the start state, the reset. An agent's episode `score` is counted from its
+first observation instead, after the no-ops a person doesn't get; the two differ only by
+what a game scores during idle no-op frames. The game's
+config is today's `games/<id>/game.toml` (its RAM variables and `episode.terminate`), the
+one an evaluation uses; the replay verifies every desync check on the way.
+
+What of the protocol applies to a person: the start (`start.reset`, which must be `"game"`),
+the cap and `score_var`. A person plays every frame on the whole pad, so `frameskip`,
+`sticky_prob`, `start.noop_max`, the observation settings and `action_set` don't apply, and
+a protocol with `life_loss_terminal = true` is refused, since a credit runs to game over. The
+protocol's other checks are `check_protocol`'s ("Checks before a run"), for the games that
+have credits: a game of the protocol with none is listed with `n` 0 and needs no files, so
+credits of one game score without the other games' ROMs.
+
+The output (`format` 1) is JSON:
+
+| Field | Meaning |
+|---|---|
+| `format` | `1`; bumped whenever a field changes. |
+| `protocol` | `sha1` and `text` (the canonical text, "Canonical text and SHA-1"), and `human`: `start_reset`, `max_episode_frames` and `score_var`, the settings that applied. |
+| `games` | Per game of the protocol, in its order: `n` (credits), `mean` and `median` of their scores (null with none), `recordings` (the recordings' directory names, sorted), `credits` (per recording, in that order: `recording`, `player`, `score`, `frames` replayed, `terminated`, `truncated`), and `warning` when `n` is under 5 (a mean of so few is noisy; not an error). |

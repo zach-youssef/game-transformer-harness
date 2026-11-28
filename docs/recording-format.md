@@ -142,7 +142,8 @@ rather than misreading it.
   `episode.terminate` first holds, `cap` frames are replayed or the recording ends, and
   returns where it stopped with that config's RAM variables there (the config may be today's
   `games/<id>/game.toml` rather than the recording's own, so its variables are checked against
-  the core's memory first). `_native.Replayer` (`gtharness.record.Replayer`)
+  the core's memory first); `gth reference-scores` scores human credits with it
+  (docs/evaluation.md, "Human reference"). `_native.Replayer` (`gtharness.record.Replayer`)
   adds an observation pipeline: its `step()` returns each step's joypad mask (its first
   frame's), frame count and last frame at any size, crop and rotation, and it has
   `run_until_terminated(config, cap)`, which with `cap` at most the frames replayed returns the

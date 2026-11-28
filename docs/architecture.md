@@ -34,9 +34,10 @@ The Python package `gtharness` (in `python/gtharness/`) orchestrates:
 | `bench.py` | `gth bench`: speed, savestate and determinism benchmarks of real cores (docs/performance.md) |
 | `protocol.py` | Evaluation protocols: `load`, `EvalProtocol` and its canonical text and SHA-1 (docs/evaluation.md) |
 | `evaluate.py` | `gth evaluate`: a policy played under a protocol, one process per game and seed pair, and `check_results`, the results schema (docs/evaluation.md, "Running an evaluation") |
+| `reference.py` | `gth reference-scores`: human reference scores, read by replay from human recordings of one credit (docs/evaluation.md, "Human reference") |
 | `policies/` | The `Policy` protocol and `ObsRequirements` (`__init__.py`), and the random policy (`random.py`) |
 | `metrics.py` | Aggregates over evaluation runs (numpy only): normalised scores, IQM, median, mean, optimality gap, probability of improvement, stratified-bootstrap intervals, and `run_scores`, runs from a results directory (docs/metrics.md) |
-| `cli.py` | The `gth` command (`gth audit`, docs/roms.md; `gth ram-search`; `gth export-shards`; `gth cores`; `gth bench`; `gth capture`; `gth evaluate`) |
+| `cli.py` | The `gth` command (`gth audit`, docs/roms.md; `gth ram-search`; `gth export-shards`; `gth cores`; `gth bench`; `gth capture`; `gth evaluate`; `gth reference-scores`) |
 | `errors.py` | The exceptions, re-exported from `_native` (docs/native.md, "Errors") |
 | `_native.pyi` | Type stubs of the extension module (docs/native.md) |
 

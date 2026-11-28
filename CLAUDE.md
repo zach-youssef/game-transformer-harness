@@ -29,8 +29,9 @@ Headless libretro cores behind a Python gymnasium environment, with all per-fram
   workflow) and how to bump a pin.
 - [docs/evaluation.md](docs/evaluation.md): evaluation protocols (`gtharness.protocol`, the
   presets in `protocols/`), every field and where each preset's values come from; the runner
-  (`gth evaluate`, the `Policy` protocol) and its results format. Read before evaluating a
-  policy, writing one, or changing a preset.
+  (`gth evaluate`, the `Policy` protocol) and its results format; human reference scores
+  (`gth reference-scores`). Read before evaluating a policy, writing one, or changing a
+  preset.
 - [docs/metrics.md](docs/metrics.md): `gtharness.metrics`, aggregates over evaluation runs
   (normalised scores, IQM, optimality gap, probability of improvement, stratified-bootstrap
   intervals) and what counts as a run. Read before aggregating or comparing results.
