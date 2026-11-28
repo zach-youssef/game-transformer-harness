@@ -15,6 +15,16 @@ dependencies = [
     "numpy>=2",
 ]
 
+[project.optional-dependencies]
+# The JAT policy (gtharness.policies.jat, docs/evaluation.md "Adapters"). transformers is
+# the version the checkpoint's own code was written for (its config says 4.36); torch 2.5.1
+# runs with numpy 2, which the harness needs (2.2.2, the JAT smoke's, is built for numpy 1).
+jat = [
+    "torch==2.5.1",
+    "torchvision==0.20.1",
+    "transformers==4.36.2",
+]
+
 [project.scripts]
 gth = "gtharness.cli:main"
 

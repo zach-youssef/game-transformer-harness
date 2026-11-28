@@ -13,6 +13,7 @@ There are no prebuilt wheels: every machine builds the extension module itself.
 
 ```sh
 uv sync                        # create .venv with Python 3.12 and the dev tools
+uv sync --extra jat            # also torch and transformers, for the JAT policy
 uv run maturin develop --uv    # build gtharness._native (debug) and install it into .venv
 uv run pytest                  # Python tests
 uv run ruff check              # lint

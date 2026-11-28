@@ -123,6 +123,71 @@ uniformly from `0..n_actions` with numpy's PCG64. That is uniform over what the 
 each distinct press appears 2^k times, k the game's unmapped slots. It is the "random" of
 normalised scores and plays only the `harness` action set.
 
+## Adapters
+
+Released models played as policies. Each lives in `gtharness.policies`, imports its
+framework only when made (an extra, so the base install and CI need neither the framework
+nor the weights), and is tested in CI with a stand-in model.
+
+### JAT
+
+`gtharness.policies.jat:JatPolicy` (`jat-v1`) plays JAT (Gallouédec et al. 2024), the hub's
+[`jat-project/jat`](https://huggingface.co/jat-project/jat), through the checkpoint's own
+code (`trust_remote_code`, transformers 4.36). Setup, once per machine:
+
+```sh
+uv sync --extra jat            # torch 2.5.1, torchvision, transformers 4.36.2
+uv run maturin develop --uv    # uv sync removed the extension module
+uv run python -c "from huggingface_hub import snapshot_download as d; \
+  print(d('jat-project/jat', revision='911dd7447b1c56bece63424c888d2217828c981e'))"
+```
+
+The last line downloads the weights (738 MB) into the hub cache, never the repo, and prints
+the snapshot directory that `checkpoint` names. Its `model.safetensors` has SHA-256
+`5b66502d0c5687998593d89582dc18697d3d144871b0905c345126e632c22508`, which the policy
+reports as `checkpoint_sha256`. The policy refuses a directory where any other file (code,
+configs, tokenizer) differs from that revision's (`CODE_SHA256`): loading runs that code, the
+configs and tokenizer files name code to run, and the adapter drives it (`get_next_action`
+and its KV-cache trimming). Every setting is a kwarg without a default:
+
+| Kwarg | Meaning |
+|---|---|
+| `checkpoint` | The snapshot directory. |
+| `action_set` | `"atari_minimal"` or `"atari_full"`, which the protocol must match. JAT was trained and evaluated on each Atari game's minimal set, so its action `i` means that set's `i`-th action: on an Atari game only `atari_minimal` plays it as trained, and it waits for the games' minimal sets ("Checks before a run"). `"atari_full"` (ALE's 18) is for games without one, such as ours. The action head is cut to the game's `n_actions`, as upstream cuts it to the env's. |
+| `context_timesteps` | Past timesteps kept in the KV cache, two positions each: upstream's Atari evaluation keeps 16 (`context_window = 32`); the checkpoint allows up to `max_position_embeddings // 2` (256). |
+| `deterministic` | The most likely action instead of a sample. Upstream samples (`false`). |
+| `device` | `"cpu"`, `"mps"` or `"cuda"`. |
+| `threads` | torch's CPU threads per process; each of `--jobs` processes holds a model. |
+
+```sh
+uv run gth evaluate data --protocol PROTOCOL --policy gtharness.policies.jat:JatPolicy \
+    --policy-kwargs '{"checkpoint": "SNAPSHOT", "action_set": "atari_full",
+      "context_timesteps": 16, "deterministic": false, "device": "cpu", "threads": 1}' \
+    --jobs 4 --out results/jat
+```
+
+All policy seeds share the checkpoint, so they are sampling seeds (above). Sampling uses
+torch's global RNG, which `reset` seeds; the runner plays one policy per process.
+
+What JAT saw, from upstream's `make_atari` (jat repo `jat/eval/rl/core.py`, commit
+`2e1ac33`), and how a protocol matches it:
+
+| Upstream | Here |
+|---|---|
+| ALE v5, `frameskip=1`, `repeat_action_probability=0`, then `MaxAndSkipEnv(4)`: frame skip 4, max of the last two frames | `frameskip = 4`, `maxpool = true`, `sticky_prob = 0`: required by `obs_requirements` except `sticky_prob`, which the protocol chooses |
+| Each game's minimal action set (ALE v5's default) | `action_set` above |
+| `ResizeObservation((84, 84))` (OpenCV `INTER_AREA` on RGB), then `GrayScaleObservation` (`cv2.COLOR_RGB2GRAY`). The paper says bicubic; the code is area (the bicubic `resample` in `preprocessor_config.json` is the CLIP image processor's, for the text-and-image tasks; RL observations bypass it) | `size = [84, 84]`, `grayscale = true`, `interpolation = "area"`; the env makes the frame gray before resizing, which differs from upstream only in rounding. `obs_requirements` has no interpolation, so the protocol chooses it and the policy can't refuse another: use `"area"` (every preset does) |
+| `FrameStack(4)`, oldest first, transposed to `[84, 84, 4]`; the processor scales to `[-1, 1]` | `frame_stack = 4`; the policy turns the runner's `uint8[4, 84, 84, 1]` into `[84, 84, 4]` |
+| `NoopResetEnv(30)` | `noop_max`, the protocol's choice |
+| `EpisodicLifeEnv`, `FireResetEnv` (training wrappers kept at evaluation) | not reproduced: the protocol's `life_loss_terminal` and reset decide |
+| Rewards passed to the model | none: the model ignores rewards next to image observations (its `embed_rl`), and policies get none |
+
+The Atari presets' observations fit; their `action_set` is `atari_full`, so on their (Atari)
+games JAT waits for a minimal-set protocol. Measured on an Apple M4 (CPU, debug
+extension, `tests/test_jat_adapter.py`'s protocol on the test core, 1015 steps): 26 ms per
+step with 4 threads, 24 ms with 1, so more `--jobs` beat more threads; the chosen actions
+were the same both times.
+
 ## Running an evaluation
 
 `gth evaluate` (`gtharness.evaluate.evaluate`) plays a policy under a protocol:
