@@ -107,7 +107,9 @@ calls plus the reward call.
 
 `RetroEnv.reset(seed=...)` seeds the RNG when given a seed (without one it runs on from the
 last episode), loads the game's reset savestate, or restores the state right after loading
-and plays the game's reset script (`options["state"]` replaces both), runs the no-op start
+and plays the game's reset script (`options["state"]` replaces both; with `later_episodes =
+"chain"`, an unseeded reset after the first soft-resets the core where the last episode
+ended instead of restoring, then plays the script: docs/evaluation.md), runs the no-op start
 (1..`noop_max` frames with no button held, drawn from the RNG; none at `noop_max = 0`), then
 runs `frameskip` frames with no button held and returns the last one, through the same
 `step` path. A core draws only during `retro_run` and a savestate holds no frame, so without

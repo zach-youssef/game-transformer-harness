@@ -74,6 +74,7 @@ def make(testcore_path: Path, tmp_path: Path, game=None, **kwargs) -> RetroEnv:
         "sticky_prob": 0.0,
         "max_episode_frames": None,
         "noop_max": 0,
+        "later_episodes": "reload",
         "maxpool": False,
         "grayscale": False,
         "reset_state": None,
@@ -224,6 +225,8 @@ def test_constructor_checks_its_choices(testcore_path: Path, tmp_path: Path):
         ("max_episode_frames", 10.0),
         ("maxpool", 1),
         ("grayscale", None),
+        ("later_episodes", "soft"),
+        ("later_episodes", None),
     ]
     for name, value in bad:
         with pytest.raises(ValueError, match=name):
@@ -301,6 +304,50 @@ def test_reset_starts_every_episode_identically(env: RetroEnv):
     again, info = env.reset()
     assert np.array_equal(first, again)
     assert info["ram"] == {"score": 0} and ram(env)[:4] == bytes(4), "the score is back to 0"
+
+
+def test_chain_soft_resets_later_episodes(testcore_path: Path, tmp_path: Path):
+    """Under ``later_episodes="chain"`` an unseeded reset after the first is the core's soft
+    reset: the test core's keeps its RAM (the score) and starts the frame number over. The
+    first reset and seeded ones start from the load state, so a seed still replays."""
+
+    def episode(env: RetroEnv, seed: int | None) -> tuple[int, int, int]:
+        obs, info = env.reset(seed=seed)
+        start = (info["ram"]["score"], frame_number(obs), info["episode_frame"])
+        for _ in range(3):
+            env.step(act(shot=1))
+        return start
+
+    with retro_env(testcore_path, tmp_path, later_episodes="chain") as env:
+        assert env.later_episodes == "chain"
+        assert episode(env, None) == (0, 2, 2), "the first reset loads (script + 1 frame)"
+        assert episode(env, None) == (3, 2, 2), "chained: the score carries on"
+        assert episode(env, None) == (6, 2, 2)
+        assert episode(env, 5) == (0, 2, 2), "a seeded reset loads"
+        assert episode(env, None) == (3, 2, 2)
+        assert episode(env, None) == (6, 2, 2)
+        # options["state"] replaces the soft reset too.
+        info = env.reset()[1]
+        state = env.save_state()
+        assert env.reset(options={"state": state})[1]["ram"]["score"] == info["ram"]["score"]
+    with retro_env(testcore_path, tmp_path, later_episodes="reload") as env:
+        assert [episode(env, None) for _ in range(3)] == [(0, 2, 2)] * 3
+
+
+def test_chain_needs_a_scripted_reset(testcore_path: Path, tmp_path: Path):
+    sha1 = hashlib.sha1(b"state").hexdigest()
+    text = f"""
+core = "gth_testcore"
+settle_frames = 0
+orientation = 0
+content = {{ file = "none.gthc", size = 0, sha1 = "{"0" * 40}", crc32 = "00000000" }}
+buttons = {{ a = "shot" }}
+reset = {{ state = {{ file = "s.state", sha1 = "{sha1}" }} }}
+episode = {{ terminate = "0" }}
+"""
+    game = _native.GameConfig.parse(text, "test config")
+    with pytest.raises(ValueError, match="chain soft-resets the core"):
+        make(testcore_path, tmp_path, game, later_episodes="chain", reset_state=b"state")
 
 
 def test_savestate_round_trip_reproduces_frames_and_ram(env: RetroEnv):

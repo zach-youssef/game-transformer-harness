@@ -227,6 +227,7 @@ def test_recordings_keep_the_lock_entry_of_a_pinned_build(
         "sticky_prob": 0.0,
         "max_episode_frames": None,
         "noop_max": 0,
+        "later_episodes": "reload",
         "maxpool": False,
         "grayscale": False,
         "reset_state": None,

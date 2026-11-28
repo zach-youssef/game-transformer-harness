@@ -55,6 +55,7 @@ def main() -> None:
         sticky_prob=0.0,
         max_episode_frames=None,
         noop_max=0,
+        later_episodes="reload",
         maxpool=False,
         grayscale=False,
         core_path=core_path,

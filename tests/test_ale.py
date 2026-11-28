@@ -93,6 +93,7 @@ def make(
         sticky_prob=sticky_prob,
         max_episode_frames=max_episode_frames,
         noop_max=0,
+        later_episodes="reload",
         maxpool=False,
         grayscale=False,
         core_path=core_path,

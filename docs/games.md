@@ -274,7 +274,9 @@ may share a slot, which then presses both.
 ### Reset
 
 The core first goes back to its state right after loading (docs/libretro.md, "Host"), then
-one of:
+one of the two below. (An env made with `later_episodes = "chain"` starts its later episodes
+with the core's own soft reset instead, where the last episode ended, then the script; it
+refuses a savestate reset: docs/evaluation.md, `start.later_episodes`.)
 
 ```toml
 [reset]

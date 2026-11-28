@@ -435,6 +435,7 @@ def _play(task: dict[str, Any]) -> dict[str, Any]:
         sticky_prob=protocol.sticky_prob,
         max_episode_frames=protocol.max_episode_frames,
         noop_max=protocol.start.noop_max,
+        later_episodes="reload",
         rom_dir=task["rom_dir"],
         core_path=task["core_path"],
         games_dir=games_dir,

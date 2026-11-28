@@ -132,6 +132,7 @@ def search(args: argparse.Namespace) -> dict[str, Any]:
         sticky_prob=0.0,
         max_episode_frames=None,
         noop_max=0,
+        later_episodes="reload",
         maxpool=False,
         grayscale=False,
         rom_dir=args.rom_dir,

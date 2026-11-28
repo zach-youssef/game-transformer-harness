@@ -37,6 +37,9 @@ INTERPOLATIONS = ("area", "bilinear", "bicubic")
 """The ``interpolation`` values the env (and the shard exporter) resize frames with."""
 ORIENTATIONS = (0, 90, 270)
 """Clockwise rotations a game config, a shard export or a protocol can ask for."""
+LATER_EPISODES = ("reload", "chain")
+"""How the env's episodes after the first start (``later_episodes``); a protocol's
+``start.later_episodes`` takes the same values."""
 
 _LIBRARY_SUFFIX = {"win32": ".dll", "darwin": ".dylib"}.get(sys.platform, ".so")
 
@@ -91,6 +94,15 @@ class RetroEnv(gym.Env[Observation, Action]):
       state load (no-ops and the first observation's frames included, the script's not). The
       step that reaches the cap is shortened to end on it exactly. None: no cap (for tools
       and captures; evaluations always set one).
+    - Later episodes: with ``later_episodes="reload"`` every reset starts from the same state
+      (the load state and the reset script, or the reset savestate). With ``"chain"``, a reset
+      without a seed after the env's first is the core's own soft reset (`retro_reset`) from
+      wherever the last episode ended, then the reset script: what ALE v5's environments do,
+      whose ``reset()`` runs ALE's ``reset_game()`` alone, so an episode can start from a
+      state the previous one left (docs/cores.md, "ALE parity"). The first reset and a seeded
+      one start from the load state, as ALE v5's seeded ``reset`` reloads the ROM, so
+      ``reset(seed=s)`` and the same actions still replay the same episodes. Chain needs a
+      game reset by script (a savestate start is a reload).
 
     ``info["episode_frame"]`` counts the frames run since the last reset, including the
     reset's own (script, no-ops and first observation). It is counted here rather than read from the
@@ -113,6 +125,8 @@ class RetroEnv(gym.Env[Observation, Action]):
         sticky_prob: the sticky-action probability, in [0, 1); 0 turns them off.
         max_episode_frames: the episode cap in emulated frames (>= 1), or None for none.
         noop_max: the most no-op frames an episode starts with (>= 0); 0 turns them off.
+        later_episodes: "reload" or "chain" (above): whether a reset without a seed starts
+            from the game's reset or soft-resets from where the last episode ended.
         maxpool: whether each observation is the per-channel maximum of the step's last two
             frames (DQN's, which keeps sprites drawn every other frame visible); settable at
             runtime. At ``frameskip`` 1 the second frame is the previous step's, as in Mnih
@@ -144,6 +158,7 @@ class RetroEnv(gym.Env[Observation, Action]):
         sticky_prob: float,
         max_episode_frames: int | None,
         noop_max: int,
+        later_episodes: str,
         maxpool: bool,
         grayscale: bool,
         interpolation: str = "area",
@@ -177,6 +192,13 @@ class RetroEnv(gym.Env[Observation, Action]):
             raise ValueError(f"reset_state: the game {needs} a reset savestate")
         if reset_state is not None:
             config.check_reset_state(reset_state)
+        if later_episodes not in LATER_EPISODES:
+            raise ValueError(f'later_episodes must be "reload" or "chain", not {later_episodes!r}')
+        if later_episodes == "chain" and reset_state is not None:
+            raise ValueError(
+                "later_episodes: chain soft-resets the core, and this game starts from a reset"
+                " savestate, which only a reload reaches"
+            )
         # A built-in reward, also inside functools.partial, is found by identity (so an
         # unhashable callable works); any other wrapper skips this check.
         base = reward
@@ -189,6 +211,9 @@ class RetroEnv(gym.Env[Observation, Action]):
         self._sticky_prob = float(sticky_prob)
         self._grayscale = bool(grayscale)
         self._noop_max = int(noop_max)
+        self._later_episodes = later_episodes
+        self._started = False
+        """Whether an episode has started, so a chained reset has one to continue from."""
         self._max_episode_frames = None if max_episode_frames is None else int(max_episode_frames)
         self.frameskip = frameskip
         self._config = config
@@ -264,6 +289,7 @@ class RetroEnv(gym.Env[Observation, Action]):
         sticky_prob: float,
         max_episode_frames: int | None,
         noop_max: int,
+        later_episodes: str,
         maxpool: bool,
         grayscale: bool,
         rom_dir: str | os.PathLike[str] | None = None,
@@ -308,6 +334,7 @@ class RetroEnv(gym.Env[Observation, Action]):
             sticky_prob=sticky_prob,
             max_episode_frames=max_episode_frames,
             noop_max=noop_max,
+            later_episodes=later_episodes,
             maxpool=maxpool,
             grayscale=grayscale,
             interpolation=interpolation,
@@ -368,6 +395,11 @@ class RetroEnv(gym.Env[Observation, Action]):
         return self._noop_max
 
     @property
+    def later_episodes(self) -> str:
+        """How episodes after the first start: "reload" or "chain"."""
+        return self._later_episodes
+
+    @property
     def resets_to_load_state(self) -> bool:
         """Whether `reset` starts from the state right after loading (True) or from the core's
         own soft reset, which may keep RAM between episodes (False)."""
@@ -378,8 +410,9 @@ class RetroEnv(gym.Env[Observation, Action]):
     ) -> tuple[Observation, dict[str, Any]]:
         """Starts an episode: the game's reset savestate, or the state right after loading
         followed by the game's reset script; ``options["state"]`` (bytes from `save_state`)
-        replaces both. Then runs the no-op start (1..noop_max frames with no button held, none
-        when noop_max is 0) and
+        replaces both. Under ``later_episodes="chain"`` a reset without a seed or a state,
+        after the first, is the core's soft reset and the script instead. Then runs the no-op
+        start (1..noop_max frames with no button held, none when noop_max is 0) and
         `frameskip` frames with no button held, and returns the last.
 
         Those frames give the first observation a real frame (a core draws only while it runs,
@@ -399,9 +432,20 @@ class RetroEnv(gym.Env[Observation, Action]):
         self._seeded = True
         self._finish_recording()
         self._episode_frames = 0
-        state = (options or {}).get("state", self._reset_state)
-        if state is None:
-            self._core.reset()
+        options = options or {}
+        state = options.get("state", self._reset_state)
+        chain = (
+            self._later_episodes == "chain"
+            and self._started
+            and seed is None
+            and "state" not in options
+        )
+        self._started = True
+        if chain or state is None:
+            if chain:
+                self._core.soft_reset()
+            else:
+                self._core.reset()
             self._core.run_inputs(self._reset_inputs)
             self._episode_frames += sum(frames for _, frames in self._reset_inputs)
         else:
