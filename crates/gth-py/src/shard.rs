@@ -10,14 +10,15 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 
-use crate::core::{filter as interpolation_filter, rotation};
+use crate::core::{color, filter as interpolation_filter, rotation};
 use crate::errors;
 use crate::frame::{frames_buffer, into_frames_array};
 
 /// Replays the recording in `recording_dir` on its own core (one per process; the arguments
 /// before `out_path` are `_native.Replayer`'s) and writes its shard to `out_path`, replacing
 /// any file there. `frameskip` takes an observation every that many frames, or at the
-/// recording's own step ends when `None`; `filter` is `"all"` or `"playing"`; `sprites` writes
+/// recording's own step ends when `None`; `maxpool` makes each observation the maximum of
+/// its step's last two frames and `grayscale` gives one gray channel; `filter` is `"all"` or `"playing"`; `sprites` writes
 /// every frame's sprite list, raising `ConfigError` with the reason when the game or core has
 /// none. Returns the export's counts.
 /// Raises `DesyncError` if the replay desyncs, leaving no shard.
@@ -35,6 +36,8 @@ fn export_shard<'py>(
     crop: Option<(usize, usize, usize, usize)>,
     rotate: u32,
     interpolation: &str,
+    maxpool: bool,
+    grayscale: bool,
     frameskip: Option<u32>,
     filter: &str,
     chunk_samples: u32,
@@ -65,6 +68,8 @@ fn export_shard<'py>(
         }),
         rotation: rotation(rotate)?,
         interpolation: interpolation_filter(interpolation)?,
+        maxpool,
+        color: color(grayscale),
         steps,
         chunk_samples,
         sprites,
@@ -93,7 +98,8 @@ fn export_shard<'py>(
 }
 
 /// Decodes a frame chunk of the shard at `path` (named in errors) into a new
-/// `uint8[samples, height, width, 3]` array. Raises `HarnessError` if the chunk is corrupt or
+/// `uint8[samples, height, width, channels]` array (`channels` from the shard's meta: 3 for
+/// RGB, 1 for gray). Raises `HarnessError` if the chunk is corrupt or
 /// holds another number of bytes.
 #[pyfunction]
 fn decode_frames<'py>(
@@ -102,20 +108,21 @@ fn decode_frames<'py>(
     samples: usize,
     height: usize,
     width: usize,
+    channels: usize,
     path: PathBuf,
 ) -> errors::Result<Bound<'py, PyArray4<u8>>> {
+    if channels != 1 && channels != gth_frame::RGB8_BYTES_PER_PIXEL {
+        return Err(
+            PyValueError::new_err(format!("channels must be 1 or 3, not {channels}")).into(),
+        );
+    }
     let buffer = py.detach(|| {
-        let mut buffer = frames_buffer(samples, height, width, gth_frame::RGB8_BYTES_PER_PIXEL)?;
+        let mut buffer = frames_buffer(samples, height, width, channels)?;
         gth_record::decode_frames(data, &mut buffer, &path)?;
         Ok::<_, errors::Error>(buffer)
     })?;
     Ok(into_frames_array(
-        py,
-        buffer,
-        samples,
-        height,
-        width,
-        gth_frame::RGB8_BYTES_PER_PIXEL,
+        py, buffer, samples, height, width, channels,
     ))
 }
 

@@ -543,6 +543,8 @@ fn a_recording_exports_to_a_shard_of_its_steps() {
         }),
         rotation: gth_frame::Rotation::Cw90,
         interpolation: gth_frame::Filter::Area,
+        maxpool: false,
+        color: gth_frame::Color::Rgb,
         steps,
         chunk_samples: NonZeroU32::new(16).unwrap(),
         sprites: false,
@@ -709,6 +711,87 @@ fn a_recording_exports_to_a_shard_of_its_steps() {
     assert!(decode(&members8, 2, 29) == expected8);
     let meta8: gth_record::ShardMeta = serde_json::from_slice(&members8["meta.json"]).unwrap();
     assert_eq!(meta8.frameskip, Some(8));
+    assert_eq!(
+        (meta8.maxpool, meta8.grayscale, meta8.channels),
+        (false, false, 3)
+    );
+
+    // Max-pooled gray: each observation is the gray of the per-channel maximum of its step's
+    // last two frames, one byte a pixel, as a core keeping its previous frame renders it.
+    let pooled = dir.0.join("pooled.npz");
+    let mut replayer = replay(&path, &content(&dir.0)).unwrap();
+    let gray_options = gth_record::ShardOptions {
+        maxpool: true,
+        color: gth_frame::Color::Gray,
+        ..options(gth_record::Steps::Recorded)
+    };
+    let summary = gth_record::export(
+        &mut replayer,
+        &gray_options,
+        &mut gth_record::KeepAll,
+        &pooled,
+    )
+    .unwrap();
+    drop(replayer);
+    assert_eq!(summary.samples, 60);
+    let members_pooled = shard_members(&pooled);
+    let meta_pooled: gth_record::ShardMeta =
+        serde_json::from_slice(&members_pooled["meta.json"]).unwrap();
+    assert_eq!(
+        (
+            meta_pooled.maxpool,
+            meta_pooled.grayscale,
+            meta_pooled.channels
+        ),
+        (true, true, 1)
+    );
+    let mut gray = gth_frame::Pipeline::new(
+        60,
+        80,
+        gray_options.crop,
+        gth_frame::Rotation::Cw90,
+        gth_frame::Filter::Area,
+        gth_frame::Color::Gray,
+    )
+    .unwrap();
+    assert_eq!(gray.out_len(), 60 * 80);
+    let mut core = load(&game, &content(&dir.0));
+    core.set_keep_previous_frame(true);
+    let mut replayer = Replayer::new(Recording::open(&path).unwrap(), core).unwrap();
+    let (mut pooled_frames, mut unpooled) = (Vec::new(), 0);
+    while replayer.step().unwrap().is_some() {
+        let (mut frame, mut last) = (vec![0; gray.out_len()], vec![0; gray.out_len()]);
+        replayer
+            .core()
+            .with_frames(|f, previous| {
+                gray.render(f, &mut last)?;
+                gray.render_max(f, previous.unwrap(), &mut frame)
+            })
+            .unwrap();
+        unpooled += usize::from(frame == last);
+        pooled_frames.push(frame);
+    }
+    drop(replayer);
+    let expected_pooled: Vec<u8> = observed
+        .iter()
+        .flat_map(|&j| pooled_frames[j].clone())
+        .collect();
+    let mut decoded = Vec::new();
+    for chunk in 0..meta_pooled.frame_chunks {
+        let n = (60 - chunk as usize * 16).min(16);
+        let mut out = vec![0; n * gray.out_len()];
+        let data = &members_pooled[&gth_record::chunk_name(chunk)];
+        gth_record::decode_frames(data, &mut out, &pooled).unwrap();
+        decoded.extend(out);
+    }
+    assert!(
+        decoded == expected_pooled,
+        "decoded pooled frames differ from the replay's"
+    );
+    assert!(
+        unpooled < pooled_frames.len(),
+        "pooling never changed an observation of the test core"
+    );
 
     // Every 4 frames is the recorded rate here. The playing filter keeps the observation
     // before the first input through game over: the first terminate after one that didn't.
@@ -796,6 +879,8 @@ fn an_export_that_fails_leaves_no_shard() {
         }),
         rotation: gth_frame::Rotation::None,
         interpolation: gth_frame::Filter::Area,
+        maxpool: false,
+        color: gth_frame::Color::Rgb,
         steps: gth_record::Steps::Every(NonZeroU32::new(1).unwrap()),
         chunk_samples: NonZeroU32::new(8).unwrap(),
         sprites: false,
@@ -896,6 +981,8 @@ fn sprite_options(steps: gth_record::Steps) -> gth_record::ShardOptions {
         crop: None,
         rotation: gth_frame::Rotation::None,
         interpolation: gth_frame::Filter::Area,
+        maxpool: false,
+        color: gth_frame::Color::Rgb,
         steps,
         chunk_samples: NonZeroU32::new(64).unwrap(),
         sprites: true,

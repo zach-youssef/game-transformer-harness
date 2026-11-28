@@ -73,7 +73,8 @@ class Windows:
 
     A window (`window`, and each row of a `batches` batch) holds:
 
-    - ``frame``: ``uint8[length, height, width, 3]``, the observations;
+    - ``frame``: ``uint8[length, height, width, channels]``, the observations (3 channels,
+      or 1 for gray shards);
     - the actions after them: ``action`` (``int64[length]``, ``direction * 16 + buttons``)
       with ``action_format="flat"``, or ``direction`` (``uint8[length]``) and ``buttons``
       (``uint8[length, 4]``, one 0/1 per slot) with ``"dict"``: `RetroEnv`'s action formats;
@@ -123,9 +124,12 @@ class Windows:
         try:
             for path in paths:
                 self._shards.append(Shard(path))
-            sizes = {shard.obs_size for shard in self._shards}
-            if len(sizes) > 1:
-                raise HarnessError(f"the shards have different observation sizes: {sorted(sizes)}")
+            shapes = {shard.obs_shape for shard in self._shards}
+            if len(shapes) > 1:
+                raise HarnessError(
+                    f"the shards have different observation shapes (height, width, channels):"
+                    f" {sorted(shapes)}"
+                )
             span = max((self._span(shard) for shard in self._shards), default=1)
             if cache_chunks < span:
                 raise ValueError(

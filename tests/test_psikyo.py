@@ -127,6 +127,8 @@ def test_sprite_labels_are_the_frame_s_own(game_id, rom, core, tmp_path):
         filter="all",
         chunk_samples=256,
         interpolation="area",
+        maxpool=False,
+        grayscale=False,
         sprites=True,
     )
     (result,) = export_shards(
@@ -202,6 +204,8 @@ def test_captures_export_with_sprite_labels(game_id, rom, core, tmp_path):
         filter="all",
         chunk_samples=256,
         interpolation="area",
+        maxpool=False,
+        grayscale=False,
         sprites=True,
     )
     results = export_shards(

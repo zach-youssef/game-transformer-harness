@@ -24,6 +24,7 @@ from gtharness.shards import (
     batches,
     export_shards,
 )
+from gtharness.train import Windows
 
 FRAMESKIP = 3
 STEPS = 150
@@ -38,6 +39,8 @@ def options(**changes) -> ShardOptions:
         "filter": "all",
         "chunk_samples": 32,
         "interpolation": "area",
+        "maxpool": False,
+        "grayscale": False,
         "sprites": False,
     } | changes
     return ShardOptions(**fields)
@@ -50,22 +53,25 @@ def play(
     episodes: int,
     idle: int,
     games_dir: Path = GAMES_DIR,
+    pooled_gray: bool = False,
+    frameskip: int = FRAMESKIP,
 ) -> tuple[list[Path], list[list[np.ndarray]], list[list[tuple[int, int]]]]:
     """Records ``episodes`` episodes of ``idle`` neutral steps, then random flat actions.
-    Returns the recordings, each episode's observations (reset's first) and its actions as
-    ``(direction, buttons)`` (neutral for the reset)."""
+    Returns the recordings, each episode's observations (reset's first; max-pooled and gray
+    with ``pooled_gray``) and its actions as ``(direction, buttons)`` (neutral for the
+    reset)."""
     env = RetroEnv.from_game(
         "testcore",
         testcore_data,
-        frameskip=FRAMESKIP,
+        frameskip=frameskip,
         obs_size=(60, 80),
         action_format="flat",
         reward=score_delta,
         sticky_prob=0.0,
         max_episode_frames=None,
         noop_max=0,
-        maxpool=False,
-        grayscale=False,
+        maxpool=pooled_gray,
+        grayscale=pooled_gray,
         core_path=testcore_path,
         games_dir=games_dir,
         record=Record(
@@ -258,6 +264,8 @@ def test_a_worker_that_dies_fails_only_its_recording(
         ({"chunk_samples": 0}, "chunk_samples"),
         ({"interpolation": "cubic"}, "interpolation"),
         ({"sprites": "yes"}, "sprites"),
+        ({"maxpool": 1}, "maxpool"),
+        ({"grayscale": None}, "grayscale"),
     ],
 )
 def test_options_are_checked_before_exporting(change: dict, message: str):
@@ -297,6 +305,10 @@ def test_gth_export_shards(
         "64",
         "--sprites",
         "no",
+        "--maxpool",
+        "no",
+        "--grayscale",
+        "no",
         "--jobs",
         "1",
         "--core-path",
@@ -307,6 +319,19 @@ def test_gth_export_shards(
     with Shard(out / paths[0].name.replace(".gthrec", ".npz")) as shard:
         assert shard.obs_size == (30, 40) and shard.meta["orientation"] == 0
         assert shard.frames(0).shape == (64, 30, 40, 3)
+        assert (shard.meta["maxpool"], shard.meta["grayscale"], shard.channels) == (
+            False,
+            False,
+            3,
+        )
+    gray = args.copy()
+    gray[gray.index("--out") + 1] = str(tmp_path / "gray")
+    gray[gray.index("--maxpool") + 1] = gray[gray.index("--grayscale") + 1] = "yes"
+    assert main(gray) == 0
+    with Shard(tmp_path / "gray" / paths[0].name.replace(".gthrec", ".npz")) as shard:
+        assert shard.frames(0).shape == (64, 30, 40, 1)
+        assert (shard.meta["maxpool"], shard.meta["grayscale"]) == (True, True)
+    capsys.readouterr()
     assert main(args) == 2
     assert "already exist" in capsys.readouterr().err
     bad_crop = args.copy()
@@ -386,6 +411,115 @@ def test_a_shard_holds_every_frame_s_sprite_list(
             core_path=testcore_path,
         )
     assert not (tmp_path / "none").exists()
+
+
+def test_a_pooled_gray_shard_holds_the_env_s_pooled_gray_frames(
+    testcore_path: Path, testcore_data: Path, tmp_path: Path
+):
+    paths, observations, _ = play(
+        testcore_path, testcore_data, tmp_path / "rec", 1, 0, pooled_gray=True
+    )
+    assert observations[0][0].shape == (60, 80, 1)
+    (gray,) = export_shards(
+        paths,
+        tmp_path / "gray",
+        testcore_data,
+        options(maxpool=True, grayscale=True),
+        jobs=1,
+        core_path=testcore_path,
+    )
+    (rgb,) = export_shards(
+        paths, tmp_path / "rgb", testcore_data, options(), jobs=1, core_path=testcore_path
+    )
+    assert gray.error is None and rgb.error is None
+    with Shard(gray.shard) as shard:
+        assert shard.meta["shard_version"] == 3
+        assert (shard.meta["maxpool"], shard.meta["grayscale"], shard.meta["channels"]) == (
+            True,
+            True,
+            1,
+        )
+        assert shard.obs_shape == (60, 80, 1)
+        frames = np.concatenate([shard.frames(c) for c in range(shard.frame_chunks)])
+        np.testing.assert_array_equal(frames, np.stack(observations[0][:STEPS]))
+    (batch,) = batches([gray.shard], STEPS, rng=None, buffer_chunks=5)
+    assert batch["frame"].shape == (STEPS, 60, 80, 1)
+    # Shards of one observation shape only: RGB and gray don't mix.
+    with pytest.raises(HarnessError, match="different observation shapes"):
+        next(batches([gray.shard, rgb.shard], 8, rng=None, buffer_chunks=1))
+    with pytest.raises(HarnessError, match="different observation shapes"):
+        Windows(
+            [gray.shard, rgb.shard],
+            length=4,
+            stride=1,
+            reward=score_delta,
+            action_format="flat",
+            cache_chunks=2,
+        )
+
+
+def test_at_one_frame_a_step_only_the_first_pooled_sample_differs_from_the_env(
+    testcore_path: Path, testcore_data: Path, tmp_path: Path
+):
+    # The replay starts from a savestate, which holds no frame: its first sample pools with
+    # black, where the env pooled with the reset's last frame (docs/recording-format.md).
+    paths, observations, _ = play(
+        testcore_path, testcore_data, tmp_path / "rec", 1, 0, pooled_gray=True, frameskip=1
+    )
+    (result,) = export_shards(
+        paths,
+        tmp_path / "gray",
+        testcore_data,
+        options(maxpool=True, grayscale=True, chunk_samples=1000),
+        jobs=1,
+        core_path=testcore_path,
+    )
+    assert result.error is None
+    with Shard(result.shard) as shard:
+        frames = shard.frames(0)
+    expected = np.stack(observations[0][:STEPS])
+    np.testing.assert_array_equal(frames[1:], expected[1:])
+    # Black pools to the last frame alone, never brighter than the env's maximum with more.
+    assert (frames[0] <= expected[0]).all()
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_an_old_shard_reads_as_rgb(
+    testcore_path: Path, testcore_data: Path, tmp_path: Path, version: int
+):
+    paths, *_ = play(testcore_path, testcore_data, tmp_path / "rec", 1, 0)
+    (result,) = export_shards(
+        paths, tmp_path / "shards", testcore_data, options(), jobs=1, core_path=testcore_path
+    )
+    # Versions 1 and 2's meta.json: no maxpool, grayscale or channels; version 1 has no
+    # sprite fields either.
+    old = tmp_path / "old.npz"
+    with zipfile.ZipFile(result.shard) as source, zipfile.ZipFile(old, "w") as target:
+        for item in source.infolist():
+            data = source.read(item)
+            if item.filename == "meta.json":
+                meta = json.loads(data)
+                meta["shard_version"] = version
+                assert (meta.pop("maxpool"), meta.pop("grayscale"), meta.pop("channels")) == (
+                    False,
+                    False,
+                    3,
+                )
+                if version == 1:
+                    for key in (
+                        "sprite_hw",
+                        "sprite_screen",
+                        "sprite_chunk_frames",
+                        "sprite_chunks",
+                    ):
+                        assert meta.pop(key) is None
+                data = json.dumps(meta).encode()
+            target.writestr(item, data)
+    with Shard(old) as shard, Shard(result.shard) as new:
+        assert shard.channels == 3 and shard.obs_shape == (60, 80, 3)
+        np.testing.assert_array_equal(shard.frames(0), new.frames(0))
+    (batch,) = batches([old, result.shard], 2 * STEPS, rng=None, buffer_chunks=10)
+    assert batch["frame"].shape == (2 * STEPS, 60, 80, 3)
 
 
 def test_a_version_1_shard_reads_without_sprites(

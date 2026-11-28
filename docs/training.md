@@ -26,7 +26,7 @@ Each window (`windows.window(i)`, or one row of a batch) holds:
 
 | Key | Type | Meaning |
 |---|---|---|
-| `frame` | `uint8[length, H, W, 3]` | The observations. |
+| `frame` | `uint8[length, H, W, C]` | The observations: `C` is the shards' `channels` (3, or 1 for gray). |
 | `action` (flat) | `int64[length]` | The action after each, `direction * 16 + buttons` (docs/actions.md). |
 | `direction`, `buttons` (dict) | `uint8[length]`, `uint8[length, 4]` | The same as `RetroEnv`'s dict action: buttons one 0/1 per slot. |
 | `reward` | `float64[length]` | Each sample's reward (below). |
@@ -98,7 +98,7 @@ cache share: writing to one (an in-place normalisation, say) raises `ValueError`
 silently changing every later window over those samples. Copy an array to change it. A
 batch's arrays are new, stacked copies, and writable.
 
-All shards must have the same observation size (`HarnessError` otherwise). `Windows` holds
+All shards must have the same observation size and `channels` (`HarnessError` otherwise). `Windows` holds
 the shards open: close it, or use it as a context manager.
 
 ## PyTorch

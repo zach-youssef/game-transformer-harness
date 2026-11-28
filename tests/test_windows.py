@@ -78,6 +78,8 @@ def shard(testcore_path: Path, testcore_data: Path, tmp_path: Path, zstd_raw_fra
         filter="all",
         chunk_samples=CHUNK,
         interpolation="area",
+        maxpool=False,
+        grayscale=False,
         sprites=False,
     )
     (result,) = export_shards(

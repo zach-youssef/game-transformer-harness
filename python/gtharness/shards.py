@@ -32,10 +32,12 @@ from gtharness import _native
 from gtharness.env import INTERPOLATIONS, ORIENTATIONS, core_library, find_content
 from gtharness.errors import ConfigError, HarnessError
 
-SHARD_VERSION = 2
+SHARD_VERSION = 3
 """The shard format version the harness writes (`gth_record::SHARD_VERSION`)."""
-READ_VERSIONS = (1, 2)
-"""The shard versions `Shard` reads: version 1 is version 2 without sprite lists."""
+READ_VERSIONS = (1, 2, 3)
+"""The shard versions `Shard` reads: version 2 is version 3 with RGB frames and no max-pool
+(no ``maxpool``, ``grayscale`` or ``channels`` in its meta), and version 1 is version 2
+without sprite lists."""
 
 SPRITE_DTYPE = np.dtype(
     [
@@ -82,6 +84,9 @@ class ShardOptions:
         chunk_samples: samples per frame chunk: larger compresses better, smaller decodes less
             to reach one sample.
         interpolation: "area", "bilinear" or "bicubic".
+        maxpool: whether each observation is the per-channel maximum of its step's last two
+            frames, as `RetroEnv`'s ``maxpool``.
+        grayscale: whether observations are one gray channel, as `RetroEnv`'s ``grayscale``.
         sprites: whether to write every frame's sprite list (docs/recording-format.md,
             "Sprite labels"); the game must have a ``sprite_hw`` and the core must give it.
 
@@ -96,6 +101,8 @@ class ShardOptions:
     filter: SampleFilter
     chunk_samples: int
     interpolation: str
+    maxpool: bool
+    grayscale: bool
     sprites: bool
 
     def __post_init__(self) -> None:
@@ -128,8 +135,9 @@ class ShardOptions:
         if self.filter not in _FILTERS:
             raise ConfigError(f"filter must be one of {_FILTERS}, not {self.filter!r}")
         count("chunk_samples", self.chunk_samples)
-        if not isinstance(self.sprites, bool):
-            raise ConfigError(f"sprites must be True or False, not {self.sprites!r}")
+        for name in ("maxpool", "grayscale", "sprites"):
+            if not isinstance(getattr(self, name), bool):
+                raise ConfigError(f"{name} must be True or False, not {getattr(self, name)!r}")
         if self.interpolation not in INTERPOLATIONS:
             raise ConfigError(
                 f"interpolation must be one of {INTERPOLATIONS}, not {self.interpolation!r}"
@@ -237,6 +245,8 @@ def _task(
         "crop": config.crop if options.crop == "game" else options.crop,
         "rotate": config.orientation if options.orientation == "game" else options.orientation,
         "interpolation": options.interpolation,
+        "maxpool": options.maxpool,
+        "grayscale": options.grayscale,
         "frameskip": None if options.frameskip == "recorded" else options.frameskip,
         "filter": options.filter,
         "chunk_samples": options.chunk_samples,
@@ -288,6 +298,16 @@ class Shard:
         return int(height), int(width)
 
     @property
+    def channels(self) -> int:
+        """Bytes per observation pixel: 3 (RGB) or 1 (gray); 3 before shard version 3."""
+        return int(self.meta.get("channels", 3))
+
+    @property
+    def obs_shape(self) -> tuple[int, int, int]:
+        """``(height, width, channels)`` of one observation."""
+        return (*self.obs_size, self.channels)
+
+    @property
     def frame_chunks(self) -> int:
         return int(self.meta["frame_chunks"])
 
@@ -299,10 +319,10 @@ class Shard:
         return range(chunk * step, min((chunk + 1) * step, len(self)))
 
     def frames(self, chunk: int) -> npt.NDArray[np.uint8]:
-        """Frame chunk ``chunk`` as ``uint8[n, height, width, 3]``, decoded."""
+        """Frame chunk ``chunk`` as ``uint8[n, height, width, channels]``, decoded."""
         samples = self.chunk_range(chunk)
         data = self._npz[f"frames_{chunk:05}.zst"]
-        return _native.decode_frames(data, len(samples), *self.obs_size, self.path)
+        return _native.decode_frames(data, len(samples), *self.obs_shape, self.path)
 
     def label(self, name: str) -> np.ndarray:
         """Per-sample array ``name``: direction, buttons, ram (``int64[n, len(ram_names)]``,
@@ -434,22 +454,25 @@ def batches(
     buffer_chunks: int,
 ) -> Iterator[dict[str, np.ndarray]]:
     """Every sample of the shards at ``paths`` once, as batches of ``batch_size`` (the last
-    may be smaller): ``frame`` (``uint8[b, height, width, 3]``), its label ``direction`` and
+    may be smaller): ``frame`` (``uint8[b, height, width, channels]``), its label ``direction`` and
     ``buttons``, ``episode_frame``, ``segment``, ``confidence``, and ``shard`` and ``sample``,
     which locate each sample (an index into ``paths`` and into that shard). RAM isn't in a
     batch; a reward reads it with `Shard.ram` at those indices.
 
     With ``rng``, frame chunks are visited in random order and samples are shuffled within
     ``buffer_chunks`` decoded chunks at a time (more mixes better and holds more frames in
-    memory); without, samples come in order. Every shard must have the same observation size.
+    memory); without, samples come in order. Every shard must have the same observation shape.
     """
     if batch_size < 1 or buffer_chunks < 1:
         raise ValueError("batch_size and buffer_chunks must be at least 1")
     shards = [Shard(path) for path in paths]
     try:
-        sizes = {shard.obs_size for shard in shards}
-        if len(sizes) > 1:
-            raise HarnessError(f"the shards have different observation sizes: {sorted(sizes)}")
+        shapes = {shard.obs_shape for shard in shards}
+        if len(shapes) > 1:
+            raise HarnessError(
+                f"the shards have different observation shapes (height, width, channels):"
+                f" {sorted(shapes)}"
+            )
         order = [(s, c) for s, shard in enumerate(shards) for c in range(shard.frame_chunks)]
         if rng is not None:
             rng.shuffle(order)
@@ -522,6 +545,15 @@ def add_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="write every frame's sprite list (needs the game's sprite_hw)",
     )
     parser.add_argument("--interpolation", choices=INTERPOLATIONS, default="area")
+    parser.add_argument(
+        "--maxpool",
+        choices=["yes", "no"],
+        required=True,
+        help="observe the per-channel maximum of each step's last two frames",
+    )
+    parser.add_argument(
+        "--grayscale", choices=["yes", "no"], required=True, help="one gray channel (BT.601)"
+    )
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1, help="default: CPU count")
     parser.add_argument(
         "--rom-dir", type=Path, help="default: GTH_ROM_DIR or rom_dir in the user config"
@@ -551,6 +583,8 @@ def _options(args: argparse.Namespace) -> ShardOptions:
         filter=args.filter,
         chunk_samples=args.chunk_samples,
         interpolation=args.interpolation,
+        maxpool=args.maxpool == "yes",
+        grayscale=args.grayscale == "yes",
         sprites=args.sprites == "yes",
     )
 

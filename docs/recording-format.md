@@ -182,7 +182,7 @@ GTH_ROM_DIR=~/roms uv run gth capture data gunbird --out runs/captures --script 
     --seed 0 --frames 36000 --frameskip 1 --license CC-BY-NC-4.0 --checks-every 60
 GTH_ROM_DIR=~/roms uv run gth export-shards data runs/captures/*.gthrec --out runs/shards \
     --obs-size 224 320 --crop none --orientation 0 --frameskip 1 --filter all \
-    --chunk-samples 256 --sprites yes
+    --chunk-samples 256 --sprites yes --maxpool no --grayscale no
 ```
 
 (and the same for `s1945`). Native size and every frame keep the sprite boxes in observation
@@ -220,7 +220,7 @@ One shard is one `.npz` file: a zip archive whose members are stored uncompresse
 
 | Member | Holds |
 |---|---|
-| `frames_00000.zst`, `frames_00001.zst`, ... | The frames, `chunk_samples` samples per member (the last holds the rest): one zstd frame (level 3) of the raw `uint8[n, H, W, 3]` pixels, RGB, row-major. `np.load` returns a member that isn't `.npy` as bytes; `_native.decode_frames` decodes it. |
+| `frames_00000.zst`, `frames_00001.zst`, ... | The frames, `chunk_samples` samples per member (the last holds the rest): one zstd frame (level 3) of the raw `uint8[n, H, W, C]` pixels (`C` is `channels`: RGB, or one gray byte), row-major. `np.load` returns a member that isn't `.npy` as bytes; `_native.decode_frames` decodes it. |
 | `direction.npy`, `buttons.npy`, `ram.npy`, `episode_frame.npy`, `segment.npy`, `confidence.npy` | The per-sample arrays (below). |
 | `frame_direction.npy`, `frame_buttons.npy`, `frame_labelled.npy` | The per-frame arrays (below). |
 | `sprite_offsets.npy`, `sprites_00000.zst`, ... | Only with sprite lists: every replayed frame's hardware sprite list (below, "Sprite labels"). |
@@ -251,7 +251,7 @@ and samples").
 
 | Field | Type | Meaning |
 |---|---|---|
-| `frame` | `uint8[H, W, 3]` | The observation at the model size, RGB (in the frame chunks). |
+| `frame` | `uint8[H, W, C]` | The observation at the model size, RGB or gray (`channels`), as `RetroEnv` with the same `maxpool` and `grayscale` observes it (in the frame chunks). |
 | `direction` | `uint8` | The action after it: 0 neutral, 1-8 clockwise from up (docs/actions.md). |
 | `buttons` | `uint8` | Bit i = slot i held (`shot`, `bomb`, `aux1`, `aux2`). |
 | `ram` | `int64[V]` | The game's RAM variables at the observation (`ram_names` names the columns), for rewards, validation and analysis only, never a policy's input; absent for video. |
@@ -274,12 +274,14 @@ work at the emulator's rate or need the presses between observations; sample i's
 
 | Field | Meaning |
 |---|---|
-| `shard_version` | `gth_record::SHARD_VERSION` (2; version 1 is version 2 without the `sprite_*` fields and members, and `Shard` reads both). |
+| `shard_version` | `gth_record::SHARD_VERSION` (3). Version 2 is version 3 without `maxpool`, `grayscale` and `channels` (RGB, not pooled); version 1 is version 2 without the `sprite_*` fields and members. `Shard` reads all three. |
 | `source_id` | The recording's directory name, or the video's id. |
 | `episode_id` | The episode's index in its source: 0 for a recording, which holds one episode. |
 | `game_id`, `fps` | From the recording. |
 | `frameskip` | Frames per sample, or `null` when the recorded steps it follows vary in length (`episode_frame` then gives the step ends). |
 | `obs_size`, `crop`, `orientation`, `interpolation` | The observation pipeline: `[height, width]`, `[x, y, width, height]` or `null`, degrees clockwise, `area`, `bilinear` or `bicubic`. |
+| `maxpool` | Whether each observation is the per-channel maximum of its step's last two frames (`RetroEnv`'s `maxpool`; at a step of one frame, the other is the previous step's last). A savestate holds no frame, so at a step of one frame the first sample pools with black where the env pooled with the reset's last frame; every later sample matches. |
+| `grayscale`, `channels` | Whether observations are BT.601 gray (`RetroEnv`'s `grayscale`), and the bytes per pixel: 1 when gray, else 3. Readers size frames by `channels`; `batches` and `Windows` refuse shards of different `(height, width, channels)`. |
 | `ram_names` | The names of `ram`'s columns (the recording's `game.toml` variables, in name order). |
 | `label_source`, `idm_model` | `replay` or `idm`, and for `idm` the model's id (`null` otherwise). |
 | `filter` | The sample filter (below). |
@@ -394,8 +396,9 @@ is whole; a desync or any error removes the partial file.
 writes `DIR/<recording>.npz` for each recording. Every choice that shapes the samples is a
 required option: `--obs-size H W`, `--crop game|none|X Y W H`, `--orientation game|0|90|270`
 (`game` takes each recording's `game.toml`), `--frameskip N|recorded`, `--filter
-all|playing`, `--chunk-samples N` and `--sprites yes|no` (above, "Sprite labels"); only `--interpolation` defaults (`area`, as
-`RetroEnv`). Content, BIOS files and the core are found as `RetroEnv.from_game` finds them.
+all|playing`, `--chunk-samples N`, `--sprites yes|no` (above, "Sprite labels"),
+`--maxpool yes|no` and `--grayscale yes|no` (as `RetroEnv`'s); only `--interpolation`
+defaults (`area`, as `RetroEnv`). Content, BIOS files and the core are found as `RetroEnv.from_game` finds them.
 A shard doesn't carry `[branch]`: to keep rewind clips (deaths) out of a training set, or
 to label them, pick the recordings by their `meta.toml` before exporting.
 Each recording exports in its own spawned process (one core per process, one process per

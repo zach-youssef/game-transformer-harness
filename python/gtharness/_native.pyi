@@ -25,13 +25,20 @@ def export_shard(
     crop: tuple[int, int, int, int] | None,
     rotate: int,
     interpolation: str,
+    maxpool: bool,
+    grayscale: bool,
     frameskip: int | None,
     filter: str,
     chunk_samples: int,
     sprites: bool,
 ) -> dict[str, Any]: ...
 def decode_frames(
-    data: bytes, samples: int, height: int, width: int, path: str | os.PathLike[str]
+    data: bytes,
+    samples: int,
+    height: int,
+    width: int,
+    channels: int,
+    path: str | os.PathLike[str],
 ) -> npt.NDArray[np.uint8]: ...
 def decode_sprites(data: bytes, records: int, path: str | os.PathLike[str]) -> bytes: ...
 

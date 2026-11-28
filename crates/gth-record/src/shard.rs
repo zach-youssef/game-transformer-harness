@@ -11,7 +11,7 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
 use gth_config::{Action, ActionSpace, Direction};
-use gth_frame::{Filter, Pipeline, Rect, Rotation};
+use gth_frame::{Color, Filter, Pipeline, Rect, Rotation};
 use gth_sprites::{Sprite, SpriteStream};
 use rawzip::ZipArchiveWriter;
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ use crate::replay::Replayer;
 use crate::{Error, Result, format_error, io_error};
 
 /// The shard format version this build writes (`meta.json`'s `shard_version`).
-pub const SHARD_VERSION: u32 = 2;
+pub const SHARD_VERSION: u32 = 3;
 
 /// zstd level of the frame chunks. Frames are written once per export and read every epoch,
 /// so decompression speed (the same at every level) matters most; level 3 keeps compression
@@ -136,6 +136,11 @@ pub struct ShardOptions {
     pub crop: Option<Rect>,
     pub rotation: Rotation,
     pub interpolation: Filter,
+    /// Whether each observation is the per-channel maximum of its step's last two frames
+    /// (`gth_core::Core::set_keep_previous_frame`).
+    pub maxpool: bool,
+    /// RGB or one gray channel per pixel.
+    pub color: Color,
     pub steps: Steps,
     /// Samples per zstd frame chunk: larger chunks compress better, smaller ones let a reader
     /// decode less to reach one sample.
@@ -169,6 +174,16 @@ pub struct ShardMeta {
     pub orientation: u32,
     /// `area`, `bilinear` or `bicubic`.
     pub interpolation: String,
+    /// Whether each observation is the maximum of its step's last two frames; `false` before
+    /// version 3.
+    #[serde(default)]
+    pub maxpool: bool,
+    /// Whether observations are BT.601 gray; `false` before version 3.
+    #[serde(default)]
+    pub grayscale: bool,
+    /// Bytes per observation pixel: 3 (RGB), or 1 (`grayscale`); 3 before version 3.
+    #[serde(default = "rgb_channels")]
+    pub channels: u32,
     /// The names of `ram.npy`'s columns.
     pub ram_names: Vec<String>,
     /// `replay` (from a recording) or `idm` (labelled by an inverse dynamics model).
@@ -203,6 +218,10 @@ pub struct ShardMeta {
     pub recording: Option<Meta>,
     /// The exporting harness build.
     pub harness: BTreeMap<String, String>,
+}
+
+fn rgb_channels() -> u32 {
+    Color::Rgb.channels() as u32
 }
 
 /// What an export did.
@@ -274,9 +293,10 @@ fn write_shard(
         options.crop,
         options.rotation,
         options.interpolation,
-        gth_frame::Color::Rgb,
+        options.color,
     )
     .map_err(|error| mismatch(replayer, error.to_string()))?;
+    replayer.core_mut().set_keep_previous_frame(options.maxpool);
     let frame_len = pipeline.out_len();
     let chunk_samples = options.chunk_samples.get() as usize;
     let chunk_len = frame_len
@@ -393,7 +413,10 @@ fn write_shard(
         chunk.resize(at + frame_len, 0);
         replayer
             .core()
-            .with_frame(|frame| pipeline.render(frame, &mut chunk[at..]))
+            .with_frames(|frame, previous| match previous {
+                Some(previous) => pipeline.render_max(frame, previous, &mut chunk[at..]),
+                None => pipeline.render(frame, &mut chunk[at..]),
+            })
             .map_err(|error| mismatch(replayer, error.to_string()))?;
         let ram = replayer.read_ram_vars()?;
         pending = Some(Observation {
@@ -449,6 +472,9 @@ fn write_shard(
             Filter::Bicubic => "bicubic",
         }
         .into(),
+        maxpool: options.maxpool,
+        grayscale: options.color == Color::Gray,
+        channels: options.color.channels() as u32,
         ram_names,
         label_source: "replay".into(),
         idm_model: None,
@@ -695,7 +721,7 @@ fn npy(descr: &str, shape: &[usize], data: &[u8]) -> Vec<u8> {
 }
 
 /// Decodes a frame chunk (a member of the shard at `path`) into `out`, which must be exactly
-/// its size: `samples * height * width * 3` bytes. Fails with [`Error::Format`] if the chunk
+/// its size: `samples * height * width * channels` bytes. Fails with [`Error::Format`] if the chunk
 /// is corrupt or another size.
 pub fn decode_frames(data: &[u8], out: &mut [u8], path: &Path) -> Result<()> {
     decode_exact(data, out, path, "frame chunk")
