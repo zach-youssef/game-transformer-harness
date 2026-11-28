@@ -198,7 +198,8 @@ field or game otherwise):
 
 A run's directory holds three files; `gtharness.evaluate.check_results(dir)` checks one
 against this schema (and that every row agrees with the protocol) and returns its contents.
-`run.json` is written last, so a directory without it is an unfinished or failed run.
+`run.json` is written last, so a directory without it is an unfinished or failed run. Aggregates
+over runs (normalised scores, IQM, bootstrap intervals) are in docs/metrics.md.
 
 `protocol.toml` is the protocol's canonical text (`EvalProtocol.expand`); `run.json`'s
 `protocol_sha1` is its SHA-1. Two runs compare only when their SHA-1s match.
