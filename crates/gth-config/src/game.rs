@@ -43,6 +43,11 @@ pub struct GameConfig {
     /// `None` when the game has no sprite stream (docs/recording-format.md, "Sprite labels").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sprite_hw: Option<SpriteHw>,
+    /// An Atari game's minimal action set: the ALE action numbers (0-17, ascending) that do
+    /// something in it, from ALE's `getMinimalActionSet`. A protocol's `atari_minimal` action
+    /// set needs it; empty for every other game.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub atari_minimal_actions: Vec<u8>,
 }
 
 /// A sprite hardware decoder (`sprite_hw`): which state areas hold the drawn sprite list and
@@ -452,6 +457,19 @@ impl GameConfig {
                  select and start belong to reset scripts)"
             ));
         }
+        if let Some(pair) = self.atari_minimal_actions.windows(2).find(|w| w[0] >= w[1]) {
+            return Err(format!(
+                "atari_minimal_actions: {} after {} (give each action once, ascending)",
+                pair[1], pair[0]
+            ));
+        }
+        if let Some(action) =
+            (self.atari_minimal_actions.iter()).find(|&&a| a >= crate::ActionSpace::ATARI_LEN)
+        {
+            return Err(format!(
+                "atari_minimal_actions: {action} isn't an ALE action (0-17)"
+            ));
+        }
         match &self.reset {
             Reset::Script(steps) if steps.is_empty() => return Err("reset script is empty".into()),
             Reset::Script(steps) if steps.iter().any(|step| step.frames == 0) => {
@@ -565,6 +583,7 @@ settle_frames = 1
 orientation = 90
 crop = [0, 8, 320, 232]
 sprite_hw = "testcore"
+atari_minimal_actions = [0, 1, 3, 4, 11, 12]
 
 [content]
 file = "game.gthc"
@@ -637,6 +656,7 @@ gth_testcore_step = "4"
         assert_eq!(config.core_options["gth_testcore_step"], "4");
         assert_eq!(config.sprite_hw, Some(SpriteHw::Testcore));
         assert_eq!(SpriteHw::Psikyo.name(), "psikyo");
+        assert_eq!(config.atari_minimal_actions, [0, 1, 3, 4, 11, 12]);
         let again = GameConfig::parse(&config.to_toml(), "round trip").unwrap();
         assert_eq!(again, config);
     }
@@ -856,6 +876,10 @@ gth_testcore_step = "4"
                 "sprite_hw = \"cps2\"",
                 "unknown variant `cps2`",
             ),
+            ("[0, 1, 3, 4, 11, 12]", "[0, 1, 3, 3]", "3 after 3"),
+            ("[0, 1, 3, 4, 11, 12]", "[0, 4, 3]", "3 after 4"),
+            ("[0, 1, 3, 4, 11, 12]", "[0, 18]", "18 isn't an ALE action"),
+            ("[0, 1, 3, 4, 11, 12]", "[0, 256]", "atari_minimal_actions"),
         ];
         for (from, to, reason) in cases {
             let text = full().replacen(from, to, 1);

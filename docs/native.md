@@ -17,6 +17,8 @@ Read this before adding or changing anything it exports.
   the package's own modules (`env.py`, `cli.py`, `ramsearch.py`, `shards.py`) and tests.
 - Test hooks, which let pytest drive a convention before a real binding uses it, have
   underscore names and live in `gth-py/src/testing.rs`. Only `tests/` calls them.
+- PyO3 converts a returned `Vec<u8>` to `bytes`, not a list: a getter returning a list of small
+  ints widens it (`atari_minimal_actions` returns `Vec<u32>`).
 
 ## Adding a function
 
@@ -148,7 +150,8 @@ action space (docs/actions.md), immutable (`frozen`). It exposes what `RetroEnv`
 getters and methods: the frame and core settings, the reset and `check_reset_state(bytes)`
 (the savestate's SHA-1), `slots` (always the four) and `mapped_slots`, `encode`/`decode`
 between `(direction, buttons)` and flat actions, `to_atari`/`from_atari` between flat and
-Atari actions and the static `atari_mask(actions)` (docs/actions.md, "Atari"),
+Atari actions, the static `atari_mask(actions)` and `atari_minimal_actions` (docs/actions.md,
+"Atari"),
 `joypad_table()` (the RetroPad mask of every flat action, so the env maps an action with one
 list lookup), `terminated(ram)`, and
 the file checks `find_content(rom_dir)`, `missing_parents(content)` and

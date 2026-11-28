@@ -82,6 +82,19 @@ impl GameConfig {
         self.config.sprite_hw.map(|hw| hw.name())
     }
 
+    /// The ALE action numbers of an Atari game's minimal action set, ascending; empty for a
+    /// game without one.
+    #[getter]
+    fn atari_minimal_actions(&self) -> Vec<u32> {
+        // u32, not u8: PyO3 turns a Vec<u8> into bytes rather than a list.
+        self.config
+            .atari_minimal_actions
+            .iter()
+            .copied()
+            .map(u32::from)
+            .collect()
+    }
+
     #[getter]
     fn core_options(&self) -> BTreeMap<String, String> {
         self.config.core_options.clone()

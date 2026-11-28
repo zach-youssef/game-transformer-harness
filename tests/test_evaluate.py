@@ -256,6 +256,17 @@ class Atari(Chunks):
         assert obs.shape == (3, 12, 10, 3) and obs.dtype == np.uint8
         return list(self.actions)
 
+class Minimal(Atari):
+    """Indices into the minimal set [NOOP, FIRE, UPFIRE] (ALE 0, 1, 10)."""
+
+    obs_requirements = ObsRequirements(
+        size=(12, 10), grayscale=False, maxpool=None, frame_stack=3, frameskip=2,
+        action_set="atari_minimal",
+    )
+
+    def reset(self, seed, game):
+        assert game.n_actions == 3 and game.game_id == "testcore"
+
 class Wrong:
     def __init__(self, *, policy_seed):
         self.id = ""
@@ -350,6 +361,37 @@ def test_atari_actions_are_mapped_onto_the_pad(
         del row["policy_id"]
     assert played[0] == played[1]
     assert {tuple(row["mapped_slots_used"]) for row in played[1]} == {("shot",)}
+    # The same through a minimal set, whose indices the policy plays.
+    games = tmp_path / "games"
+    (games / "testcore").mkdir(parents=True)
+    toml = (GAMES_DIR / "testcore" / "game.toml").read_text(encoding="utf-8")
+    first, rest = toml.split("\n", 1)
+    minimal = f"{first}\natari_minimal_actions = [0, 1, 10]\n{rest}"
+    (games / "testcore" / "game.toml").write_text(minimal, encoding="utf-8")
+    loaded = GameConfig.load(games / "testcore" / "game.toml")
+    assert loaded.atari_minimal_actions == [0, 1, 10], "a list of ints, not bytes"
+
+    def play_minimal(out: str, actions: list[int]) -> None:
+        evaluate(
+            protocol(action_set="atari_minimal"),
+            f"{policy_module}:Minimal",
+            tmp_path / out,
+            testcore_data,
+            policy_kwargs={"actions": actions},
+            record=None,
+            jobs=2,
+            core_path=testcore_path,
+            games_dir=games,
+        )
+
+    play_minimal("Minimal", [2, 1, 0])
+    check_results(tmp_path / "Minimal")
+    minimal_rows = rows(tmp_path / "Minimal")
+    for row in minimal_rows:
+        del row["policy_id"]
+    assert minimal_rows == played[0]
+    with pytest.raises(EvaluationFailed, match=r"returned action 3, outside 0\.\.3"):
+        play_minimal("past-minimal", [1, 3])
     # 18 is past ALE's last action.
     with pytest.raises(EvaluationFailed, match=r"returned action 18, outside 0\.\.18"):
         evaluate(
@@ -450,7 +492,7 @@ def test_the_first_failure_stops_the_run_at_once(
         ({"max_episode_frames": 7}, r"noop_max \+ frameskip \(5 \+ 2\) must be below"),
         ({"games": ("testcore", "no-such-game")}, "no-such-game: no game config"),
         ({"score_var": "lives"}, "score_var 'lives' isn't one of its RAM variables"),
-        ({"action_set": "atari_minimal"}, "plays only harness, atari_full actions"),
+        ({"action_set": "atari_minimal"}, "testcore: action_set 'atari_minimal' needs the game's"),
         ({"reset": "ab" * 20}, "start.reset"),
         ({"crop": (0, 0, 10, 10)}, r"obs.crop \(0, 0, 10, 10\) differs"),
         ({"orientation": 0}, "obs.orientation 0 differs"),

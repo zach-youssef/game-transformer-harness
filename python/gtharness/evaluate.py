@@ -42,7 +42,6 @@ from gtharness.record import Record
 __all__ = [
     "ATARI_ACTIONS",
     "RESULTS_FORMAT",
-    "SUPPORTED_ACTION_SETS",
     "EvaluationFailed",
     "Recording",
     "check_protocol",
@@ -55,10 +54,6 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 RESULTS_FORMAT = 1
 """``run.json``'s ``format``: bumped whenever a results file's fields change."""
-
-SUPPORTED_ACTION_SETS = ("harness", "atari_full")
-"""The protocol action sets the runner can play. ``atari_minimal`` waits for the games'
-minimal action sets, which no game config has yet."""
 
 ATARI_ACTIONS = 18
 """ALE's full action set: under ``atari_full`` a policy acts in ``0..18`` (docs/actions.md,
@@ -135,12 +130,6 @@ def check_protocol(
     """The checks of a protocol that need the games and the env (docs/evaluation.md, "Checks
     before a run"); returns each game's core and content SHA-1. Raises ConfigError naming
     the game and what fails."""
-    if protocol.action_set not in SUPPORTED_ACTION_SETS:
-        raise ConfigError(
-            f"action_set {protocol.action_set!r}: the runner plays only"
-            f" {', '.join(SUPPORTED_ACTION_SETS)} actions (no game config has a minimal"
-            " action set yet)"
-        )
     if protocol.start.reset != "game":
         raise ConfigError(
             'start.reset: the runner starts episodes only from the game\'s reset ("game"),'
@@ -163,6 +152,11 @@ def check_protocol(
             raise ConfigError(
                 f"{game_id}: score_var {protocol.score_var!r} isn't one of its RAM variables"
                 f" {config.ram_names}"
+            )
+        if protocol.action_set == "atari_minimal" and not config.atari_minimal_actions:
+            raise ConfigError(
+                f"{game_id}: action_set 'atari_minimal' needs the game's minimal action set"
+                " (atari_minimal_actions in its game.toml), and it has none: not an Atari game"
             )
         for field, wanted, own in (
             ("obs.crop", protocol.obs.crop, config.crop),
@@ -455,6 +449,11 @@ def _play(task: dict[str, Any]) -> dict[str, Any]:
     # The policy's actions: flat ones, or ALE's numbers mapped onto the pad (docs/actions.md).
     if protocol.action_set == "atari_full":
         n_actions, to_flat = ATARI_ACTIONS, config.from_atari
+    elif protocol.action_set == "atari_minimal":
+        minimal = config.atari_minimal_actions
+        n_actions = len(minimal)
+        flat = [config.from_atari(atari) for atari in minimal]
+        to_flat = flat.__getitem__
     else:
         n_actions, to_flat = config.n_actions, int
     game = GameInfo(game_id, n_actions, tuple(config.mapped_slots))

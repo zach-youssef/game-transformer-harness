@@ -102,7 +102,7 @@ A policy is what `gth evaluate` plays (below). `gtharness.policies.Policy` has:
 | `checkpoint_sha256` | The SHA-256 of the weights it loaded, or None for a policy without weights. |
 | `obs_requirements` | An `ObsRequirements`: `size`, `grayscale`, `maxpool`, `frame_stack`, `frameskip` and `action_set`, each the protocol value the policy needs, or None for any. All are required, so "any" is written down. |
 | `reset(seed, game)` | Starts an episode: `seed` an int seeds the policy's randomness, None lets it run on. `game` is a `GameInfo` (`game_id`, `n_actions`, `mapped_slots`). It clears the policy's per-episode state. |
-| `act(obs)` | One action in `0..n_actions`, or a chunk: a non-empty 1-D sequence of them, played one per step before `act` is called again. An episode that ends mid-chunk drops the rest. Under `action_set = "harness"` an action is a flat action (`direction * 16 + buttons`, `n_actions` the game's); under `"atari_full"` it is ALE's action number (`n_actions` 18), which the runner turns into a flat action with `GameConfig.from_atari` (docs/actions.md, "Atari": direction and `shot`, never `bomb`, `aux1` or `aux2`). |
+| `act(obs)` | One action in `0..n_actions`, or a chunk: a non-empty 1-D sequence of them, played one per step before `act` is called again. An episode that ends mid-chunk drops the rest. Under `action_set = "harness"` an action is a flat action (`direction * 16 + buttons`, `n_actions` the game's); under `"atari_full"` it is ALE's action number (`n_actions` 18), which the runner turns into a flat action with `GameConfig.from_atari` (docs/actions.md, "Atari": direction and `shot`, never `bomb`, `aux1` or `aux2`); under `"atari_minimal"` it is an index into the game's minimal set (`n_actions` its size, `atari_minimal_actions` in its game.toml), whose ALE action goes through `from_atari` the same way. |
 
 `MODULE:NAME` is called as `NAME(policy_seed=seed, **kwargs)`, once per policy seed. The
 protocol's policy seeds stand for training runs (`policy_seeds` above), so a trained model
@@ -153,7 +153,7 @@ and its KV-cache trimming). Every setting is a kwarg without a default:
 | Kwarg | Meaning |
 |---|---|
 | `checkpoint` | The snapshot directory. |
-| `action_set` | `"atari_minimal"` or `"atari_full"`, which the protocol must match. JAT was trained and evaluated on each Atari game's minimal set, so its action `i` means that set's `i`-th action: on an Atari game only `atari_minimal` plays it as trained, and it waits for the games' minimal sets ("Checks before a run"). `"atari_full"` (ALE's 18) is for games without one, such as ours. The action head is cut to the game's `n_actions`, as upstream cuts it to the env's. |
+| `action_set` | `"atari_minimal"` or `"atari_full"`, which the protocol must match. JAT was trained and evaluated on each Atari game's minimal set, so its action `i` means that set's `i`-th action: on an Atari game only `atari_minimal` plays it as trained. `"atari_full"` (ALE's 18) is for games without one, such as the arcade games. The action head is cut to the game's `n_actions`, as upstream cuts it to the env's. |
 | `context_timesteps` | Past timesteps kept in the KV cache, two positions each: upstream's Atari evaluation keeps 16 (`context_window = 32`); the checkpoint allows up to `max_position_embeddings // 2` (256). |
 | `deterministic` | The most likely action instead of a sample. Upstream samples (`false`). |
 | `device` | `"cpu"`, `"mps"` or `"cuda"`. |
@@ -182,8 +182,9 @@ What JAT saw, from upstream's `make_atari` (jat repo `jat/eval/rl/core.py`, comm
 | `EpisodicLifeEnv`, `FireResetEnv` (training wrappers kept at evaluation) | not reproduced: the protocol's `life_loss_terminal` and reset decide |
 | Rewards passed to the model | none: the model ignores rewards next to image observations (its `embed_rl`), and policies get none |
 
-The Atari presets' observations fit; their `action_set` is `atari_full`, so on their (Atari)
-games JAT waits for a minimal-set protocol. Measured on an Apple M4 (CPU, debug
+The Atari presets' observations fit, but their `action_set` is `atari_full`, so on their
+(Atari) games JAT plays as trained only under a copy with `action_set = "atari_minimal"`.
+Measured on an Apple M4 (CPU, debug
 extension, `tests/test_jat_adapter.py`'s protocol on the test core, 1015 steps): 26 ms per
 step with 4 threads, 24 ms with 1, so more `--jobs` beat more threads; the chosen actions
 were the same both times.
@@ -253,9 +254,8 @@ Nothing is written, and no episode starts, until all of these pass (`ConfigError
 field or game otherwise):
 
 - The env supports every setting (`maxpool` and `obs.grayscale` go to `RetroEnv.from_game`
-  as they are). `action_set` must be `harness` or `atari_full` (`atari_minimal` needs the
-  games' minimal action sets, which no game config has yet),
-  `start.reset` must be `"game"`, and an explicit `obs.crop` or `obs.orientation` must equal the game config's, since the env
+  as they are). `atari_minimal` needs every game to have a minimal action set
+  (`atari_minimal_actions`, docs/games.md: the Atari games), `start.reset` must be `"game"`, and an explicit `obs.crop` or `obs.orientation` must equal the game config's, since the env
   uses the game's.
 - `start.noop_max + frameskip < max_episode_frames`: the env's rule, so the reset (no-ops and
   the first observation's frames) leaves an episode at least one step. It is stricter than

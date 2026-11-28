@@ -27,7 +27,8 @@ Action = int | np.integer | Sequence[int] | npt.NDArray[np.integer]
 """What `Policy.act` returns: one action, or a chunk of them, a non-empty 1-D sequence the
 runner plays one per step before asking again. An action is in ``0..GameInfo.n_actions``: a
 flat action (``direction * 16 + buttons``, docs/actions.md) under the ``harness`` action set,
-an ALE action number under ``atari_full``, which the runner maps onto the pad."""
+an ALE action number under ``atari_full``, which the runner maps onto the pad, or an index into
+the game's minimal set under ``atari_minimal``, whose ALE action is mapped the same way."""
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -39,7 +40,8 @@ class GameInfo(NamedTuple):
     """The game's directory under ``games/``."""
     n_actions: int
     """The policy's actions are ``0..n_actions``: the flat actions under the ``harness``
-    action set (docs/actions.md), ALE's 18 under ``atari_full``."""
+    action set (docs/actions.md), ALE's 18 under ``atari_full``, the size of the game's
+    minimal set under ``atari_minimal``."""
     mapped_slots: tuple[str, ...]
     """The button slots that do something in this game (``shot``, ``bomb``, ``aux1``,
     ``aux2``); the others press nothing."""

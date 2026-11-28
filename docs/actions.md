@@ -113,6 +113,8 @@ size (18, or a game's minimal 4-18):
 - Every Atari action survives `to_atari(from_atari(a))`, and every harness action without a
   mapped non-`shot` slot comes back from `from_atari(to_atari(a))` with its direction,
   `shot` and the same RetroPad mask (tested exhaustively for every subset of mapped slots).
-- A game's minimal action set (ALE's `getMinimalActionSet`) is a list of these numbers.
+- A game's minimal action set (ALE's `getMinimalActionSet`) is a list of these numbers:
+  `atari_minimal_actions` in an Atari game's game.toml (docs/games.md), which the
+  `atari_minimal` action set indexes (docs/evaluation.md).
   `ActionSpace::atari_mask(set)` (`GameConfig.atari_mask`) turns it into a mask over the
   18, for masking an 18-way policy head.

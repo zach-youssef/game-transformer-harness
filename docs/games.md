@@ -134,6 +134,7 @@ change (docs/recording-format.md, "Versioning").
 | `[ram.<name>]` | no | Named RAM variables (below). |
 | `[episode]` | yes | `terminate`: when an episode ends (below). |
 | `sprite_hw` | no | The board whose sprite list labels shards (docs/recording-format.md, "Sprite labels"): `psikyo` (Psikyo's 68EC020 boards on our FBNeo fork), or `testcore` (tests). Omitted: the game has no sprite labels, and `--sprites yes` refuses it. |
+| `atari_minimal_actions` | no | An Atari game's minimal action set: the ALE action numbers (0-17, docs/actions.md "Atari"), ascending, that ALE's `getMinimalActionSet` gives for the ROM. A protocol's `action_set = "atari_minimal"` needs it (docs/evaluation.md). Omitted: not an Atari game. |
 | `[core_options]` | no | `key = "value"` core options (`SET_VARIABLES` keys). Others keep the core's defaults. |
 
 ### Settle frames
