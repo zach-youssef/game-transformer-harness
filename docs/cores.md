@@ -20,6 +20,7 @@ history brings in commits whose tree isn't the libretro port (FBNeo's `301a167` 
 | `mednafen_pce_fast` | Gunhed | libretro/beetle-pce-fast-libretro | `2de1ce1c3f237b161c126c54ba407990bb86d1e9` | 2026-10-30 | Fetch translations & Recreate libretro_core_options_intl.h |
 | `fceumm` | Zanac | libretro/libretro-fceumm | `e0f3086a8104f8fbbe49a2615b10401504a9533f` | 2026-11-02 | libretro: send path checks through the frontend VFS (#660) |
 | `genesis_plus_gx` | Lightening Force | libretro/Genesis-Plus-GX | `b9c2316441978d4015ba30e9a95d9b0e6f8ee981` | 2026-11-09 | libretro: define ALIGN_LONG for 32-bit ARM unix builds (#415) |
+| `ale` | Atari 2600 games ALE supports | zach-youssef/Arcade-Learning-Environment (`ale-core`) | `ef6d7ffe2159cd2e3a7d28891961ec17a12730d4` | 2026-11-27 | Build and test the libretro core in CI on Linux, macOS and Windows |
 | `fbneo` | Battle Garegga, Ketsui, DoDonPachi III / Dai-Ou-Jou Black Label, Gunbird, Strikers 1945 | zach-youssef/FBNeo (`gth`) | `9ee23cb3fa517959b5e6cb2fd488564bcf5d0fbb` | 2026-11-27 | psikyo: give the sprite list scan variables unique area names |
 
 FBNeo's pin is the head of branch `gth` of our fork: libretro/FBNeo's
@@ -37,6 +38,12 @@ Mega Drive driver): the sound chips' wrappers `burn_md2612` (`9064755`), `burn_y
 4-in-1 bootleg's ROM bank (`pgm`, `c5866a1`) and Puzzli 2's simulation (`pgm`, `d09bde2`).
 The last two expose the named state areas the sprite labels are read from (`8ece753`,
 `9ee23cb`: Forks, below).
+
+ALE's pin is the head of branch `ale-core` of our fork: ALE's release `v0.12.1`
+(`8a8fafb1`, 2026-08-16) rather than the rule above, since ale-py (the Python package the
+published ALE baselines ran) ships releases and v0.12.1 is the newest one, and three commits
+(Forks, below): the ROM files and ROM-fetching scripts and workflows removed, the libretro
+core (`libretro/`, README there) and its CI workflow.
 
 FBNeo's upstream commit also fixes its driver tables, so the arcade sets' `game.toml` member
 lists (docs/roms.md, "Content tables") are taken from FBNeo at
@@ -74,7 +81,7 @@ docs/recording-format.md) only when the core file has the pinned hash
 ## Builds
 
 `scripts/build-core.sh <name> <repo> <commit> <osx|unix|win> <out_dir>` builds one
-core with its own Makefile, upstream's route on every platform (on Windows in an MSYS2 MINGW64 shell
+core with its own Makefile (ALE: CMake, below), upstream's route on every platform (on Windows in an MSYS2 MINGW64 shell
 with MinGW-w64 gcc; the MSVC Makefile targets hard-code VS2017 and still need MSYS make).
 Each core's Makefile and its fixes are a `case` in the script:
 
@@ -87,6 +94,14 @@ Each core's Makefile and its fixes are a `case` in the script:
 - `fbneo`: its Makefile dates the build with GNU `date -d` (missing on macOS) in local time,
   so the script passes the commit's date in UTC (`GIT_DATE`) and every platform reports the
   same version.
+- `ale`: CMake rather than a Makefile, configuring ALE's C++ library without its Python
+  bindings and building the `ale_libretro` target. ALE's CMake takes zlib from vcpkg when
+  `VCPKG_ROOT` or `VCPKG_INSTALLATION_ROOT` is set, as on CI runners: static on Linux and
+  macOS, but a DLL in vcpkg's `x64-windows` triplet. So on Windows the script hides vcpkg and
+  uses MSYS2's cmake and static zlib (`-G "MSYS Makefiles" -DZLIB_USE_STATIC_LIBS=ON`; the
+  workflow installs `mingw-w64-x86_64-cmake` and `mingw-w64-x86_64-zlib`). The core's CMake puts
+  `git rev-parse --short=7 HEAD` into `library_version` (`0.12.1 ef6d7ff`); ALE's own version
+  macro has no commit for an out-of-tree build.
 
 Local builds work on a Mac with the Xcode command-line tools, for example to try a bump:
 
@@ -94,6 +109,7 @@ Local builds work on a Mac with the Xcode command-line tools, for example to try
 scripts/build-core.sh fceumm https://github.com/libretro/libretro-fceumm <commit> osx out
 scripts/build-core.sh fbneo https://github.com/zach-youssef/FBNeo <commit> osx out
 scripts/build-core.sh fbneo /abs/path/to/FBNeo <commit> osx out   # a local clone, unpushed
+scripts/build-core.sh ale /abs/path/to/Arcade-Learning-Environment <commit> osx out   # needs cmake
 gth cores check out          # loads every core in out/ and checks its version
 ```
 
@@ -117,7 +133,7 @@ that commit. The changes stay in the fork; we don't send them
 upstream. Anything else (a build flag, a Makefile quirk) is a `case` in the build script.
 
 - The branch starts at the upstream commit the rule in Pins picks, with one commit per change
-  whose message says what was wrong and why it matters to the harness. A core's first branch is `gth` (FBNeo's is). The
+  whose message says what was wrong and why it matters to the harness. A core's first branch is `gth` (FBNeo's is; ALE's is `ale-core`). The
   fork's default branch stays upstream's.
 - Never rewrite a pinned fork commit or its history (no amend, rebase or force-push of its
   branch), and never delete its branch: releases, recordings and savestates were made from
@@ -141,6 +157,27 @@ upstream. Anything else (a build flag, a Makefile quirk) is a `case` in the buil
   renaming them changes no savestate: a state saved by the build at `d09bde2` loads in one
   at `9ee23cb` and continues frame-, RAM- and state-identical (checked on Gunbird and
   Strikers 1945).
+- ALE's fork (`zach-youssef/Arcade-Learning-Environment`, branch `ale-core`) adds the libretro
+  core ALE doesn't have (`libretro/ale_libretro.cpp`; its README describes the core): one
+  frame of ALE's `act()` per `retro_run`, the RetroPad's d-pad and B mapped to ALE's 18
+  actions (docs/actions.md), no sticky actions, savestates from `cloneSystemState()`, the 128
+  bytes of RAM as `RETRO_MEMORY_SYSTEM_RAM` and a synthetic memory-map region at `0x10000`
+  with ALE's score, lives, game over and frame counts (layout in the fork's
+  `libretro/README.md`). The score is a signed little-endian i32 at offset 0 (Pong, Skiing
+  and others go negative); the harness's `le` RAM encoding is unsigned, so reading it needs
+  signed decoding, which the harness doesn't have yet: the first ALE game's config needs it.
+  It checks a ROM's MD5 before ALE's `loadROM`, which exits the process for an unknown ROM, so
+  a bad ROM fails the load, and refuses another game's or a damaged savestate (its envelope
+  holds the cartridge's MD5 and a hash of the header and the state). Its audio is silent (ALE's sound isn't in its
+  savestates, so playing it would break state determinism): `gth-play` plays ALE games
+  without sound.
+  The fork also removes both copies of upstream's bundled ROM, its ROM-fetching scripts and the workflows
+  that use them; its own workflow builds the core and runs its unit test, with no ROM, on
+  Linux, macOS and Windows. `tests/test_ale_core.py` loads the core (from `data/cores/`, any
+  build) and checks that loads of no ROM, a missing file and an unknown one fail cleanly.
+- License: ALE is GPL-2.0, and so is its core. The harness (MIT) never links it: like every
+  core, it is a separate library loaded at runtime with `dlopen` (`LoadLibrary`), built and
+  published as its own binary, and the harness talks to it only through the libretro C API.
 - To try a fork commit before pushing it, pass the build script the local clone's absolute
   path as the repository (Builds, above; a relative one would resolve in the build's clone).
 
@@ -201,6 +238,6 @@ differ.
 ## Adding a core
 
 Add a `[cores.<name>]` entry (repository, commit, `library_version`, empty `artifacts`), a
-`case` for its Makefile in `scripts/build-core.sh` and a row in the table above, then release
+`case` for its build in `scripts/build-core.sh` and a row in the table above, then release
 it as for a bump. `<name>` is the libretro name the library is built as
 (`<name>_libretro.<ext>`) and what `game.toml`'s `core` names.

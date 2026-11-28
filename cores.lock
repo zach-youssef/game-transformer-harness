@@ -39,3 +39,10 @@ library_version = "v1.31.0.0 2de1ce1"
 aarch64-apple-darwin = "5a704965a6340fe6658f1ffe99e2df937dd5f8a363aa18113f061260ab6829d3"
 x86_64-pc-windows-msvc = "f3c1ca32328590b7dfa038b014cefe979517049e327f1f71b78b7a1f5c67a679"
 x86_64-unknown-linux-gnu = "a73ea44a4595ce6d25750768a7fe7e31a10ce58420583a27cb5aac83991e8b23"
+
+[cores.ale]
+repo = "https://github.com/zach-youssef/Arcade-Learning-Environment"
+commit = "ef6d7ffe2159cd2e3a7d28891961ec17a12730d4"
+library_version = "0.12.1 ef6d7ff"
+
+[cores.ale.artifacts]

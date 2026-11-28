@@ -76,12 +76,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Windows builds use upstream's route: the core's Makefile under MSYS2 with MinGW-w64 gcc.
+      # Windows builds use upstream's route: the core's Makefile (CMake for ALE) under MSYS2
+      # with MinGW-w64 gcc.
       - if: matrix.platform == 'win'
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e  # v2.33.0
         with:
           msystem: MINGW64
-          install: make git perl mingw-w64-x86_64-gcc
+          install: >-
+            make git perl mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-zlib
 
       - if: matrix.platform == 'win'
         shell: msys2 {0}

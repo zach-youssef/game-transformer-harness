@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds one libretro core at a pinned commit with its own Makefile (docs/cores.md).
+# Builds one libretro core at a pinned commit with its own build: a Makefile, or CMake for ALE
+# (docs/cores.md).
 #
 #   scripts/build-core.sh <name> <repo> <commit> <platform> <out_dir>
 #
@@ -23,9 +24,10 @@ case $platform in
   *) echo "platform must be osx, unix or win, not $platform" >&2; exit 2 ;;
 esac
 
-# Each core's Makefile directory and file, relative to its checkout.
+# Each core's Makefile directory and file, relative to its checkout; ale builds with CMake.
 args=()
 case $name in
+  ale) dir=build/libretro makefile= ;;
   mednafen_pce_fast) dir=. makefile=Makefile ;;
   fceumm) dir=. makefile=Makefile.libretro ;;
   genesis_plus_gx) dir=. makefile=Makefile.libretro ;;
@@ -74,7 +76,24 @@ if [ "$platform" = win ]; then
 fi
 
 jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
-make -C "$src/$dir" -f "$makefile" -j"$jobs" platform="$platform" ${args[@]+"${args[@]}"}
+if [ "$name" = ale ]; then
+  # The fork's libretro core (libretro/README.md there): ALE's C++ library without its Python
+  # bindings, linked into the core. ALE's CMakeLists.txt uses vcpkg when VCPKG_ROOT or
+  # VCPKG_INSTALLATION_ROOT is set (as on CI runners) for zlib, which is static on Linux and
+  # macOS but a DLL in vcpkg's x64-windows triplet. On Windows, hide vcpkg and link MSYS2's
+  # static zlib, so the DLL needs no zlib1.dll.
+  cmake_args=(-DCMAKE_BUILD_TYPE=Release -DBUILD_PYTHON_LIB=OFF -DBUILD_CPP_LIB=ON
+              -DBUILD_LIBRETRO_CORE=ON)
+  cmake_env=()
+  if [ "$platform" = win ]; then
+    cmake_args+=(-G "MSYS Makefiles" -DZLIB_USE_STATIC_LIBS=ON)
+    cmake_env=(env -u VCPKG_ROOT -u VCPKG_INSTALLATION_ROOT)
+  fi
+  ${cmake_env[@]+"${cmake_env[@]}"} cmake -S "$src" -B "$src/build" "${cmake_args[@]}"
+  cmake --build "$src/build" --target ale_libretro -j"$jobs"
+else
+  make -C "$src/$dir" -f "$makefile" -j"$jobs" platform="$platform" ${args[@]+"${args[@]}"}
+fi
 lib="$out/${name}_libretro.$ext"
 cp "$src/$dir/${name}_libretro.$ext" "$lib"
 
