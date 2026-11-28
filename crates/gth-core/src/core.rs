@@ -695,6 +695,15 @@ impl Core {
             self.load_state = Some(state);
             return;
         }
+        self.soft_reset();
+    }
+
+    /// The core's own `retro_reset`, the console's reset button, from wherever the game is:
+    /// unlike [`reset`](Self::reset), the next episode continues from this one's state (RAM
+    /// a core keeps, its RNG). The ALE core's runs ALE's `reset_game()`, which is how ALE v5's
+    /// environments start every episode after the first (docs/evaluation.md,
+    /// `start.later_episodes`). Like a reset, it clears the frame and the last frame's buttons.
+    pub fn soft_reset(&mut self) {
         // SAFETY: the game is loaded; `&mut self` makes this the only call into the core.
         unsafe { (self.api.reset)() };
         self.last_buttons = 0;

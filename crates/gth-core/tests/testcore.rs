@@ -280,6 +280,39 @@ fn settle_frames_run_unseen_after_every_load() {
     );
 }
 
+/// `soft_reset` is the core's `retro_reset` even when `reset` would restore the load state:
+/// the test core's keeps its RAM (the score) and starts the square over.
+#[test]
+fn soft_reset_keeps_what_the_core_keeps() {
+    let _serial = serial();
+    let mut core = load(None);
+    core.run_frames(1, A | RIGHT);
+    let first = frame_hash(&core);
+    core.run_frames(2, A);
+    let kept = ram(&mut core);
+    assert_ne!(kept[..4], [0; 4], "A scored");
+    core.soft_reset();
+    assert!(core.resets_to_load_state(), "a soft reset drops nothing");
+    assert_eq!(ram(&mut core), kept, "the test core's reset keeps RAM");
+    assert!(
+        pixels(&core).iter().all(|&p| p == 0),
+        "a soft reset clears the frame"
+    );
+    core.run_frames(1, RIGHT);
+    assert_ne!(
+        frame_hash(&core),
+        first,
+        "the frame shows the kept state (the PRNG, drawn in blue)"
+    );
+    core.reset();
+    core.run_frames(1, A | RIGHT);
+    assert_eq!(
+        frame_hash(&core),
+        first,
+        "reset still restores the load state"
+    );
+}
+
 #[test]
 fn reset_restores_the_load_snapshot() {
     let _serial = serial();

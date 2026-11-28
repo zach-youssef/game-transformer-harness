@@ -97,6 +97,8 @@ path, so the env imports it from `_native` directly.
 - `reset()` returns to the state right after loading (gth-core's load snapshot, or
   `retro_reset` for cores that can't serialize then; docs/libretro.md, "Host").
   `resets_to_load_state` (also on `RetroEnv`) says which one the core gets.
+- `soft_reset()` is the core's `retro_reset` from wherever the game is, for chained episodes
+  (`RetroEnv`'s `later_episodes = "chain"`).
 - `step(frames, buttons, sticky_prob)` runs the frames, with sticky actions at
   `sticky_prob` (0 for none), and returns the last one as a new observation array, all with
   the GIL released (architecture.md, "Frame lifecycle"). `seed(seed)` seeds the core's RNG

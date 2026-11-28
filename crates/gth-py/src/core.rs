@@ -382,6 +382,13 @@ impl Core {
         Ok(())
     }
 
+    /// The core's own `retro_reset` from wherever the game is (a chained episode's start).
+    fn soft_reset(&mut self, py: Python<'_>) -> errors::Result<()> {
+        let core = self.core_not_recording()?;
+        py.detach(|| core.soft_reset());
+        Ok(())
+    }
+
     fn serialize<'py>(&mut self, py: Python<'py>) -> errors::Result<Bound<'py, PyBytes>> {
         let core = self.core()?;
         let state = py.detach(|| core.serialize())?;

@@ -104,6 +104,10 @@ same state. `retro_reset` is the console's reset button, and many cores keep RAM
 through it, so it is only the fallback for cores that can't serialize at load time (some
 report a savestate size of 0 until their first frame) or that refuse that state on a reset
 (the snapshot is then dropped); `Core::resets_to_load_state` says which one a core gets.
+`Core::soft_reset` calls `retro_reset` whatever the core: the start of a chained episode
+(docs/evaluation.md, `start.later_episodes`), which continues from where the last one ended.
+It runs no settle frames (below), which follow only savestate loads: a chained episode of a
+game with `settle_frames` skips them (the ALE games have none).
 
 `Core::load` takes the game's `settle_frames` (docs/games.md, "Settle frames"): after every
 savestate load, the load snapshot's included, the core runs that many frames with no button
