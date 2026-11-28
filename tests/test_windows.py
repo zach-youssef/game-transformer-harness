@@ -2,13 +2,14 @@
 unlabelled step, so its shard has two segments, read back as windows."""
 
 import functools
+import json
 import struct
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from gtharness import rewards
+from gtharness import _native, rewards
 from gtharness.env import RetroEnv
 from gtharness.errors import ConfigError
 from gtharness.record import Record
@@ -266,3 +267,55 @@ def test_a_window_is_read_only(shard: Path):
         np.testing.assert_array_equal(
             batch["return_to_go"][0], 2 * windows.window(0)["return_to_go"]
         )
+
+
+def test_a_dataset_reward_reads_the_sample_s_own_column(tmp_path: Path):
+    n = 12
+    reward = np.array([0, 1, 0, 0, -1, 0, 2, 0, 0, 0, 0, 1], dtype=np.int64)
+    meta = {
+        "source_id": "synthetic",
+        "episode_id": 0,
+        "game_id": "atari-pong",
+        "fps": 60.0,
+        "frameskip": 4,
+        "obs_size": [4, 4],
+        "crop": None,
+        "orientation": 0,
+        "interpolation": "area",
+        "maxpool": True,
+        "grayscale": True,
+        "ram_names": ["reward", "terminal"],
+        "terminated": True,
+        "dataset": {},
+    }
+    path = tmp_path / "d.npz"
+    _native.write_dataset_shard(
+        path,
+        json.dumps(meta),
+        frames=np.zeros((n, 4, 4, 1), dtype=np.uint8),
+        direction=np.zeros(n, dtype=np.uint8),
+        buttons=np.zeros(n, dtype=np.uint8),
+        ram=np.stack([reward, np.arange(n) == n - 1], axis=1).astype(np.int64),
+        episode_frame=(4 * np.arange(n)).astype(np.uint64),
+        segment=np.zeros(n, dtype=np.uint32),
+        chunk_samples=5,
+    )
+    with Shard(path) as s:
+        # The terminal step's reward is the last sample's own: it isn't dropped.
+        for r in (rewards.dataset_reward, functools.partial(rewards.dataset_reward)):
+            np.testing.assert_array_equal(sample_rewards(s, r), reward)
+        with pytest.raises(ConfigError, match=r"\['score'\]"):
+            sample_rewards(s, score_delta)
+    with Windows(
+        [path],
+        length=4,
+        stride=4,
+        reward=rewards.dataset_reward,
+        action_format="flat",
+        cache_chunks=2,
+    ) as windows:
+        assert len(windows) == 3
+        last = windows.window(2)
+        np.testing.assert_array_equal(last["reward"], reward[8:])
+        np.testing.assert_array_equal(last["return_to_go"], np.cumsum(reward[::-1])[::-1][8:])
+        assert windows.window(0)["return_to_go"][0] == reward.sum() == 3

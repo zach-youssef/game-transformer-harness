@@ -18,7 +18,7 @@ import numpy as np
 import numpy.typing as npt
 
 from gtharness.errors import ConfigError, HarnessError
-from gtharness.rewards import Reward, required_ram
+from gtharness.rewards import Reward, reads_previous_only, required_ram
 from gtharness.shards import Shard
 
 ActionFormat = Literal["flat", "dict"]
@@ -33,7 +33,9 @@ def sample_rewards(shard: Shard, reward: Reward) -> npt.NDArray[np.float64]:
     i's observation and at the next sample's, as `RetroEnv` rewards the step that answers an
     observation. A reward across a segment gap covers the dropped samples' frames too, so the
     shard's rewards still sum to the whole episode's. The last sample's reward is 0: the shard
-    holds no RAM after its last sample's step.
+    holds no RAM after its last sample's step. A reward that reads only the RAM before the step
+    (`gtharness.rewards.PREVIOUS_ONLY`, such as `dataset_reward`) gives the last sample
+    ``reward(ram[last], ram[last])`` instead.
 
     Raises:
         ConfigError: if ``reward`` is a built-in reward and the shard lacks a RAM variable it
@@ -47,6 +49,8 @@ def sample_rewards(shard: Shard, reward: Reward) -> npt.NDArray[np.float64]:
     rewards = np.zeros(len(rows), dtype=np.float64)
     for i in range(len(rows) - 1):
         rewards[i] = float(reward(rows[i], rows[i + 1]))
+    if rows and reads_previous_only(reward):
+        rewards[-1] = float(reward(rows[-1], rows[-1]))
     return rewards
 
 

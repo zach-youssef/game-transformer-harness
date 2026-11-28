@@ -464,7 +464,8 @@ and writes the members and `meta.json` exactly as an export does. What differs:
   not the emulator's frames. `filter` is `all`, and `confidence` is 1 (the action the agent
   chose is known exactly).
 - `ram_names` are the dataset's per-sample values, not RAM variables: the step's reward and
-  its terminal flag (`reward`, `terminal`).
+  its terminal flag (`reward`, `terminal`), read with the `dataset_reward` reward
+  (docs/training.md, "Rewards and returns-to-go").
 - One shard holds one episode, or the part of one that the imported slice covers:
   `terminated` says whether its last sample ends the episode, and `episode_id` is the
   episode's index in the source file.

@@ -26,7 +26,7 @@ The Python package `gtharness` (in `python/gtharness/`) orchestrates:
 | Module | Holds |
 |---|---|
 | `env.py` | `RetroEnv`, the gymnasium environment, and `RetroEnv.from_game` (below) |
-| `rewards.py` | Reward functions on RAM variables (`score_delta`), and `REQUIRED_RAM`, the variables each built-in one reads, checked when an env is made |
+| `rewards.py` | Reward functions on RAM variables (`score_delta`; `dataset_reward`, an imported shard's own reward column), and `REQUIRED_RAM`, the variables each built-in one reads, checked when an env is made |
 | `record.py` | `Record` (where and how `RetroEnv` records) and `Replayer` (docs/recording-format.md) |
 | `shards.py` | Training shards (docs/recording-format.md): `export_shards` (one process per recording) and `gth export-shards`; `Shard` and `batches`, the PyTorch-free reader, whose batches hold no RAM and no sprite lists |
 | `ramsearch.py` | RAM search on an environment's core, `assert_ram` for game tests, and `gth ram-search` (docs/games.md, "RAM search"); a developer tool, never policy input |

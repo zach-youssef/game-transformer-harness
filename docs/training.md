@@ -55,6 +55,10 @@ the observation, as `RetroEnv` gives it (`gtharness.rewards`, same `Reward` sign
 - The last sample's reward is 0: a shard holds no RAM after its last sample's step. For
   `score_delta` this loses at most that last step's points, and a shard cut at game over has
   none to lose.
+- Imported datasets (docs/recording-format.md, "Imported datasets") store each step's reward
+  with the observation it answers, in their `reward` column: `rewards.dataset_reward` reads
+  it (`previous["reward"]`). It reads only the RAM before the step (`rewards.PREVIOUS_ONLY`),
+  so the last sample gets its reward too, and an episode's terminal step keeps its points.
 - A built-in reward (in `REQUIRED_RAM`, also inside `functools.partial`) whose RAM variables a
   shard lacks raises `ConfigError` when the windows are made; any other reward raises
   `KeyError` at its first call.
