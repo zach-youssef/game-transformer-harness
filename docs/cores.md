@@ -196,16 +196,20 @@ importable next to the harness and uses its bundled ROMs (docs/roms.md, "Atari R
 PYTHONPATH=../alepy/lib/python3.12/site-packages uv run python scripts/ale_parity.py data --frames 30000
 ```
 
-On the pinned core (`ef6d7ff`) and ale-py 0.12.1, all twelve Atari games match for 30,000
-frames each (4 to 16 episodes). One difference is by design: the harness starts every episode
-from its load state (docs/games.md, "Reset"), while ALE v5's environments start later
-episodes with `reset_game()` alone, which doesn't return the machine to its load state, so
-their second episode on starts from a different state in some games
-(with `--reset-game`, Assault, Demon Attack, Seaquest and Yars' Revenge differ in a later
-episode; the other eight don't). So the script reloads the ROM before ale-py's
-`reset_game()`, which is the harness's start state, and a mismatch is a shim bug. Every
-harness episode is therefore an ALE first episode, and the variety between episodes comes
-from sticky actions and the no-op start only.
+Later episodes start one of two ways, the protocol's `start.later_episodes`
+(docs/evaluation.md). By default the script reloads the ROM before ale-py's `reset_game()`,
+which is the harness's load state, against `later_episodes = "reload"`: every episode is then
+an ALE first episode. With `--reset-game` ale-py runs `reset_game()` alone, as ALE v5's
+environments do (`AtariEnv.reset` reloads the ROM only when given a seed), which doesn't
+return the machine to its load state, and the harness runs `later_episodes = "chain"`: the
+core's `retro_reset`, which is ALE's `reset_game()` (the fork's `libretro/README.md`), from
+where the last episode ended. The load frame counter runs on through a chained reset in both.
+
+On the pinned core (`ef6d7ff`) and ale-py 0.12.1, all twelve Atari games match both ways for
+30,000 frames each (4 to 17 episodes), so a mismatch is a shim bug. The two ways differ in
+some games from the second episode on (Assault, Demon Attack, Seaquest and Yars' Revenge
+before chaining existed, when the harness reloaded under `--reset-game`; the other eight
+didn't), which is why the protocol states one. The Atari presets chain, as ALE v5 does.
 
 ## The cores workflow
 

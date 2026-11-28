@@ -4,19 +4,21 @@ compares them frame by frame (docs/cores.md, "ALE parity").
 ale-py runs as ALE v5's environments configure it, minus their wrappers: random seed 0,
 ``repeat_action_probability`` 0, frame skip 1, the ROM's default mode and difficulty, and
 ``reset_game()`` after loading, as gymnasium's first ``reset()`` does. The harness runs the
-game's config through `RetroEnv` at frame skip 1, no sticky actions, no no-ops and the native
-160x210 frame. Each frame, for every game:
+game's config through `RetroEnv` at frame skip 1, no sticky actions, no no-ops, the native
+160x210 frame and ``later_episodes`` "reload" (or "chain" with ``--reset-game``). Each frame,
+for every game:
 
 - the RGB frame's SHA-1, ALE's reward (the harness's score change), ``lives()`` and
   ``game_over()`` must match;
 - the core's episode frame counter (its synthetic region, docs/cores.md) must be ALE's
-  ``getEpisodeFrameNumber()`` and its frame counter since the load ``getFrameNumber()`` (in
-  the first episode only, with ``--reset-game``), so the reset and the first frame happen at
-  the same emulated frame;
+  ``getEpisodeFrameNumber()`` and its frame counter since the load ``getFrameNumber()``, so
+  the reset and the first frame happen at the same emulated frame;
 - after a game over both start the next episode and play on: the harness resets to its load
-  state, and ale-py reloads the ROM and runs ``reset_game()``, which is the same state
-  (``--reset-game`` runs ``reset_game()`` alone, as ALE v5's environments do, which isn't:
-  docs/cores.md, "ALE parity").
+  state, and ale-py reloads the ROM and runs ``reset_game()``, which is the same state. With
+  ``--reset-game`` ale-py runs ``reset_game()`` alone, as ALE v5's environments do, and the
+  harness chains (``later_episodes = "chain"``: the core's ``retro_reset``, which is ALE's
+  ``reset_game()``), so both start the next episode where the last one ended (docs/cores.md,
+  "ALE parity").
 
 The actions are uniform over ALE's 18 (`GameConfig.from_atari` on the harness side), held for
 a random 1-8 frames, from ``--seed``. Run with ale-py importable next to the harness, its
@@ -119,7 +121,7 @@ def compare(
         sticky_prob=0.0,
         max_episode_frames=None,
         noop_max=0,
-        later_episodes="reload",
+        later_episodes="reload" if reload else "chain",
         maxpool=False,
         grayscale=False,
         rom_dir=rom_dir,
@@ -136,11 +138,8 @@ def compare(
             ("lives", ale.lives(), ram["lives"]),
             ("game over", int(ale.game_over()), ram["game_over"]),
             ("episode frame", ale.getEpisodeFrameNumber(), ram["episode_frame"]),
+            ("frame number", ale.getFrameNumber(), ram["frame"]),
         ]
-        if result.episodes == 1 or reload:
-            # The harness resets to the load state, frame counter and all; ALE's
-            # reset_game() keeps counting.
-            checks.append(("frame number", ale.getFrameNumber(), ram["frame"]))
         if ours is not None:
             checks.append(("reward", reward, ours))
         for what, theirs, harness in checks:
@@ -202,7 +201,8 @@ def main(argv: list[str] | None = None) -> int:
         "--reset-game",
         action="store_true",
         help="start ale-py's later episodes with ALE's reset_game() alone, as ALE v5's"
-        " environments do, rather than reloading the ROM first (docs/cores.md, 'ALE parity')",
+        " environments do, rather than reloading the ROM first, and chain the harness's"
+        " (later_episodes 'chain'; docs/cores.md, 'ALE parity')",
     )
     args = parser.parse_args(argv)
     try:
