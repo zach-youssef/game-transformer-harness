@@ -54,7 +54,9 @@ def test_stub_classes_match_module():
         # Special methods (__len__) in the stub must exist too; the class has many others.
         assert all(hasattr(cls, n) for n in stub), name
         for member, method in stub.items():
-            if any(ast.unparse(d) == "property" for d in method.decorator_list):
+            # A property's setter shares its name, so it replaces the getter here.
+            decorators = [ast.unparse(d) for d in method.decorator_list]
+            if any(d == "property" or d.endswith(".setter") for d in decorators):
                 assert inspect.isdatadescriptor(getattr(cls, member)), f"{name}.{member}"
                 continue
             native_params = list(inspect.signature(getattr(cls, member)).parameters)

@@ -14,7 +14,7 @@ use pyo3::types::PyBytes;
 use crate::config::GameConfig;
 use crate::cores::CoresLock;
 use crate::errors;
-use crate::frame::{into_rgb8_array, rgb8_buffer};
+use crate::frame::{frame_buffer, into_frame_array};
 
 /// The loaded core (`None` once closed), its observation pipeline, the recording in
 /// progress, if any, and the environment's random numbers (sticky actions, no-ops).
@@ -31,14 +31,15 @@ fn closed() -> errors::Error {
     PyValueError::new_err("the core is closed").into()
 }
 
-/// The observation pipeline of `crop` `(x, y, width, height)`, `rotate` degrees and
-/// `interpolation`, as `Core` and `Replayer` take them.
+/// The observation pipeline of `crop` `(x, y, width, height)`, `rotate` degrees,
+/// `interpolation` and `color`, as `Core` and `Replayer` take them.
 pub(crate) fn pipeline(
     obs_height: usize,
     obs_width: usize,
     crop: Option<(usize, usize, usize, usize)>,
     rotate: u32,
     interpolation: &str,
+    color: gth_frame::Color,
 ) -> errors::Result<gth_frame::Pipeline> {
     let crop = crop.map(|(x, y, width, height)| gth_frame::Rect {
         x,
@@ -52,23 +53,37 @@ pub(crate) fn pipeline(
         crop,
         rotation(rotate)?,
         filter(interpolation)?,
-        gth_frame::Color::Rgb,
+        color,
     )?)
 }
 
-/// Renders the core's last frame into a new array.
+/// Renders the core's last frame into a new array, max-pooled with the frame before it when
+/// the core keeps that (`gth_core::Core::set_keep_previous_frame`).
 pub(crate) fn render<'py>(
     py: Python<'py>,
     core: &gth_core::Core,
     pipeline: &mut gth_frame::Pipeline,
 ) -> errors::Result<Bound<'py, PyArray3<u8>>> {
     let (height, width) = (pipeline.out_height(), pipeline.out_width());
+    let channels = pipeline.color().channels();
     let buffer = py.detach(|| {
-        let mut buffer = rgb8_buffer(height, width)?;
-        core.with_frame(|frame| pipeline.render(frame, &mut buffer))?;
+        let mut buffer = frame_buffer(height, width, channels)?;
+        core.with_frames(|frame, previous| match previous {
+            Some(previous) => pipeline.render_max(frame, previous, &mut buffer),
+            None => pipeline.render(frame, &mut buffer),
+        })?;
         Ok::<_, errors::Error>(buffer)
     })?;
-    Ok(into_rgb8_array(py, buffer, height, width))
+    Ok(into_frame_array(py, buffer, height, width, channels))
+}
+
+/// `Color::Gray` for `grayscale`, else `Color::Rgb`.
+pub(crate) fn color(grayscale: bool) -> gth_frame::Color {
+    if grayscale {
+        gth_frame::Color::Gray
+    } else {
+        gth_frame::Color::Rgb
+    }
 }
 
 pub(crate) fn rotation(degrees: u32) -> errors::Result<gth_frame::Rotation> {
@@ -159,8 +174,11 @@ impl Core {
 impl Core {
     /// Loads a core (one per process) with `core_options` set, settling `settle_frames`
     /// after each savestate load (a game's `settle_frames`, docs/games.md), and sets up the
-    /// observation pipeline. `crop` is `(x, y, width, height)` in the core's pixels, `rotate` is 0, 90 or
-    /// 270 degrees clockwise, `interpolation` is "area", "bilinear" or "bicubic".
+    /// observation pipeline. `crop` is `(x, y, width, height)` in the core's pixels, `rotate` is
+    /// 0, 90 or 270 degrees clockwise, `interpolation` is "area", "bilinear" or "bicubic".
+    /// `maxpool` makes each observation the per-channel maximum of a step's last two frames
+    /// (settable later, `maxpool`); `grayscale` makes observations one channel of BT.601
+    /// luma, `uint8[obs_height, obs_width, 1]`.
     #[new]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -175,9 +193,18 @@ impl Core {
         crop: Option<(usize, usize, usize, usize)>,
         rotate: u32,
         interpolation: &str,
+        maxpool: bool,
+        grayscale: bool,
     ) -> errors::Result<Self> {
-        let pipeline = pipeline(obs_height, obs_width, crop, rotate, interpolation)?;
-        let core = py.detach(|| {
+        let pipeline = pipeline(
+            obs_height,
+            obs_width,
+            crop,
+            rotate,
+            interpolation,
+            color(grayscale),
+        )?;
+        let mut core = py.detach(|| {
             gth_core::Core::load(
                 &core_path,
                 content_path.as_deref(),
@@ -186,6 +213,7 @@ impl Core {
                 settle_frames,
             )
         })?;
+        core.set_keep_previous_frame(maxpool);
         Ok(Core {
             core: Some(core),
             pipeline,
@@ -197,9 +225,9 @@ impl Core {
 
     /// Runs `frames` frames with `buttons` held (port 0 joypad bitmask), each frame keeping
     /// the previous frame's buttons instead with probability `sticky_prob` (sticky actions,
-    /// drawn from the core's RNG, `seed`), and returns the last one as a
-    /// `uint8[obs_height, obs_width, 3]` observation. While recording, this is one recorded
-    /// step of the buttons each frame ran with.
+    /// drawn from the core's RNG, `seed`), and returns the last one (max-pooled with the one
+    /// before it under `maxpool`) as a `uint8[obs_height, obs_width, channels]` observation.
+    /// While recording, this is one recorded step of the buttons each frame ran with.
     fn step<'py>(
         mut slf: PyRefMut<'py, Self>,
         frames: u32,
@@ -217,6 +245,29 @@ impl Core {
         this.run_sticky(py, frames, buttons, sticky_prob)?;
         let core = this.core.as_ref().expect("checked by run");
         render(py, core, &mut this.pipeline)
+    }
+
+    /// Whether observations are the maximum of a step's last two frames. Setting it keeps
+    /// (or drops) the previous frame from then on.
+    #[getter]
+    fn get_maxpool(&self) -> errors::Result<bool> {
+        Ok(self
+            .core
+            .as_ref()
+            .ok_or_else(closed)?
+            .keeps_previous_frame())
+    }
+
+    #[setter]
+    fn set_maxpool(&mut self, maxpool: bool) -> errors::Result<()> {
+        self.core()?.set_keep_previous_frame(maxpool);
+        Ok(())
+    }
+
+    /// Bytes per observation pixel: 1 under `grayscale`, else 3.
+    #[getter]
+    fn channels(&self) -> usize {
+        self.pipeline.color().channels()
     }
 
     /// Runs each `(buttons, frames)` pair in order, such as a reset script; while recording,

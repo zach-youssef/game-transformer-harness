@@ -12,7 +12,7 @@ use pyo3::types::{PyBytes, PyDict};
 
 use crate::core::{filter as interpolation_filter, rotation};
 use crate::errors;
-use crate::frame::{into_rgb8_frames, rgb8_frames_buffer};
+use crate::frame::{frames_buffer, into_frames_array};
 
 /// Replays the recording in `recording_dir` on its own core (one per process; the arguments
 /// before `out_path` are `_native.Replayer`'s) and writes its shard to `out_path`, replacing
@@ -105,11 +105,18 @@ fn decode_frames<'py>(
     path: PathBuf,
 ) -> errors::Result<Bound<'py, PyArray4<u8>>> {
     let buffer = py.detach(|| {
-        let mut buffer = rgb8_frames_buffer(samples, height, width)?;
+        let mut buffer = frames_buffer(samples, height, width, gth_frame::RGB8_BYTES_PER_PIXEL)?;
         gth_record::decode_frames(data, &mut buffer, &path)?;
         Ok::<_, errors::Error>(buffer)
     })?;
-    Ok(into_rgb8_frames(py, buffer, samples, height, width))
+    Ok(into_frames_array(
+        py,
+        buffer,
+        samples,
+        height,
+        width,
+        gth_frame::RGB8_BYTES_PER_PIXEL,
+    ))
 }
 
 /// Decodes a sprite chunk of the shard at `path` holding `records` records into their bytes

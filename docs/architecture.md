@@ -88,7 +88,9 @@ The frame half of one `RetroEnv.step(action)` (`python/gtharness/env.py`) is one
    per-channel maximum with the previous frame when pooling, converts to gray (integer
    BT.601 weights summing to 1, so r = g = b keeps its value) when the pipeline's `Color` is
    `Gray`, then resizes (`fast_image_resize`: area, bilinear, or bicubic as Pillow's
-   `BICUBIC`) into a newly allocated observation buffer.
+   `BICUBIC`) into a newly allocated observation buffer. `RetroEnv`'s required `maxpool`
+   (settable) and `grayscale` choose these; at frameskip 1 the pooled frame is the
+   previous step's last.
    The pipeline keeps its scratch buffers and resizer, so the resize allocates nothing. The
    area resize is the largest host-side cost of a step (about 0.35 ms per observation in a
    release build, measured during S4); profiling it is an open follow-up.

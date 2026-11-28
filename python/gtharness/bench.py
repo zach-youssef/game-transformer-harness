@@ -200,6 +200,8 @@ def make_env(
         sticky_prob=0.0,
         max_episode_frames=None,
         noop_max=0,
+        maxpool=False,
+        grayscale=False,
         reset_state=None,
         record=record,
         game_id=target.name if record is not None else None,
@@ -238,6 +240,7 @@ def _speed_worker(
             runs: dict[str, list[float]] = {
                 "env": [],
                 "native": [],
+                "maxpool": [],
                 "emulate": [],
                 "python": [],
                 "call": [],
@@ -259,6 +262,14 @@ def _speed_worker(
                 for mask in masks:
                     core.step(frameskip, mask, 0.0)
                 native_ns = (time.perf_counter_ns() - start) / steps
+                # The native step again, max-pooling the last two frames.
+                core.unserialize(state)
+                core.maxpool = True
+                start = time.perf_counter_ns()
+                for mask in masks:
+                    core.step(frameskip, mask, 0.0)
+                runs["maxpool"].append((time.perf_counter_ns() - start) / steps)
+                core.maxpool = False
                 core.unserialize(state)
                 start = time.perf_counter_ns()
                 for mask in masks:
@@ -278,6 +289,8 @@ def _speed_worker(
                 "native_step_us": us["native"],
                 "emulate_us": us["emulate"],
                 "render_us": us["native"] - us["emulate"],
+                "maxpool_step_us": us["maxpool"],
+                "maxpool_us": us["maxpool"] - us["native"],
                 "python_us": us["python"],
                 "python_share": us["python"] / us["env"],
                 "call_us": us["call"],
@@ -617,15 +630,15 @@ def markdown(run: dict[str, Any]) -> str:
         f"Single process, {obs} observations: frames/s and the time of one step in µs.",
         "",
         "| Target | Frameskip | Frames/s | Env step | Native step | Emulate | Render | Python"
-        " | Python share |",
-        "|---|---|---|---|---|---|---|---|---|",
+        " | Python share | Max-pool |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for t in run["targets"]:
         for fs, r in t["speed"].items():
             lines.append(
                 f"| {t['target']} | {fs} | {r['fps']:.0f} | {r['env_step_us']:.0f} |"
                 f" {r['native_step_us']:.0f} | {r['emulate_us']:.0f} | {r['render_us']:.0f} |"
-                f" {r['python_us']:.1f} | {r['python_share']:.1%} |"
+                f" {r['python_us']:.1f} | {r['python_share']:.1%} | {r['maxpool_us']:+.0f} |"
             )
     procs = s["processes"]
     lines += [

@@ -64,6 +64,7 @@ def test_gth_bench_measures_and_replays_the_test_core(
     assert set(target["speed"]) == {"1", "4"}
     for result in target["speed"].values():
         assert result["fps"] > 0 and result["native_step_us"] > 0 and result["call_us"] >= 0
+        assert result["maxpool_step_us"] > 0 and "maxpool_us" in result
     for frameskip in ("1", "4"):
         runs = target["parallel"][frameskip]
         assert [r["processes"] for r in runs] == [1, 2]

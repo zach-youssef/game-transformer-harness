@@ -227,6 +227,8 @@ def test_recordings_keep_the_lock_entry_of_a_pinned_build(
         "sticky_prob": 0.0,
         "max_episode_frames": None,
         "noop_max": 0,
+        "maxpool": False,
+        "grayscale": False,
         "reset_state": None,
         "game_id": "testcore",
     }
@@ -253,7 +255,7 @@ def test_recordings_keep_the_lock_entry_of_a_pinned_build(
     monkeypatch.setattr(cores, "LOCK", tmp_path / "missing.lock")
     assert "lock" not in record_one(tmp_path / "unpinned")["core"]
 
-    core = _native.Core(testcore_path, None, tmp_path, {}, 0, 60, 80, None, 0, "area")
+    core = _native.Core(testcore_path, None, tmp_path, {}, 0, 60, 80, None, 0, "area", False, False)
     try:
         other = _native.CoresLock.parse(
             lock_text("1").replace(f"cores.{NAME}", "cores.other"), "other.lock"

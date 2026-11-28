@@ -19,7 +19,7 @@ A = 1 << 8  # RETRO_DEVICE_ID_JOYPAD_A
 
 @pytest.fixture
 def core(testcore_path: Path, tmp_path: Path) -> Iterator[_native.Core]:
-    core = _native.Core(testcore_path, None, tmp_path, {}, 0, 16, 16, None, 0, "area")
+    core = _native.Core(testcore_path, None, tmp_path, {}, 0, 16, 16, None, 0, "area", False, False)
     try:
         yield core
     finally:
@@ -194,6 +194,8 @@ def test_assert_ram_checks_a_game_s_variables(testcore_path: Path, testcore_data
         sticky_prob=0.0,
         max_episode_frames=None,
         noop_max=0,
+        maxpool=False,
+        grayscale=False,
         core_path=testcore_path,
     )
     try:

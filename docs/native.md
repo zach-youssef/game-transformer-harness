@@ -60,18 +60,18 @@ Read this before adding or changing anything it exports.
 
 ## Arrays
 
-Frames reach Python as numpy `uint8[height, width, 3]` arrays (RGB8, row-major), without a
-copy (`gth-py/src/frame.rs`):
+Frames reach Python as numpy `uint8[height, width, channels]` arrays (RGB8, or one gray
+byte a pixel; row-major), without a copy (`gth-py/src/frame.rs`):
 
-1. `gth-py` allocates the buffer (`rgb8_buffer`). Sizes from Python are untrusted, so a size
+1. `gth-py` allocates the buffer (`frame_buffer`). Sizes from Python are untrusted, so a size
    that overflows raises `ValueError` and one that can't be allocated raises `MemoryError`
    instead of aborting the process.
 2. A crate function fills it as a plain `&mut [u8]`, as `gth_frame::fill_test_pattern` does.
-3. `into_rgb8_array` moves the `Vec` into the array (`IntoPyArray`): numpy views the Rust
+3. `into_frame_array` moves the `Vec` into the array (`IntoPyArray`): numpy views the Rust
    allocation, and the array's base object frees it when the last array or view of it goes.
 
-`decode_frames` returns a whole frame chunk as one `uint8[n, height, width, 3]` array the
-same way (`rgb8_frames_buffer`, `into_rgb8_frames`).
+`decode_frames` returns a whole frame chunk as one `uint8[n, height, width, channels]` array
+the same way (`frames_buffer`, `into_frames_array`).
 
 The lifetime rule: an array `_native` returns owns its memory. Rust never writes to or frees
 a buffer after handing it over, so callers may keep, change and share frames across threads,
@@ -87,8 +87,10 @@ path, so the env imports it from `_native` directly.
 
 - The constructor takes the core options, the settle frames after savestate loads
   (docs/games.md, `settle_frames`) and every pipeline choice explicitly (observation size,
-  crop, rotation, interpolation); `RetroEnv` takes the options, settle frames, crop and
-  rotation from the game config, requires the size and defaults only `interpolation` ("area").
+  crop, rotation, interpolation, `maxpool`, `grayscale`); `RetroEnv` takes the options,
+  settle frames, crop and rotation from the game config, requires the size, `maxpool` and
+  `grayscale`, and defaults only `interpolation` ("area"). `maxpool` stays settable (a
+  property, as on `RetroEnv`); `grayscale` fixes the observation's `channels` (1, else 3).
 - `reset()` returns to the state right after loading (gth-core's load snapshot, or
   `retro_reset` for cores that can't serialize then; docs/libretro.md, "Host").
   `resets_to_load_state` (also on `RetroEnv`) says which one the core gets.

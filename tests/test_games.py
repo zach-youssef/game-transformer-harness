@@ -33,6 +33,8 @@ def testcore(testcore_data: Path, testcore_path: Path) -> Iterator[Callable[...,
             "sticky_prob": 0.0,
             "max_episode_frames": None,
             "noop_max": 0,
+            "maxpool": False,
+            "grayscale": False,
             "core_path": testcore_path,
         } | kwargs
         envs.append(RetroEnv.from_game("testcore", testcore_data, **options))
@@ -144,6 +146,8 @@ def test_from_game_names_what_is_missing(testcore_data: Path, testcore_path, mon
         "sticky_prob": 0.0,
         "max_episode_frames": None,
         "noop_max": 0,
+        "maxpool": False,
+        "grayscale": False,
         "core_path": testcore_path,
     }
     with pytest.raises(ConfigError, match=r"cannot read .*nogame"):
@@ -199,6 +203,8 @@ def test_from_game_finds_a_clone_through_its_parent(
         "sticky_prob": 0.0,
         "max_episode_frames": None,
         "noop_max": 0,
+        "maxpool": False,
+        "grayscale": False,
         "core_path": testcore_path,
         "games_dir": games,
     }
@@ -237,6 +243,8 @@ def test_savestate_reset(testcore, testcore_data: Path, testcore_path: Path, tmp
             sticky_prob=0.0,
             max_episode_frames=None,
             noop_max=0,
+            maxpool=False,
+            grayscale=False,
             core_path=testcore_path,
             games_dir=games,
         )

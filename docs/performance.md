@@ -61,6 +61,8 @@ the file's size and hashes. Actions are uniformly random flat actions
   differ by game scene. The Python overhead is timed inside
   `env.step`: a wrapper around the core times its `step` call, and the rest of `env.step`
   (action checks and lookup, the `read_ram` call, the reward, the info dict) is the overhead.
+  "Max-pool" is what max-pooling the step's last two frames (`maxpool`, docs/evaluation.md)
+  adds to the native step: the same loop again with `_native.Core.maxpool` on.
   The wrapper's own cost counts as overhead, so the figure errs high. A native call's
   boundary (a `Core.frames_run` read) costs about 0.02 µs, so timing native calls from Python
   is accurate to well under a microsecond.
@@ -163,6 +165,25 @@ every target. Save and load times vary by a few µs between runs. What they show
   checkpoints for resets or branching are cheap. Battle Garegga's load takes 244 µs because
   it includes its settle frame, one emulated frame (247 µs at frameskip 1 above); see
   "FBNeo and savestates" below.
+
+### Max-pool cost, Apple M4 Mac, 2026-11-27
+
+Max-pooling keeps the frame before the last one (a buffer swap per emulated frame, a copy
+on a dupe) and converts both frames before taking their maximum, so it costs about one
+more crop and conversion per step, not per frame. Measured with the max-pool column (added
+after the run above) on Battle Garegga only, with a local FBNeo build
+(`v1.0.0.03 261127 GIT9f550318a`, not the pinned one) and other work on the machine (load
+average about 4), a release build of the harness with this column:
+
+| Target | Frameskip | Frames/s | Env step | Native step | Emulate | Render | Python | Python share | Max-pool |
+|---|---|---|---|---|---|---|---|---|---|
+| bgaregga | 1 | 1719 | 582 | 579 | 246 | 333 | 1.0 | 0.2% | +25 |
+| bgaregga | 2 | 2457 | 814 | 814 | 480 | 334 | 1.0 | 0.1% | +24 |
+| bgaregga | 4 | 2822 | 1417 | 1437 | 1097 | 340 | 1.2 | 0.1% | +26 |
+
+So max-pooling adds about 25 µs (2-4%) to a 256x256 step, the same at every frameskip;
+the other columns agree with the full run above within 1%. The other targets' figures wait
+for the next full run.
 
 ### TheaterPC
 

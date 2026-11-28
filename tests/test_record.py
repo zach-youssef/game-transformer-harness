@@ -53,6 +53,8 @@ def play(
         sticky_prob=0.0,
         max_episode_frames=None,
         noop_max=0,
+        maxpool=False,
+        grayscale=False,
         core_path=testcore_path,
         record=rec,
     )
@@ -149,6 +151,8 @@ def test_a_sticky_episode_with_no_ops_replays_without_its_rng(
         sticky_prob=0.25,
         max_episode_frames=400,
         noop_max=10,
+        maxpool=False,
+        grayscale=False,
         core_path=testcore_path,
         record=record(tmp_path / "recordings", checks_every=1),
     )
@@ -234,6 +238,8 @@ def test_a_failed_recording_raises_and_the_next_episode_records(
         sticky_prob=0.0,
         max_episode_frames=None,
         noop_max=0,
+        maxpool=False,
+        grayscale=False,
         core_path=testcore_path,
         record=record(tmp_path),
     )
@@ -266,13 +272,15 @@ def test_recording_needs_its_choices(testcore_path: Path, testcore_data: Path, t
         "sticky_prob": 0.0,
         "max_episode_frames": None,
         "noop_max": 0,
+        "maxpool": False,
+        "grayscale": False,
         "reset_state": None,
     }
     with pytest.raises(ValueError, match="game_id"):
         RetroEnv(game, record=record(tmp_path), **options)
 
     core = _native.Core(
-        testcore_path, None, tmp_path, {}, game.settle_frames, 60, 80, None, 0, "area"
+        testcore_path, None, tmp_path, {}, game.settle_frames, 60, 80, None, 0, "area", False, False
     )
     try:
         with pytest.raises(ValueError, match="recorder must be one of"):

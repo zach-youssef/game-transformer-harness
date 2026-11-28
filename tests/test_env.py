@@ -74,6 +74,8 @@ def make(testcore_path: Path, tmp_path: Path, game=None, **kwargs) -> RetroEnv:
         "sticky_prob": 0.0,
         "max_episode_frames": None,
         "noop_max": 0,
+        "maxpool": False,
+        "grayscale": False,
         "reset_state": None,
     } | kwargs
     return RetroEnv(game or config(), **options)
@@ -200,6 +202,8 @@ def test_constructor_checks_its_choices(testcore_path: Path, tmp_path: Path):
         ("noop_max", 1.5),
         ("max_episode_frames", 0),
         ("max_episode_frames", 10.0),
+        ("maxpool", 1),
+        ("grayscale", None),
     ]
     for name, value in bad:
         with pytest.raises(ValueError, match=name):
@@ -339,6 +343,82 @@ def test_resize_rotate_and_crop(testcore_path: Path, tmp_path: Path):
         bad_crop.reset()
 
 
+def luma(rgb: np.ndarray) -> np.ndarray:
+    """BT.601 in the pipeline's fixed point, as gth_frame::luma."""
+    r, g, b = (rgb[..., i].astype(np.uint32) for i in range(3))
+    return ((19595 * r + 38470 * g + 7471 * b + 32768) >> 16).astype(np.uint8)
+
+
+def test_grayscale_is_one_channel_of_luma(testcore_path: Path, tmp_path: Path):
+    actions = [act(shot=i % 2, bomb=int(i % 3 == 0), direction=RIGHT) for i in range(20)]
+    with retro_env(testcore_path, tmp_path) as rgb_env:
+        rgb = [rgb_env.reset(seed=0)[0]] + [rgb_env.step(a)[0] for a in actions]
+    with retro_env(testcore_path, tmp_path, grayscale=True) as env:
+        assert env.grayscale and not env.maxpool
+        assert env.observation_space.shape == (HEIGHT, WIDTH, 1)
+        gray = [env.reset(seed=0)[0]] + [env.step(a)[0] for a in actions]
+    for color, one in zip(rgb, gray, strict=True):
+        assert one.shape == (HEIGHT, WIDTH, 1) and one.dtype == np.uint8
+        np.testing.assert_array_equal(one[..., 0], luma(color))
+    assert cell(gray[2], CELL_A) == [luma(np.array([255, 0x80, 0x80]))], "red stays visible"
+    with retro_env(testcore_path, tmp_path, obs_size=(84, 84), grayscale=True) as small:
+        assert small.reset()[0].shape == (84, 84, 1)
+        assert small.observation_space.shape == (84, 84, 1)
+
+
+def shown(obs: np.ndarray) -> bool:
+    """Whether the A cell shows A held (red) in an RGB observation."""
+    return obs[0, CELL_A * 20 + 10, 0] == 255
+
+
+def test_maxpool_keeps_the_last_two_frames(testcore_path: Path, tmp_path: Path):
+    # Sticky actions vary the buttons within a step: a no-shot step whose first frame
+    # sticks to the shot before it scores 1 but ends without A held.
+    options = {"obs_size": (HEIGHT, WIDTH), "frameskip": 2, "sticky_prob": 0.5}
+    seen = {}
+    for maxpool in (False, True):
+        with retro_env(testcore_path, tmp_path, maxpool=maxpool, **options) as env:
+            assert env.maxpool is maxpool
+            env.reset(seed=3)
+            steps = []
+            for i in range(300):
+                obs, reward, *_ = env.step(act(shot=i % 2))
+                steps.append((i % 2, reward, bool(shown(obs)), frame_number(obs)))
+            seen[maxpool] = steps
+    stuck = [i for i, (shot, reward, *_) in enumerate(seen[True]) if not shot and reward == 1]
+    assert stuck, "some no-shot steps stick for their first frame"
+    for i, ((_, _, plain, number), (_, _, pooled, pooled_number)) in enumerate(
+        zip(seen[False], seen[True], strict=True)
+    ):
+        # The same seed and actions run the same frames; green is the later frame's number.
+        assert number == pooled_number
+        # A held on either of the step's last two frames shows when pooled; only the last
+        # frame shows without pooling.
+        assert pooled == (plain or i in stuck), i
+    assert not any(plain for _, _, plain, _ in (seen[False][i] for i in stuck))
+
+
+def test_maxpool_is_settable_and_reaches_back_a_step_at_frameskip_1(
+    testcore_path: Path, tmp_path: Path
+):
+    with retro_env(testcore_path, tmp_path, maxpool=True, grayscale=True) as env:
+        env.reset(seed=0)
+        env.step(act(shot=1))
+        pooled = env.step(act())[0]
+        # The previous step's frame, A held, pooled with this one's.
+        assert cell(pooled, CELL_A) == [luma(np.array([255, 0x80, 0x80]))]
+        assert cell(env.step(act())[0], CELL_A) == [luma(np.array([0, 5, 0]))]
+        env.maxpool = False
+        assert not env.maxpool
+        env.step(act(shot=1))
+        assert cell(env.step(act())[0], CELL_A) == [luma(np.array([0, 7, 0]))]
+        env.maxpool = True
+        env.step(act(shot=1))
+        assert cell(env.step(act())[0], CELL_A) == [luma(np.array([255, 0x80, 0x80]))]
+        with pytest.raises(ValueError, match="maxpool"):
+            env.maxpool = 1  # type: ignore[assignment]
+
+
 @pytest.mark.parametrize("protocol", ["off", "on"])
 @pytest.mark.parametrize("action_format", ["dict", "flat"])
 def test_gymnasium_check_env(
@@ -349,12 +429,13 @@ def test_gymnasium_check_env(
         # check_env resets with a seed twice and compares: sticky actions and no-ops must
         # follow it.
         options |= {"sticky_prob": 0.25, "noop_max": 7, "max_episode_frames": 50}
+        options |= {"maxpool": True, "grayscale": True}
     with retro_env(testcore_path, tmp_path, **options) as env:
         check_env(env, skip_render_check=True)
 
 
 def test_native_core_info(testcore_path: Path, tmp_path: Path):
-    core = _native.Core(testcore_path, None, tmp_path, {}, 0, 8, 8, None, 0, "area")
+    core = _native.Core(testcore_path, None, tmp_path, {}, 0, 8, 8, None, 0, "area", False, False)
     try:
         assert core.system_info()["library_name"] == "gth-testcore"
         av = core.av_info()

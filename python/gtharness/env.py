@@ -113,6 +113,13 @@ class RetroEnv(gym.Env[Observation, Action]):
         sticky_prob: the sticky-action probability, in [0, 1); 0 turns them off.
         max_episode_frames: the episode cap in emulated frames (>= 1), or None for none.
         noop_max: the most no-op frames an episode starts with (>= 0); 0 turns them off.
+        maxpool: whether each observation is the per-channel maximum of the step's last two
+            frames (DQN's, which keeps sprites drawn every other frame visible); settable at
+            runtime. At ``frameskip`` 1 the second frame is the previous step's, as in Mnih
+            et al. (2015); Gymnasium's ``AtariPreprocessing`` doesn't pool at frameskip 1.
+        grayscale: whether observations are one channel of BT.601 luma,
+            ``uint8[height, width, 1]``, instead of RGB, ``uint8[height, width, 3]``; gray
+            pixels (r = g = b) keep their value. Taken after max-pooling, before resizing.
         interpolation: "area" (averages, best for shrinking), "bilinear" or "bicubic"
             (Pillow's).
         record: where and how to record episodes (`gtharness.record.Record`), or None.
@@ -137,6 +144,8 @@ class RetroEnv(gym.Env[Observation, Action]):
         sticky_prob: float,
         max_episode_frames: int | None,
         noop_max: int,
+        maxpool: bool,
+        grayscale: bool,
         interpolation: str = "area",
         record: Record | None = None,
         game_id: str | None = None,
@@ -148,6 +157,9 @@ class RetroEnv(gym.Env[Observation, Action]):
             or not 0 <= sticky_prob < 1
         ):
             raise ValueError(f"sticky_prob must be a number in [0, 1), not {sticky_prob!r}")
+        for name, value in (("maxpool", maxpool), ("grayscale", grayscale)):
+            if not isinstance(value, bool | np.bool_):
+                raise ValueError(f"{name} must be True or False, not {value!r}")
         if not _is_int(noop_max) or noop_max < 0:
             raise ValueError(f"noop_max must be an integer >= 0, not {noop_max!r}")
         if max_episode_frames is not None and (
@@ -175,6 +187,7 @@ class RetroEnv(gym.Env[Observation, Action]):
         if missing:
             raise ConfigError(f"{base.__name__} needs the RAM variables {missing}")
         self._sticky_prob = float(sticky_prob)
+        self._grayscale = bool(grayscale)
         self._noop_max = int(noop_max)
         self._max_episode_frames = None if max_episode_frames is None else int(max_episode_frames)
         self.frameskip = frameskip
@@ -211,6 +224,8 @@ class RetroEnv(gym.Env[Observation, Action]):
                 config.crop,
                 config.orientation,
                 interpolation,
+                bool(maxpool),
+                bool(grayscale),
             )
         except ConfigError as error:
             if not config.content_in_parent:
@@ -224,7 +239,8 @@ class RetroEnv(gym.Env[Observation, Action]):
         except BaseException:
             self._core.close()
             raise
-        self.observation_space = gym.spaces.Box(0, 255, (height, width, 3), np.uint8)
+        channels = self._core.channels
+        self.observation_space = gym.spaces.Box(0, 255, (height, width, channels), np.uint8)
         if action_format == "flat":
             self.action_space: gym.spaces.Space[Any] = gym.spaces.Discrete(config.n_actions)
         else:
@@ -248,6 +264,8 @@ class RetroEnv(gym.Env[Observation, Action]):
         sticky_prob: float,
         max_episode_frames: int | None,
         noop_max: int,
+        maxpool: bool,
+        grayscale: bool,
         rom_dir: str | os.PathLike[str] | None = None,
         core_path: str | os.PathLike[str] | None = None,
         games_dir: str | os.PathLike[str] = GAMES_DIR,
@@ -290,6 +308,8 @@ class RetroEnv(gym.Env[Observation, Action]):
             sticky_prob=sticky_prob,
             max_episode_frames=max_episode_frames,
             noop_max=noop_max,
+            maxpool=maxpool,
+            grayscale=grayscale,
             interpolation=interpolation,
             record=record,
             game_id=game_id,
@@ -298,6 +318,22 @@ class RetroEnv(gym.Env[Observation, Action]):
     @property
     def config(self) -> _native.GameConfig:
         return self._config
+
+    @property
+    def maxpool(self) -> bool:
+        """Whether observations max-pool the step's last two frames; settable."""
+        return self._core.maxpool
+
+    @maxpool.setter
+    def maxpool(self, maxpool: bool) -> None:
+        if not isinstance(maxpool, bool | np.bool_):
+            raise ValueError(f"maxpool must be True or False, not {maxpool!r}")
+        self._core.maxpool = bool(maxpool)
+
+    @property
+    def grayscale(self) -> bool:
+        """Whether observations are one gray channel (fixed: it sets the observation space)."""
+        return self._grayscale
 
     @property
     def frameskip(self) -> int:

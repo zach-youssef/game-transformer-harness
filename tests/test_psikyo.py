@@ -100,6 +100,8 @@ def test_sprite_labels_are_the_frame_s_own(game_id, rom, core, tmp_path):
         sticky_prob=0.0,
         max_episode_frames=None,
         noop_max=0,
+        maxpool=False,
+        grayscale=False,
         rom_dir=content.parent,
         core_path=path,
         record=Record(

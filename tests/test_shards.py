@@ -64,6 +64,8 @@ def play(
         sticky_prob=0.0,
         max_episode_frames=None,
         noop_max=0,
+        maxpool=False,
+        grayscale=False,
         core_path=testcore_path,
         games_dir=games_dir,
         record=Record(

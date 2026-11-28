@@ -52,7 +52,14 @@ impl Replayer {
         rotate: u32,
         interpolation: &str,
     ) -> errors::Result<Self> {
-        let pipeline = pipeline(obs_height, obs_width, crop, rotate, interpolation)?;
+        let pipeline = pipeline(
+            obs_height,
+            obs_width,
+            crop,
+            rotate,
+            interpolation,
+            gth_frame::Color::Rgb,
+        )?;
         let replayer = py.detach(|| {
             let recording = gth_record::Recording::open(&recording_dir)?;
             gth_record::Replayer::load(recording, &core_path, content_path.as_deref(), &system_dir)

@@ -5,26 +5,39 @@ use numpy::{IntoPyArray, PyArray3, PyArray4};
 use pyo3::exceptions::{PyMemoryError, PyValueError};
 use pyo3::prelude::*;
 
+use gth_frame::RGB8_BYTES_PER_PIXEL;
+
 use crate::errors;
 
-/// A zeroed buffer for a `height` x `width` RGB8 frame. Python's size arguments are untrusted,
-/// so a size that overflows or can't be allocated raises instead of aborting the process.
-pub(crate) fn rgb8_buffer(height: usize, width: usize) -> errors::Result<Vec<u8>> {
-    zeroed(gth_frame::rgb8_len(height, width), || {
-        format!("frame {height}x{width} is too large")
-    })
+/// A zeroed buffer for a `height` x `width` frame of `channels` bytes per pixel. Python's size
+/// arguments are untrusted, so a size that overflows or can't be allocated raises instead of
+/// aborting the process.
+pub(crate) fn frame_buffer(
+    height: usize,
+    width: usize,
+    channels: usize,
+) -> errors::Result<Vec<u8>> {
+    frames_buffer(1, height, width, channels)
 }
 
-/// A zeroed buffer for `frames` RGB8 frames of `height` x `width`, checked like
-/// [`rgb8_buffer`].
-pub(crate) fn rgb8_frames_buffer(
+/// A zeroed buffer for `frames` frames of `height` x `width` x `channels`, checked like
+/// [`frame_buffer`].
+pub(crate) fn frames_buffer(
     frames: usize,
     height: usize,
     width: usize,
+    channels: usize,
 ) -> errors::Result<Vec<u8>> {
-    let len = gth_frame::rgb8_len(height, width).and_then(|len| len.checked_mul(frames));
+    let len = height
+        .checked_mul(width)
+        .and_then(|len| len.checked_mul(channels))
+        .and_then(|len| len.checked_mul(frames));
     zeroed(len, || {
-        format!("{frames} frames of {height}x{width} are too large")
+        if frames == 1 {
+            format!("frame {height}x{width}x{channels} is too large")
+        } else {
+            format!("{frames} frames of {height}x{width}x{channels} are too large")
+        }
     })
 }
 
@@ -42,32 +55,33 @@ fn zeroed(len: Option<usize>, too_large: impl FnOnce() -> String) -> errors::Res
     Ok(buffer)
 }
 
-/// Moves a filled RGB8 buffer into a numpy `uint8[height, width, 3]` array without copying.
-/// The array owns the buffer from then on (docs/native.md, "Arrays").
-pub(crate) fn into_rgb8_array(
+/// Moves a filled frame buffer into a numpy `uint8[height, width, channels]` array without
+/// copying. The array owns the buffer from then on (docs/native.md, "Arrays").
+pub(crate) fn into_frame_array(
     py: Python<'_>,
     buffer: Vec<u8>,
     height: usize,
     width: usize,
+    channels: usize,
 ) -> Bound<'_, PyArray3<u8>> {
-    let shape = (height, width, gth_frame::RGB8_BYTES_PER_PIXEL);
-    Array3::from_shape_vec(shape, buffer)
-        .expect("rgb8_buffer sized the buffer for this shape")
+    Array3::from_shape_vec((height, width, channels), buffer)
+        .expect("frame_buffer sized the buffer for this shape")
         .into_pyarray(py)
 }
 
-/// Moves a filled buffer of `frames` RGB8 frames into a numpy `uint8[frames, height, width, 3]`
-/// array without copying, like [`into_rgb8_array`].
-pub(crate) fn into_rgb8_frames(
+/// Moves a filled buffer of `frames` frames into a numpy
+/// `uint8[frames, height, width, channels]` array without copying, like
+/// [`into_frame_array`].
+pub(crate) fn into_frames_array(
     py: Python<'_>,
     buffer: Vec<u8>,
     frames: usize,
     height: usize,
     width: usize,
+    channels: usize,
 ) -> Bound<'_, PyArray4<u8>> {
-    let shape = (frames, height, width, gth_frame::RGB8_BYTES_PER_PIXEL);
-    Array4::from_shape_vec(shape, buffer)
-        .expect("rgb8_frames_buffer sized the buffer for this shape")
+    Array4::from_shape_vec((frames, height, width, channels), buffer)
+        .expect("frames_buffer sized the buffer for this shape")
         .into_pyarray(py)
 }
 
@@ -81,11 +95,17 @@ fn fill_test_pattern(
 ) -> errors::Result<Bound<'_, PyArray3<u8>>> {
     // Zeroing and filling are O(pixels), so both run detached. A PyErr needs no GIL to create.
     let buffer = py.detach(|| {
-        let mut buffer = rgb8_buffer(height, width)?;
+        let mut buffer = frame_buffer(height, width, RGB8_BYTES_PER_PIXEL)?;
         gth_frame::fill_test_pattern(&mut buffer, height, width, seed);
         Ok::<_, errors::Error>(buffer)
     })?;
-    Ok(into_rgb8_array(py, buffer, height, width))
+    Ok(into_frame_array(
+        py,
+        buffer,
+        height,
+        width,
+        RGB8_BYTES_PER_PIXEL,
+    ))
 }
 
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {

@@ -167,6 +167,8 @@ def replay_and_cold_load(rom, core, tmp_path: Path) -> Callable[..., ColdLoad]:
             sticky_prob=0.0,
             max_episode_frames=None,
             noop_max=0,
+            maxpool=False,
+            grayscale=False,
             core_path=core_path,
             record=Record(
                 directory=tmp_path / "recordings",
@@ -210,6 +212,8 @@ def replay_and_cold_load(rom, core, tmp_path: Path) -> Callable[..., ColdLoad]:
             game.crop,
             game.orientation,
             "area",
+            False,
+            False,
         )
         try:
             warm.step(3000, 0)

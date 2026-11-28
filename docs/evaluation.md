@@ -32,7 +32,7 @@ setting) is checked when the protocol is used, by the runner (below, "Checks bef
 | `obs.crop` | `"game"` or `[x, y, width, height]` | The part of the core's frame kept, before rotation, in core pixels; `"game"` uses the game config's `crop` (docs/games.md). |
 | `obs.orientation` | `"game"`, 0, 90 or 270 | Clockwise rotation; `"game"` uses the game config's. Multi-game protocols use `"game"`. |
 | `obs.interpolation` | `gtharness.env.INTERPOLATIONS`: `"area"`, `"bilinear"` or `"bicubic"` | How frames are resized (the env's `interpolation`; `"bicubic"` is Pillow's `BICUBIC`, Catmull-Rom widened when shrinking, not OpenCV's `INTER_CUBIC`). The env, the shard exporter and protocols share the one tuple. |
-| `obs.grayscale` | bool | Gray observations instead of RGB. |
+| `obs.grayscale` | bool | Gray observations instead of RGB: one channel, `[H, W, 1]`, of BT.601 luma taken after max-pooling and before resizing; gray pixels keep their value. |
 | `frame_stack` | integer >= 1 | How many observations the policy sees at once. The env doesn't stack: this is recorded for the policy, which must use this many. |
 | `action_set` | `"harness"`, `"atari_full"`, `"atari_minimal"` | The policy's action space: the harness's direction + four slots (docs/actions.md), or Atari's 18 actions or a game's minimal set. |
 | `start.reset` | `"game"` or a savestate's lowercase SHA-1 | Where an episode starts: the game config's reset (script or savestate), or a given savestate. |
