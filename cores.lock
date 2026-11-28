@@ -1,5 +1,15 @@
 # Pinned libretro core builds. docs/cores.md says how to bump a pin.
 
+[cores.ale]
+repo = "https://github.com/zach-youssef/Arcade-Learning-Environment"
+commit = "ef6d7ffe2159cd2e3a7d28891961ec17a12730d4"
+library_version = "0.12.1 ef6d7ff"
+
+[cores.ale.artifacts]
+aarch64-apple-darwin = "d3637ee3a4ac008b9fe9aa922f01fc6a9828f937638bc69ccfb4d773416dc97f"
+x86_64-pc-windows-msvc = "93538bf7907f99ed64525f5dc6decdc0357196ec7874f53c6cd8a09d760257c1"
+x86_64-unknown-linux-gnu = "9cf1b069235039d8d20d9cc91fc6c2511090fc2d82fceca22b394b06a17aa3c1"
+
 [cores.fbneo]
 repo = "https://github.com/zach-youssef/FBNeo"
 commit = "9ee23cb3fa517959b5e6cb2fd488564bcf5d0fbb"
@@ -7,7 +17,7 @@ library_version = "v1.0.0.03 261127 GIT9ee23cb"
 
 [cores.fbneo.artifacts]
 aarch64-apple-darwin = "0b2b6832768fbeb0becd19fa0e1ee841d4545d94f866d0bbddb46ad800e92f9c"
-x86_64-pc-windows-msvc = "3d92fcd4135f24ef704f772b282e02f1957aa684d79fb881ff05da5d96916c0e"
+x86_64-pc-windows-msvc = "b286957a6cd9e9c4ec4af60b11c7f0af3c963952ed3a1390ce4d2f3527fa4ea1"
 x86_64-unknown-linux-gnu = "ba80e195815f2f6133a5ce93bafb33eaf7e724877f87bf94a98550f1aba4d029"
 
 [cores.fceumm]
@@ -17,7 +27,7 @@ library_version = "(SVN) e0f3086"
 
 [cores.fceumm.artifacts]
 aarch64-apple-darwin = "ba23d4c3ca9e4127f88de83012e80728dad712463961c54f6f538c3dcdb7cab5"
-x86_64-pc-windows-msvc = "2cb82a3763b153061634da4df90c7e8f9a4588cde232b1380f448aa4df7d0ba3"
+x86_64-pc-windows-msvc = "8ba4dbf67872c160cf691eec67d6cf1511453efe1aa0af08787d8abd5457eb33"
 x86_64-unknown-linux-gnu = "76987d364b3cae02b1b32afdb3a1698905e4835ad88635a15c0e2c97dd49e057"
 
 [cores.genesis_plus_gx]
@@ -27,7 +37,7 @@ library_version = "v1.7.4 b9c2316"
 
 [cores.genesis_plus_gx.artifacts]
 aarch64-apple-darwin = "06388d4f36371c1891bae46fb31e5da3b5f0a8c4cf7329408a6d6e5304b64f37"
-x86_64-pc-windows-msvc = "2a0c5106f7af3d89e3ca4f137690e5467be5a030b072a9d21eaf4475022c07a6"
+x86_64-pc-windows-msvc = "dc8a75bd02592426bdc9bb8c1cfb3d766aa131a30fb0cf3a334184b364b6e76f"
 x86_64-unknown-linux-gnu = "61a2d10f0106ebbc4bda0ed083ccfcc8c13b92155e6238060ef6a921f817e017"
 
 [cores.mednafen_pce_fast]
@@ -37,12 +47,5 @@ library_version = "v1.31.0.0 2de1ce1"
 
 [cores.mednafen_pce_fast.artifacts]
 aarch64-apple-darwin = "5a704965a6340fe6658f1ffe99e2df937dd5f8a363aa18113f061260ab6829d3"
-x86_64-pc-windows-msvc = "f3c1ca32328590b7dfa038b014cefe979517049e327f1f71b78b7a1f5c67a679"
+x86_64-pc-windows-msvc = "934d682e6715c11c6ec7af55b05e1ee8ed8c349884117cd095e3eea22c4dbda2"
 x86_64-unknown-linux-gnu = "a73ea44a4595ce6d25750768a7fe7e31a10ce58420583a27cb5aac83991e8b23"
-
-[cores.ale]
-repo = "https://github.com/zach-youssef/Arcade-Learning-Environment"
-commit = "ef6d7ffe2159cd2e3a7d28891961ec17a12730d4"
-library_version = "0.12.1 ef6d7ff"
-
-[cores.ale.artifacts]
