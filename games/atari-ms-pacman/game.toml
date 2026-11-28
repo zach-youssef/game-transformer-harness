@@ -1,0 +1,47 @@
+# Ms. Pac-Man (Atari 2600, Atari, 1982) on the ALE core: ALE's game `ms_pacman`.
+# Hashes of the ROM ale-py 0.12.1 bundles (ms_pacman.bin); the MD5 is ALE's game table's, which
+# the core checks before loading. Everything else is the same for every Atari game:
+# docs/games.md, "Atari (ALE core)".
+
+core = "ale"
+settle_frames = 0
+orientation = 0
+# ALE's getMinimalActionSet for the game.
+atari_minimal_actions = [0, 2, 3, 4, 5, 6, 7, 8, 9]
+
+[content]
+file = "ms_pacman.bin"
+size = 8192
+sha1 = "62b933cdd8844bb1816ce57889203954fe782603"
+crc32 = "b2d08fc9"
+md5 = "87e79cd41ce136fd4f72cc6e2c161bee"
+
+[buttons]
+b = "shot"                # the joystick's fire button (the d-pad is the joystick)
+
+# The core's load runs ALE's reset_game(), so an episode starts at the load state.
+[reset]
+script = []
+
+# ALE's view of the game, in the core's synthetic region at 0x10000 (docs/cores.md).
+[ram.score]
+address = 0x10000
+size = 4                  # the sum of ALE's rewards since the reset, signed
+encoding = "sle"
+
+[ram.lives]
+address = 0x10008
+size = 4                  # ALE's lives()
+encoding = "le"
+
+[ram.game_over]
+address = 0x1000c
+size = 1                  # 1 once ALE's game_over()
+encoding = "le"
+
+[episode]
+terminate = "game_over != 0"  # a lost life isn't terminal
+
+[core_options]
+ale_mode = "default"      # the game's default mode and difficulty, as ALE v5's environments
+ale_difficulty = "default"

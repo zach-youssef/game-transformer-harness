@@ -4,11 +4,12 @@
 
 backend = "libretro"
 # guessed: the paper benchmarks 60 games; ours is the Atari pilot set (Decision 3a: the 8
-# held-out games of MGDT and JOWA plus 4 shooters). Ids are ALE's ROM names with hyphens
-# (docs/games.md), which the Atari game configs (C11) are expected to use.
+# held-out games of MGDT and JOWA plus 4 shooters). Ids are `atari-` and ALE's ROM
+# names with hyphens (docs/games.md, "Atari (ALE core)").
 games = [
-  "alien", "ms-pacman", "pong", "space-invaders", "star-gunner", "gravitar", "robotank",
-  "yars-revenge", "assault", "seaquest", "demon-attack", "phoenix",
+  "atari-alien", "atari-ms-pacman", "atari-pong", "atari-space-invaders", "atari-star-gunner",
+  "atari-gravitar", "atari-robotank", "atari-yars-revenge", "atari-assault", "atari-seaquest",
+  "atari-demon-attack", "atari-phoenix",
 ]
 # Frame skip 5 (A1; Table 5, p. 34).
 frameskip = 5

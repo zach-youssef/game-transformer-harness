@@ -4,9 +4,11 @@
 # `# guessed:` with the reason.
 
 backend = "libretro"
-# The 5 held-out games (A5; Sec. 3.3, p. 4). Ids are ALE's ROM names with hyphens
-# (docs/games.md), which the Atari game configs (C11) are expected to use.
-games = ["alien", "ms-pacman", "pong", "space-invaders", "star-gunner"]
+# The 5 held-out games (A5; Sec. 3.3, p. 4). Ids are `atari-` and ALE's ROM
+# names with hyphens (docs/games.md, "Atari (ALE core)").
+games = [
+  "atari-alien", "atari-ms-pacman", "atari-pong", "atari-space-invaders", "atari-star-gunner",
+]
 # guessed: Dopamine's Atari default of 4, as Agarwal et al.'s preprocessing uses.
 frameskip = 4
 # No sticky actions (A9; App. B.4, p. 18).

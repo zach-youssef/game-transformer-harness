@@ -57,7 +57,9 @@ the same text whatever their file's comments or layout, and loading the text giv
 equal protocol. Results store both: two results compare only when their SHA-1s match. The
 tests pin each preset's SHA-1, so editing a preset fails them on purpose: a changed preset
 is a new protocol, so give it a new name (`ours-v2`) rather than changing the old one's
-numbers.
+numbers. One exception: the Atari presets (`machado2018`, `mgdt2022`, `jowa2025`) first named
+bare ALE ids (`ms-pacman`) that no game config had, so no result was bound to them; they were
+renamed in place to the `atari-<rom>` ids when the Atari games were added.
 
 ## Presets
 
@@ -88,9 +90,9 @@ actions. Every preset has `life_loss_terminal = false` and `reward_clip = "none"
 - `mgdt2022` and `jowa2025` evaluate on each paper's held-out games. A policy's own settings
   (JOWA's epsilon-greedy 0.001 and its restriction to each game's valid actions, MGDT's
   sampling) belong to the policy, not the protocol.
-- The Atari game ids are ALE's ROM names with hyphens (`ms-pacman`); they don't exist until
-  the Atari game configs are added, and their `score_var` is a guess at the name the ALE
-  core's score variable will get.
+- The Atari game ids are `atari-` and ALE's ROM names with hyphens (`atari-ms-pacman`, so
+  that an arcade game of the same name keeps its own id); their `score` is ALE's reward sum
+  (docs/games.md, "Atari (ALE core)").
 
 ## Policies
 

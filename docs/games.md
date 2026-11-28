@@ -109,6 +109,37 @@ file's header comment what is still a stub.
 - **Episode end**: `terminate = "lives == 0"`, where `lives` counts the ship in play; the
   play flag also drops at every area clear and under every banner, so it isn't an end.
 
+### Atari (ALE core)
+
+`games/atari-<rom>` (ALE's ROM name with hyphens: `atari-ms-pacman`; the prefix keeps an
+arcade game of the same name, such as Phoenix, its own id) runs an Atari 2600 game on the
+`ale` core (docs/cores.md, "Forks"), so its frames, rewards, lives and game over are ALE's
+own. Every Atari config is the same apart from its ROM and minimal action set; the twelve so
+far are the pilot set of the Atari presets (docs/evaluation.md):
+
+- **Content**: the ROM file ale-py 0.12.1 bundles (docs/roms.md, "Atari ROMs"), with its
+  size, SHA-1 and CRC-32, and `md5` from ALE's game table (the fork's
+  `src/ale/games/supported/<Game>.hpp`), which the core checks before loading and `gth
+  audit` prints beside the file's.
+- **Buttons**: `b = "shot"`, the joystick's fire button; the d-pad is the joystick. ALE's 18
+  actions are the direction and `shot` (docs/actions.md, "Atari").
+- **Minimal action set**: `atari_minimal_actions`, ALE's `getMinimalActionSet` for the ROM
+  in its default mode and difficulty, for the `atari_minimal` action set.
+- **Reset**: `script = []`. The core's load runs ALE's `reset_game()` (its own start-up
+  no-ops and starting actions, the mode and the difficulty), so the load state is ALE's
+  first frame of an episode, and `RetroEnv.reset` goes back to it.
+- **RAM**: `score`, `lives` and `game_over` come from the core's synthetic region at
+  `0x10000`, not from the game's RAM: `score` (`sle`, offset 0) is the sum of ALE's rewards
+  since the reset, so its per-step change is ALE's reward; `lives` (offset 8) is ALE's
+  `lives()`; `game_over` (offset 12) is 1 once ALE's `game_over()`. They feed rewards and
+  the episode end only, never a policy.
+- **Episode end**: `terminate = "game_over != 0"`, so a lost life isn't terminal (the
+  presets' `life_loss_terminal = false`). The core has no frame cap of its own: ALE v5's
+  108,000-frame cap is the protocol's `max_episode_frames`.
+- **Options**: `ale_mode` and `ale_difficulty` are `"default"`, the game's own, as in ALE
+  v5's environments. ALE's sticky actions are the env's `sticky_prob` (docs/actions.md), and
+  the core plays none of its own.
+
 ### Changing the schema
 
 A new `game.toml` field goes in `GameConfig` (`crates/gth-config/src/game.rs`), the table

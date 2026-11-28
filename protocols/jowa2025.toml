@@ -8,9 +8,11 @@
 # actions (Table 17) belong to the policy, not the protocol.
 
 backend = "libretro"
-# The 5 held-out games (A3; Sec. 5.1, p. 7). Ids are ALE's ROM names with hyphens
-# (docs/games.md), which the Atari game configs (C11) are expected to use.
-games = ["gravitar", "ms-pacman", "pong", "robotank", "yars-revenge"]
+# The 5 held-out games (A3; Sec. 5.1, p. 7). Ids are `atari-` and ALE's ROM
+# names with hyphens (docs/games.md, "Atari (ALE core)").
+games = [
+  "atari-gravitar", "atari-ms-pacman", "atari-pong", "atari-robotank", "atari-yars-revenge",
+]
 # Frame skip 4 (Table 16; Sec. 5.1, p. 7).
 frameskip = 4
 # No sticky actions (Table 16; A1).

@@ -77,9 +77,9 @@ FIELDS = [
 # new protocol, whose results don't compare with the old one's.
 PRESET_SHA1 = {
     "ours-v1": "7c4e3f02dd52cb41daa736f7d91227f9cc178851",
-    "machado2018": "50864e7534e14f0be8f514445373665686cba853",
-    "mgdt2022": "9770da92b87c2a9a8fbf5b44c6d40516c2cb1097",
-    "jowa2025": "d5067c237d3715ecf61cf9a10a21a739fed0588f",
+    "machado2018": "061efc653b2c795f461ac2bf1ecaf98dce45a243",
+    "mgdt2022": "2ece3a881a6e7fac00b29a1b05b1298c06068bee",
+    "jowa2025": "30ae1499c179d449a394a7b5e8da1f9de9c00b78",
 }
 
 

@@ -1,0 +1,47 @@
+# Assault (Atari 2600, Bomb, 1983) on the ALE core: ALE's game `assault`.
+# Hashes of the ROM ale-py 0.12.1 bundles (assault.bin); the MD5 is ALE's game table's, which
+# the core checks before loading. Everything else is the same for every Atari game:
+# docs/games.md, "Atari (ALE core)".
+
+core = "ale"
+settle_frames = 0
+orientation = 0
+# ALE's getMinimalActionSet for the game.
+atari_minimal_actions = [0, 1, 2, 3, 4, 11, 12]
+
+[content]
+file = "assault.bin"
+size = 4096
+sha1 = "0c03eba97df5178eec5d4d0aea4a6fe2f961c88f"
+crc32 = "ab3a2b77"
+md5 = "de78b3a064d374390ac0710f95edde92"
+
+[buttons]
+b = "shot"                # the joystick's fire button (the d-pad is the joystick)
+
+# The core's load runs ALE's reset_game(), so an episode starts at the load state.
+[reset]
+script = []
+
+# ALE's view of the game, in the core's synthetic region at 0x10000 (docs/cores.md).
+[ram.score]
+address = 0x10000
+size = 4                  # the sum of ALE's rewards since the reset, signed
+encoding = "sle"
+
+[ram.lives]
+address = 0x10008
+size = 4                  # ALE's lives()
+encoding = "le"
+
+[ram.game_over]
+address = 0x1000c
+size = 1                  # 1 once ALE's game_over()
+encoding = "le"
+
+[episode]
+terminate = "game_over != 0"  # a lost life isn't terminal
+
+[core_options]
+ale_mode = "default"      # the game's default mode and difficulty, as ALE v5's environments
+ale_difficulty = "default"

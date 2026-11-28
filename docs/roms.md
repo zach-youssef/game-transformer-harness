@@ -110,6 +110,7 @@ The work is `GameConfig::audit` in `gth-config` (`audit.rs`); the CLI is
 | Gunhed | `gunhed` | the user's dump (`~/roms/manifest.md`); the rest of the config: `games/gunhed/README.md` |
 | Zanac | `zanac` | the user's dump (`~/roms/manifest.md`); the rest of the config: `games/zanac/README.md` |
 | Lightening Force | `lightening-force` | the user's dump (`~/roms/manifest.md`); only `[content]` is final until G3 |
+| Alien, Assault, Demon Attack, Gravitar, Ms. Pac-Man, Phoenix, Pong, Robot Tank, Seaquest, Space Invaders, Stargunner, Yars' Revenge | `atari-<rom>` (`atari-ms-pacman`, docs/games.md, "Atari (ALE core)") | the ROMs ale-py 0.12.1 bundles ("Atari ROMs" below); MD5s from ALE's game table |
 | Battle Garegga, Ketsui, DoDonPachi III and DoDonPachi Dai-Ou-Jou Black Label, Gunbird, Strikers 1945 | `bgaregga`, `ket`, `ddp3`, `ddpdojblk` (in `ddp3.zip`, `in_parent`), `gunbird`, `s1945` | names, sizes and CRC-32s from the pinned FBNeo's driver tables (`a836e52`, below); SHA-1s from MAME 0.289 (below); only `[content]` (and `[buttons]` for `gunbird` and `s1945`) is final until G4-G6 |
 
 FBNeo's driver tables list each member's name, size and CRC-32 but no SHA-1, which `members`
@@ -132,6 +133,20 @@ PGM sets carry their BIOS ROMs inside their own zip, so they have no `[[bios]]`.
 that were never dumped (`NODUMP` in both drivers: the PGM sets' `*_igs027a.bin`, Gunbird's
 `3020.u19` and `3021.u69`, Strikers 1945's `4-u59.bin`) are left out, as no set holds them.
 When the FBNeo pin moves, compare its tables again (docs/cores.md, "Bumping a pin").
+
+### Atari ROMs
+
+The Atari games' ROMs are the ones the ale-py wheel bundles (ale-py 0.12.1, the release our
+ALE fork is pinned to), by the user's decision for this project: the one exception to "never
+download". Install ale-py into a virtual environment outside the checkout (or in a
+git-ignored directory) and use its `ale_py/roms/` directory as it is, as the ROM directory
+(`--rom-dir`, `GTH_ROM_DIR` or `rom_dir`): never copy the ROMs anywhere else, commit or upload
+them.
+
+```sh
+uv venv ../alepy && uv pip install --python ../alepy ale-py==0.12.1
+uv run gth audit data --rom-dir ../alepy/lib/python3.12/site-packages/ale_py/roms --game atari-pong
+```
 
 ## Data directory
 
