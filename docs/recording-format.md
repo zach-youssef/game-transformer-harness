@@ -473,3 +473,66 @@ and writes the members and `meta.json` exactly as an export does. What differs:
 `write_dataset` checks the arrays against each other and the meta (lengths, direction 0-8,
 buttons below 16, segments from 0 and never going down) and refuses with `ConfigError` before
 writing; like an export it writes `<shard>.partial` and renames it when complete.
+
+#### DQN-Replay
+
+DQN-Replay (Agarwal et al. 2020, "An Optimistic Perspective on Offline Reinforcement
+Learning") is the replay buffers of DQN agents trained by Dopamine on 60 Atari games: five
+runs per game of 50M transitions each, saved as numbered checkpoints of about one million
+(`gsutil ls` lists them), in
+`gs://atari-replay-datasets/dqn/<Game>/<run>/replay_logs` (`<Game>` is Dopamine's name, such
+as `Pong` or `MsPacman`). `gtharness.importers.dqn_replay` (`gth import-dqn-replay`) writes a
+contiguous slice of one checkpoint as shards. It decodes the files with gzip and numpy in
+Python: they are numpy's own format, and reading them is one decompression pass per file
+rather than per-frame work; the shards are written in Rust.
+
+A checkpoint is one gzipped `.npy` per buffer element: `$store$_observation_ckpt.N.gz`
+(`uint8[capacity, 84, 84]`), `$store$_action_ckpt.N.gz` (`int32`), `$store$_reward_ckpt.N.gz`
+(`float32`), `$store$_terminal_ckpt.N.gz` (`uint8`) and `add_count_ckpt.N.gz` (a 0-d `int64`);
+the importer reads no others. The buffer is circular: once `add_count` passes `capacity`, its
+oldest transition is at `add_count % capacity`, and `--start` counts from that oldest one.
+Each transition is an observation, the action the agent took after it, the reward that action
+earned and whether the episode ended there, so the reward column is the sample's own reward
+(`dataset_reward`). Before each episode Dopamine adds 3 zero transitions (its padding for the
+4-frame stacks): the importer drops them, after checking they are zero, and refuses the slice
+if one isn't.
+
+| Shard field | From the dataset |
+|---|---|
+| Frames | The stored observations, one gray channel, as Dopamine's `AtariPreprocessing` made them: ALE's grayscale palette (not `RetroEnv`'s BT.601 luma of the RGB frame), the maximum of each step's last two frames, resized to 84x84 with OpenCV's `INTER_AREA`. So the meta says `grayscale`, `maxpool`, `area`, `obs_size [84, 84]`, no crop, orientation 0. |
+| `direction`, `buttons` | The action is an index into the game's minimal action set (gym's `full_action_space=False`), so it maps through `--game`'s `atari_minimal_actions` and `GameConfig.from_atari` (docs/actions.md, "Atari"). |
+| `ram`: `reward`, `terminal` | The stored reward, which Dopamine clipped to [-1, 1] before storing it (refused if not a whole number), and the terminal flag. An episode that hit Dopamine's step limit is terminal too. |
+| `frameskip`, `fps` | 4 (each action repeats for 4 frames) and 60. Dopamine's environments repeat the previous action with probability 0.25 (sticky actions); `dataset.sticky_action_probability` says so, and the stored action is the one the agent chose. |
+| `episode_frame` | 4 frames per transition since the episode's start, padding excluded. When the episode began before the buffer's oldest transition, it counts from there instead, and `dataset.episode_start_known` is false. |
+| `episode_id`, `terminated` | The number of terminal transitions before the shard's first in the buffer, and whether its last one is terminal. A shard ends after each terminal transition, and at the slice's end. |
+| `source_id`, `dataset` | `dqn-replay-<Game>-<run>-ckpt<N>`; `dataset` has `name`, `url`, `game`, `run`, `checkpoint`, `first` (the shard's first transition, oldest = 0), `add_count`, `capacity`, `episode_start_known`, `sticky_action_probability`, `reward_clip` and `palette` (`ale`). |
+
+Shards are named `<source_id>_<first:07>.npz`. The importer checks everything before writing
+and refuses existing shards; it holds the slice's frames in memory (7 KB per transition).
+`--verify` reads the written shards back through `Windows` (one-sample windows,
+`dataset_reward`) and compares the samples, frames, actions, rewards and episode frames with
+the source's, and the terminated shards with the source's terminal transitions; it exits 1
+when one differs.
+
+An import is one contiguous slice, so windows run across consecutive steps. That isn't JOWA's
+fine-tuning set (Cheng et al. 2025), which is 5,000 transitions sampled uniformly from the last
+20% of each run (checkpoints from 40 on; `gsutil ls` gives the last number): a set like that is
+many one-transition slices, not one.
+
+The bucket needs a Google account (anonymous reads are refused): install the Google Cloud SDK
+and run `gcloud auth login` first. `scripts/fetch-dqn-replay.sh <Game> <run> <checkpoint>
+<dest> <budget_bytes>` prints the five files' sizes (the observations are nearly all of it, and
+decompress to 7 GB) and copies them to `<dest>/<Game>/<run>/replay_logs` only when the total is
+within the budget; otherwise it copies nothing and exits 1 (get approval for a bigger budget
+first; C21's was 1 GB). To fetch, import and check a 5,000-transition slice of Pong's run 1,
+checkpoint 50:
+
+```sh
+scripts/fetch-dqn-replay.sh Pong 1 50 <downloads> 1000000000
+gth import-dqn-replay <downloads>/Pong/1/replay_logs --checkpoint 50 --game atari-pong \
+    --start 0 --count 5000 --out <shards> --chunk-samples 256 --verify
+```
+
+The import prints the shards, `samples`, `padding`, `terminals` and `reward_sum`, and under
+`verify` each check, the windows' reward sum beside the source's and the terminated shards
+beside the source's terminal transitions.

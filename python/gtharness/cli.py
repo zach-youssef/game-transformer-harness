@@ -4,7 +4,9 @@ shards (docs/recording-format.md, "Training shards"); ``gth cores``: the pinned 
 (docs/cores.md); ``gth bench``: benchmarks of real cores (docs/performance.md); ``gth capture``:
 scripted captures (docs/recording-format.md, "Scripted captures"); ``gth evaluate``: a policy
 under an evaluation protocol (docs/evaluation.md, "Running an evaluation"); ``gth
-reference-scores``: human reference scores (docs/evaluation.md, "Human reference")."""
+reference-scores``: human reference scores (docs/evaluation.md, "Human reference"); ``gth
+import-dqn-replay``: DQN-Replay slices as shards (docs/recording-format.md, "Imported
+datasets")."""
 
 from __future__ import annotations
 
@@ -18,6 +20,7 @@ from typing import Any
 from gtharness import _native, bench, capture, cores, evaluate, ramsearch, reference, shards
 from gtharness.env import GAMES_DIR
 from gtharness.errors import ConfigError
+from gtharness.importers import dqn_replay
 
 TESTCORE = "gth_testcore"
 """The test core's games, whose files tests write, are audited only when named."""
@@ -105,6 +108,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     capture.add_parser(commands)
     evaluate.add_parser(commands)
     reference.add_parser(commands)
+    dqn_replay.add_parser(commands)
     _add_cores_parser(commands)
     args = parser.parse_args(argv)
     if args.command == "ram-search":
@@ -119,6 +123,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return evaluate.main(args)
     if args.command == "reference-scores":
         return reference.main(args)
+    if args.command == "import-dqn-replay":
+        return dqn_replay.main(args)
     if args.command == "cores":
         return _cores_main(args)
 
