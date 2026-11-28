@@ -20,6 +20,16 @@ impl GameConfig {
         let space = gth_config::ActionSpace::new(&config.buttons);
         GameConfig { config, space }
     }
+
+    fn decode_action(&self, action: u32) -> errors::Result<gth_config::Action> {
+        let decoded = self.space.decode(action).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "action {action} is out of range (0..{})",
+                gth_config::ActionSpace::LEN
+            ))
+        })?;
+        Ok(decoded)
+    }
 }
 
 #[pymethods]
@@ -147,13 +157,39 @@ impl GameConfig {
 
     /// `(direction, buttons)` of a flat action.
     fn decode(&self, action: u32) -> errors::Result<(u32, u32)> {
-        let decoded = self.space.decode(action).ok_or_else(|| {
+        let decoded = self.decode_action(action)?;
+        Ok((decoded.direction as u32, u32::from(decoded.buttons)))
+    }
+
+    /// The Atari action (ALE's enum order, 0-17) of a flat action, or `None` if it holds a
+    /// mapped `bomb`, `aux1` or `aux2` (docs/actions.md, "Atari").
+    fn to_atari(&self, action: u32) -> errors::Result<Option<u8>> {
+        Ok(self.space.to_atari(self.decode_action(action)?))
+    }
+
+    /// The flat action of an Atari action (ALE's enum order, 0-17): its direction, with
+    /// `shot` for fire.
+    #[pyo3(name = "from_atari")]
+    fn flat_of_atari(&self, atari: u8) -> errors::Result<u32> {
+        let action = gth_config::ActionSpace::from_atari(atari).ok_or_else(|| {
             PyValueError::new_err(format!(
-                "action {action} is out of range (0..{})",
-                gth_config::ActionSpace::LEN
+                "Atari action {atari} is out of range (0..{})",
+                gth_config::ActionSpace::ATARI_LEN
             ))
         })?;
-        Ok((decoded.direction as u32, u32::from(decoded.buttons)))
+        Ok((self.space.encode(action)).expect("an Atari action holds at most shot"))
+    }
+
+    /// The mask over the 18 Atari actions of an action set (a game's minimal set).
+    #[staticmethod]
+    fn atari_mask(actions: Vec<u8>) -> errors::Result<Vec<bool>> {
+        let mask = gth_config::ActionSpace::atari_mask(&actions).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "an Atari action in {actions:?} is out of range (0..{})",
+                gth_config::ActionSpace::ATARI_LEN
+            ))
+        })?;
+        Ok(mask.to_vec())
     }
 
     /// The RetroPad mask of every flat action, indexed by the action.

@@ -77,10 +77,11 @@ exhaustively for every subset of mapped slots).
 
 ALE numbers the Atari 2600's actions 0-17: a joystick direction with or without its one fire
 button. The harness maps them onto direction and `shot` (`ActionSpace::to_atari` and
-`from_atari`), for Atari-trained policies and the `atari_full` and `atari_minimal` action
-sets. The order is ALE's action enum, taken from ALE's documentation
-(ale.farama.org/environments, "Action Space"); the research notes on machado2018revisiting
-and mnih2015human give only the set's size (18, or a game's minimal 4-18):
+`from_atari`; `GameConfig.to_atari(action)` and `from_atari(atari)` on flat actions), for
+Atari-trained policies and the `atari_full` and `atari_minimal` action sets. The order is
+ALE's action enum, taken from ALE's documentation (ale.farama.org/environments, "Action
+Space"); the research notes on machado2018revisiting and mnih2015human give only the set's
+size (18, or a game's minimal 4-18):
 
 | ALE | Name | Direction | `shot` |
 |---|---|---|---|
@@ -113,5 +114,5 @@ and mnih2015human give only the set's size (18, or a game's minimal 4-18):
   mapped non-`shot` slot comes back from `from_atari(to_atari(a))` with its direction,
   `shot` and the same RetroPad mask (tested exhaustively for every subset of mapped slots).
 - A game's minimal action set (ALE's `getMinimalActionSet`) is a list of these numbers.
-  `ActionSpace::atari_mask(set)` turns it into a mask over the 18, for masking an 18-way
-  policy head.
+  `ActionSpace::atari_mask(set)` (`GameConfig.atari_mask`) turns it into a mask over the
+  18, for masking an 18-way policy head.

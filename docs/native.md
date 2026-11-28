@@ -147,8 +147,10 @@ the export, and `Shard`/`batches` for reading (docs/recording-format.md, "Traini
 action space (docs/actions.md), immutable (`frozen`). It exposes what `RetroEnv` needs as
 getters and methods: the frame and core settings, the reset and `check_reset_state(bytes)`
 (the savestate's SHA-1), `slots` (always the four) and `mapped_slots`, `encode`/`decode`
-between `(direction, buttons)` and flat actions, `joypad_table()` (the RetroPad mask of
-every flat action, so the env maps an action with one list lookup), `terminated(ram)`, and
+between `(direction, buttons)` and flat actions, `to_atari`/`from_atari` between flat and
+Atari actions and the static `atari_mask(actions)` (docs/actions.md, "Atari"),
+`joypad_table()` (the RetroPad mask of every flat action, so the env maps an action with one
+list lookup), `terminated(ram)`, and
 the file checks `find_content(rom_dir)`, `missing_parents(content)` and
 `missing_bios(system_dir)`. `rom_dir()` and
 `user_config_path()` are module functions (docs/roms.md).

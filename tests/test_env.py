@@ -172,6 +172,26 @@ def test_flat_and_dict_actions_press_the_same_buttons(testcore_path: Path, tmp_p
     assert play("flat", game.encode) == play("dict", dict_action)
 
 
+def test_atari_actions_map_to_direction_and_shot():
+    game = config()  # A is shot, B is bomb.
+    # ALE's order (docs/actions.md, "Atari"): 1 FIRE, 3 RIGHT, 16 DOWNRIGHTFIRE.
+    assert game.from_atari(0) == game.encode(NEUTRAL, 0)
+    assert game.from_atari(1) == game.encode(NEUTRAL, 0b0001)
+    assert game.from_atari(3) == game.encode(RIGHT, 0)
+    assert game.from_atari(16) == game.encode(DOWN_RIGHT, 0b0001)
+    for atari in range(18):
+        assert game.to_atari(game.from_atari(atari)) == atari
+    assert game.to_atari(game.encode(RIGHT, 0b0010)) is None, "bomb is mapped"
+    assert game.to_atari(game.encode(RIGHT, 0b1001)) == 11, "aux2 is unmapped: RIGHTFIRE"
+    for bad in (lambda: game.from_atari(18), lambda: game.to_atari(144)):
+        with pytest.raises(ValueError, match="out of range"):
+            bad()
+    mask = _native.GameConfig.atari_mask([0, 1, 3, 4, 11, 12])
+    assert [i for i, on in enumerate(mask) if on] == [0, 1, 3, 4, 11, 12]
+    with pytest.raises(ValueError, match="out of range"):
+        _native.GameConfig.atari_mask([18])
+
+
 def test_constructor_checks_its_choices(testcore_path: Path, tmp_path: Path):
     with pytest.raises(ValueError, match="action_format"):
         make(testcore_path, tmp_path, action_format="multibinary")
