@@ -1,7 +1,9 @@
-# mgdt2022: Multi-Game Decision Transformers' Atari evaluation (Lee et al. 2022). Citations
+# mgdt2022-v2: Multi-Game Decision Transformers' Atari evaluation (Lee et al. 2022). Citations
 # are [[lee2022multigame#...]] in research/kb/papers/; the paper takes its preprocessing from
 # Agarwal et al. (DQN-Replay), which the KB doesn't hold yet (C8), so those fields are
 # `# guessed:` with the reason.
+# Version 2: each game's minimal action set and chained episodes, the user's decisions of
+# 2026-11-28 (docs/evaluation.md, "Presets").
 
 backend = "libretro"
 # The 5 held-out games (A5; Sec. 3.3, p. 4). Ids are `atari-` and ALE's ROM
@@ -17,8 +19,9 @@ sticky_prob = 0.0
 maxpool = true
 # One frame per timestep; the 4-timestep context stands in for a stack (App. B.1, p. 17).
 frame_stack = 1
-# The shared 18-action set (A1; App. B.4, p. 18).
-action_set = "atari_full"
+# Each game's minimal action set (ALE v5's default), the user's decision (2026-11-28); the paper's
+# model acts in the shared 18-action set (A1; App. B.4, p. 18), so its policy maps between them.
+action_set = "atari_minimal"
 # guessed: Dopamine's 27,000 agent steps at frame skip 4.
 max_episode_frames = 108000
 # Game over ends an episode (the user's decision; the paper doesn't say for evaluation).
@@ -50,3 +53,7 @@ grayscale = true
 reset = "game"
 # guessed: Dopamine's evaluation has no no-op starts.
 noop_max = 0
+# chain: each episode after a pair's first starts with ALE's reset_game() from where the last
+# one ended, as ALE v5's environments do (ale-py's AtariEnv.reset without a seed; docs/cores.md,
+# "ALE parity"); the user's decision (2026-11-28).
+later_episodes = "chain"

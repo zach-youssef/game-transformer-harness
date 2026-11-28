@@ -70,7 +70,7 @@ def test_identity_is_checked(attributes, message):
 
 
 def test_random_policy_is_seeded_and_runs_on():
-    game = GameInfo("testcore", 144, ("shot", "bomb", "aux1", "aux2"))
+    game = GameInfo("testcore", 144, None, ("shot", "bomb", "aux1", "aux2"))
     obs = np.zeros((1, 4, 4, 3), np.uint8)
     policy = RandomPolicy(policy_seed=0)
     policy.reset(5, game)

@@ -26,10 +26,14 @@ PRESETS = Path(__file__).resolve().parent.parent / "protocols"
 
 def test_the_atari_presets_play_the_configured_games():
     assert len(ATARI) == 12
-    machado = load(PRESETS / "machado2018.toml")
-    assert sorted(machado.games) == ATARI, "machado2018 plays the whole pilot set"
-    for name in ("mgdt2022", "jowa2025"):
+    machado = load(PRESETS / "machado2018-v2.toml")
+    assert sorted(machado.games) == ATARI, "machado2018-v2 plays the whole pilot set"
+    for name in ("mgdt2022-v2", "jowa2025-v2"):
         assert set(load(PRESETS / f"{name}.toml").games) < set(ATARI), name
+    for name in ("machado2018-v2", "mgdt2022-v2", "jowa2025-v2"):
+        preset = load(PRESETS / f"{name}.toml")
+        # The user's decisions (docs/evaluation.md, "Presets").
+        assert (preset.action_set, preset.start.later_episodes) == ("atari_minimal", "chain")
 
 
 @pytest.mark.parametrize("game_id", ATARI)

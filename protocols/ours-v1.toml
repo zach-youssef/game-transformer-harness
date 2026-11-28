@@ -50,3 +50,6 @@ grayscale = false
 reset = "game"
 # Sticky actions already randomise the start [[machado2018revisiting]] (Sec. 5.2, 5.3).
 noop_max = 0
+# reload: every episode starts from the game's reset, so each is a first episode and their
+# variety comes from sticky actions alone.
+later_episodes = "reload"

@@ -42,6 +42,11 @@ class GameInfo(NamedTuple):
     """The policy's actions are ``0..n_actions``: the flat actions under the ``harness``
     action set (docs/actions.md), ALE's 18 under ``atari_full``, the size of the game's
     minimal set under ``atari_minimal``."""
+    atari_actions: tuple[int, ...] | None
+    """The ALE action number (docs/actions.md, "Atari") behind each of the policy's actions:
+    ``0..17`` under ``atari_full``, the game's minimal set under ``atari_minimal`` (its
+    ``atari_minimal_actions``), None under ``harness``. A policy that acts in ALE's 18 actions
+    finds its action's index here under ``atari_minimal``."""
     mapped_slots: tuple[str, ...]
     """The button slots that do something in this game (``shot``, ``bomb``, ``aux1``,
     ``aux2``); the others press nothing."""

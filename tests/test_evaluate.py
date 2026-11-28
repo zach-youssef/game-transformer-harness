@@ -58,6 +58,7 @@ grayscale = false
 [start]
 reset = "game"
 noop_max = 5
+later_episodes = "reload"
 """
 
 
@@ -65,7 +66,7 @@ def protocol(**changes):
     """The test protocol with top-level, ``obs`` or ``start`` fields changed."""
     base = loads(PROTOCOL)
     obs = {k: v for k, v in changes.items() if k in {f.name for f in dataclasses.fields(base.obs)}}
-    start = {k: v for k, v in changes.items() if k in ("reset", "noop_max")}
+    start = {k: v for k, v in changes.items() if k in ("reset", "noop_max", "later_episodes")}
     top = {k: v for k, v in changes.items() if k not in obs and k not in start}
     return dataclasses.replace(
         base,
@@ -187,6 +188,42 @@ def test_results_do_not_depend_on_jobs_and_seeds_matter(
     assert same_env[0] != same_env[7]
 
 
+def test_chained_episodes_carry_on_and_do_not_depend_on_jobs(
+    testcore_path: Path, testcore_data: Path, tmp_path: Path
+):
+    """Under ``start.later_episodes = "chain"`` a pair's later episodes start from the core's
+    soft reset where the last one ended: the test core keeps its score, so they end sooner
+    than reloaded ones. Each pair still plays in one process, so ``--jobs`` changes nothing,
+    and the recordings (each from its own start state) replay."""
+    chain = {"later_episodes": "chain", "sticky_prob": 0.0, "noop_max": 0}
+    run(testcore_path, testcore_data, tmp_path / "a", jobs=1, **chain)
+    run(testcore_path, testcore_data, tmp_path / "b", jobs=4, **chain)
+    run(testcore_path, testcore_data, tmp_path / "c", sticky_prob=0.0, noop_max=0)
+    chained, reloaded = rows(tmp_path / "a"), rows(tmp_path / "c")
+    assert chained == rows(tmp_path / "b")
+    check_results(tmp_path / "a")
+    assert 'later_episodes = "chain"' in (tmp_path / "a" / "protocol.toml").read_text()
+    # Same seeds, same first episodes; the later ones start where the first ones ended.
+    first = [row for row in chained if row["episode"] == 0]
+    assert first == [row for row in reloaded if row["episode"] == 0]
+    assert chained != reloaded
+
+    out = tmp_path / "recorded"
+    record = Recording(license="CC0-1.0", checks_every=8)
+    run(testcore_path, testcore_data, out, record=record, **chain)
+    assert [row | {"recording": None} for row in rows(out)] == chained
+    config = GameConfig.load(GAMES_DIR / "testcore" / "game.toml")
+    content = find_content(config, "testcore", None)
+    for row in rows(out):
+        replay = Replayer(
+            out / row["recording"], testcore_path, content, content.parent, 8, 8, None, 0, "area"
+        )
+        try:
+            assert replay.run_to_end() == row["frames"]
+        finally:
+            replay.close()
+
+
 def test_frames_count_the_noops_and_steps_but_not_the_reset_script(
     testcore_path: Path, testcore_data: Path, tmp_path: Path
 ):
@@ -250,6 +287,7 @@ class Atari(Chunks):
 
     def reset(self, seed, game):
         assert game.n_actions == 18 and game.game_id == "testcore"
+        assert game.atari_actions == tuple(range(18))
         assert game.mapped_slots == ("shot", "bomb", "aux1", "aux2")
 
     def act(self, obs):
@@ -266,6 +304,7 @@ class Minimal(Atari):
 
     def reset(self, seed, game):
         assert game.n_actions == 3 and game.game_id == "testcore"
+        assert game.atari_actions == (0, 1, 10), "the ALE action behind each index"
 
 class Wrong:
     def __init__(self, *, policy_seed):
@@ -516,6 +555,14 @@ def test_a_missing_reset_state_is_refused(testcore_path: Path, testcore_data: Pa
     with pytest.raises(ConfigError, match=r"testcore: no reset state .*start\.state"):
         check_protocol(
             protocol(), testcore_data, rom_dir=None, core_path=testcore_path, games_dir=games
+        )
+    with pytest.raises(ConfigError, match=r"testcore: start\.later_episodes 'chain' soft-resets"):
+        check_protocol(
+            protocol(later_episodes="chain"),
+            testcore_data,
+            rom_dir=None,
+            core_path=testcore_path,
+            games_dir=games,
         )
 
 

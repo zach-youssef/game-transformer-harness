@@ -1,6 +1,8 @@
-# machado2018: the ALE evaluation protocol of Machado et al. 2018, our robustness column
+# machado2018-v2: the ALE evaluation protocol of Machado et al. 2018, our robustness column
 # (baseline-comparison.md, Decision 4a). Citations are [[machado2018revisiting#...]] in
 # research/kb/papers/; fields the paper leaves open are marked `# guessed:` with the reason.
+# Version 2: each game's minimal action set and chained episodes, the user's decisions of
+# 2026-11-28 (docs/evaluation.md, "Presets").
 
 backend = "libretro"
 # guessed: the paper benchmarks 60 games; ours is the Atari pilot set (Decision 3a: the 8
@@ -19,8 +21,9 @@ sticky_prob = 0.25
 maxpool = true
 # DQN's 4-frame history (App. B.3, Table 6, p. 35).
 frame_stack = 4
-# The full 18 actions always (A1; Table 5, p. 34).
-action_set = "atari_full"
+# Each game's minimal action set (ALE v5's default), the user's decision (2026-11-28); the paper
+# plays the full 18 always (A1; Table 5, p. 34).
+action_set = "atari_minimal"
 # Episodes capped at 18,000 frames, 5 minutes (A2; Table 5, p. 34).
 max_episode_frames = 18000
 # No lives signal; game over ends an episode (A1, C8; Sec. 3.1, p. 6).
@@ -54,3 +57,7 @@ grayscale = true
 reset = "game"
 # Sticky actions replace no-op starts (Sec. 5.2-5.3, pp. 12-15); Table 5 lists none.
 noop_max = 0
+# chain: each episode after a pair's first starts with ALE's reset_game() from where the last
+# one ended, as ALE v5's environments do (ale-py's AtariEnv.reset without a seed; docs/cores.md,
+# "ALE parity"); the user's decision (2026-11-28).
+later_episodes = "chain"

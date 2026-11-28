@@ -45,6 +45,7 @@ grayscale = true
 [start]
 reset = "game"
 noop_max = 0
+later_episodes = "reload"
 """
 
 STUB = '''
@@ -136,8 +137,8 @@ def test_it_states_jats_observations_and_its_checkpoint(stub):
 def test_the_model_gets_the_stack_channels_last_oldest_first(stub):
     module, checkpoint = stub
     policy = module.StubJat(policy_seed=0, **settings(checkpoint, deterministic=True))
-    policy.reset(7, GameInfo("testcore", 6, ("shot",)))
-    policy.reset(None, GameInfo("testcore", 6, ("shot",)))
+    policy.reset(7, GameInfo("testcore", 6, (0, 1, 3, 4, 11, 12), ("shot",)))
+    policy.reset(None, GameInfo("testcore", 6, (0, 1, 3, 4, 11, 12), ("shot",)))
     obs = np.random.default_rng(0).integers(0, 256, (4, 84, 84, 1), dtype=np.uint8)
     assert policy.act(obs) == 10
     image, n_actions, context, deterministic = policy._backend.calls[0]

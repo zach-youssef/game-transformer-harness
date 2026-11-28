@@ -48,6 +48,7 @@ grayscale = false
 [start]
 reset = "game"
 noop_max = 5
+later_episodes = "reload"
 """
 
 

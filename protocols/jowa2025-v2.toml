@@ -1,4 +1,4 @@
-# jowa2025: JOWA's Atari evaluation (Cheng et al. 2025). Citations are [[cheng2025jointly#...]]
+# jowa2025-v2: JOWA's Atari evaluation (Cheng et al. 2025). Citations are [[cheng2025jointly#...]]
 # in research/kb/papers/ and the paper's Table 16 ("Evaluation settings of Atari", App. E.3,
 # p. 21). The evaluation code (github.com/CJReinforce/JOWA at 8cb02c5) is as the research
 # experiment 2026-11-24-jowa-mac-smoke's plan.md ("Environment port") describes it: a
@@ -6,6 +6,8 @@
 # skip 4, max-pool, 84x84, INTER_AREA). Fields neither settles are `# guessed:` with the
 # reason. The epsilon-greedy noise 0.001 (Table 16) and the restriction to each game's valid
 # actions (Table 17) belong to the policy, not the protocol.
+# Version 2: each game's minimal action set and chained episodes, the user's decisions of
+# 2026-11-28 (docs/evaluation.md, "Presets").
 
 backend = "libretro"
 # The 5 held-out games (A3; Sec. 5.1, p. 7). Ids are `atari-` and ALE's ROM
@@ -21,8 +23,10 @@ sticky_prob = 0.0
 maxpool = true
 # 4 stacked frames (Table 16).
 frame_stack = 4
-# A full action space of 18 discrete actions (Sec. 3.3, p. 4; A1).
-action_set = "atari_full"
+# Each game's minimal action set (ALE v5's default), the user's decision (2026-11-28); the paper's
+# model has a full action space of 18 (Sec. 3.3, p. 4; A1), restricted to each game's valid
+# actions at evaluation (Table 17), so its policy maps between them.
+action_set = "atari_minimal"
 # 108K max frames per episode (Table 16).
 max_episode_frames = 108000
 # Terminal condition: Game Over (Table 16).
@@ -56,3 +60,7 @@ reset = "game"
 # code uses has none (Dopamine's no-ops are only in its PPO path); the code at 8cb02c5 wasn't
 # re-read to confirm.
 noop_max = 0
+# chain: each episode after a pair's first starts with ALE's reset_game() from where the last
+# one ended, as ALE v5's environments do (ale-py's AtariEnv.reset without a seed; docs/cores.md,
+# "ALE parity"); the user's decision (2026-11-28).
+later_episodes = "chain"

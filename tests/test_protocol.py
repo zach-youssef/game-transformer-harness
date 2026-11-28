@@ -29,7 +29,11 @@ VALID: dict[str, Any] = {
     },
     "frame_stack": 4,
     "action_set": "atari_full",
-    "start": {"reset": "0107d93ff5d10325092d45e6bfd21e8130efeed7", "noop_max": 30},
+    "start": {
+        "reset": "0107d93ff5d10325092d45e6bfd21e8130efeed7",
+        "noop_max": 30,
+        "later_episodes": "chain",
+    },
     "max_episode_frames": 18000,
     "life_loss_terminal": False,
     "reward_clip": "none",
@@ -54,7 +58,9 @@ EXPECTED = EvalProtocol(
     ),
     frame_stack=4,
     action_set="atari_full",
-    start=Start(reset="0107d93ff5d10325092d45e6bfd21e8130efeed7", noop_max=30),
+    start=Start(
+        reset="0107d93ff5d10325092d45e6bfd21e8130efeed7", noop_max=30, later_episodes="chain"
+    ),
     max_episode_frames=18000,
     life_loss_terminal=False,
     reward_clip="none",
@@ -76,10 +82,10 @@ FIELDS = [
 # Pinned so a change to a preset or to the canonical form is seen: a changed protocol is a
 # new protocol, whose results don't compare with the old one's.
 PRESET_SHA1 = {
-    "ours-v1": "7c4e3f02dd52cb41daa736f7d91227f9cc178851",
-    "machado2018": "061efc653b2c795f461ac2bf1ecaf98dce45a243",
-    "mgdt2022": "2ece3a881a6e7fac00b29a1b05b1298c06068bee",
-    "jowa2025": "30ae1499c179d449a394a7b5e8da1f9de9c00b78",
+    "ours-v1": "aaf51fc49013f80786a702fbbfbabb48ef4f912b",
+    "machado2018-v2": "7c6c5187b68d5a27a6ea1b5a155aca9fab7056c1",
+    "mgdt2022-v2": "4802d28292a9fe81caeb227ba05c6483b16b92b8",
+    "jowa2025-v2": "a34cbf60880d965c665491c87001e5397564ca79",
 }
 
 
@@ -218,6 +224,8 @@ BAD_VALUES = [
     ("start.reset", "state.bin", 'must be "game" or a savestate\'s lowercase SHA-1'),
     ("start.reset", "0107D93FF5D10325092D45E6BFD21E8130EFEED7", "lowercase SHA-1"),
     ("start.noop_max", -1, "must be at least 0"),
+    ("start.later_episodes", "soft", "must be one of reload, chain"),
+    ("start.later_episodes", True, "must be a string"),
     ("max_episode_frames", 0, "must be at least 1"),
     ("max_episode_frames", "none", "must be an integer"),
     ("life_loss_terminal", True, "must be false: an evaluation episode ends at game over"),
@@ -288,6 +296,7 @@ grayscale = true
 [start]
 reset = "0107d93ff5d10325092d45e6bfd21e8130efeed7"
 noop_max = 30
+later_episodes = "chain"
 """
 
 
@@ -319,6 +328,7 @@ def test_any_change_changes_the_sha1() -> None:
         replace(EXPECTED, games=("space-invaders", "gunhed")),  # order is part of it
         replace(EXPECTED, obs=replace(EXPECTED.obs, grayscale=False)),
         replace(EXPECTED, start=replace(EXPECTED.start, noop_max=0)),
+        replace(EXPECTED, start=replace(EXPECTED.start, later_episodes="reload")),
         replace(EXPECTED, policy_seeds=(1, 2)),
     ]
     assert len({base, *(p.expand().sha1 for p in changed)}) == len(changed) + 1

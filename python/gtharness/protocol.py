@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
-from gtharness.env import INTERPOLATIONS, ORIENTATIONS
+from gtharness.env import INTERPOLATIONS, LATER_EPISODES, ORIENTATIONS
 from gtharness.errors import ConfigError
 
 __all__ = ["PROTOCOLS_DIR", "EvalProtocol", "Expanded", "Obs", "Start", "load", "loads"]
@@ -65,6 +65,10 @@ class Start:
     noop_max: int
     """No no-ops when 0; otherwise 1 to ``noop_max`` no-op frames (uniform, from the env seed)
     after the reset, as baselines' ``NoopResetEnv`` draws them."""
+    later_episodes: str
+    """How a pair of seeds' episodes after the first start: ``"reload"`` (from the game's
+    reset, as the first) or ``"chain"`` (the core's soft reset from where the last one ended,
+    ALE v5's ``reset_game()``); one of `gtharness.env.LATER_EPISODES`."""
 
 
 @dataclass(frozen=True)
@@ -118,7 +122,11 @@ class EvalProtocol:
             ("interpolation", obs.interpolation),
             ("grayscale", obs.grayscale),
         ]
-        start_fields = [("reset", start.reset), ("noop_max", start.noop_max)]
+        start_fields = [
+            ("reset", start.reset),
+            ("noop_max", start.noop_max),
+            ("later_episodes", start.later_episodes),
+        ]
         lines = [f"{key} = {_toml_value(value)}" for key, value in top]
         for table, fields in (("obs", obs_fields), ("start", start_fields)):
             lines += ["", f"[{table}]"]
@@ -181,7 +189,7 @@ _TOP = (
     "policy_seeds",
 )
 _OBS = ("size", "crop", "orientation", "interpolation", "grayscale")
-_START = ("reset", "noop_max")
+_START = ("reset", "noop_max", "later_episodes")
 
 
 def _fields(table: dict[str, Any], names: tuple[str, ...], prefix: str) -> dict[str, Any]:
@@ -232,6 +240,7 @@ def _build(top: dict[str, Any], obs: dict[str, Any], start: dict[str, Any]) -> E
         start=Start(
             reset=_reset(start["reset"]),
             noop_max=_int(start["noop_max"], "start.noop_max", minimum=0),
+            later_episodes=_choice(start["later_episodes"], "start.later_episodes", LATER_EPISODES),
         ),
         max_episode_frames=_int(top["max_episode_frames"], "max_episode_frames", minimum=1),
         life_loss_terminal=_must(

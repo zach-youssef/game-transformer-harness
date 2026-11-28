@@ -173,6 +173,11 @@ def check_protocol(
         missing = config.missing_bios(data / "system")
         if missing:
             raise ConfigError(f"{game_id}: BIOS files missing from {data / 'system'}: {missing}")
+        if protocol.start.later_episodes == "chain" and config.reset_state is not None:
+            raise ConfigError(
+                f"{game_id}: start.later_episodes 'chain' soft-resets the core, and the game"
+                " starts from a reset savestate, which only a reload reaches"
+            )
         if config.reset_state is not None:
             state = data / "states" / game_id / config.reset_state
             if not state.is_file():
@@ -435,7 +440,7 @@ def _play(task: dict[str, Any]) -> dict[str, Any]:
         sticky_prob=protocol.sticky_prob,
         max_episode_frames=protocol.max_episode_frames,
         noop_max=protocol.start.noop_max,
-        later_episodes="reload",
+        later_episodes=protocol.start.later_episodes,
         rom_dir=task["rom_dir"],
         core_path=task["core_path"],
         games_dir=games_dir,
@@ -450,14 +455,15 @@ def _play(task: dict[str, Any]) -> dict[str, Any]:
     # The policy's actions: flat ones, or ALE's numbers mapped onto the pad (docs/actions.md).
     if protocol.action_set == "atari_full":
         n_actions, to_flat = ATARI_ACTIONS, config.from_atari
+        atari_actions: tuple[int, ...] | None = tuple(range(ATARI_ACTIONS))
     elif protocol.action_set == "atari_minimal":
-        minimal = config.atari_minimal_actions
-        n_actions = len(minimal)
-        flat = [config.from_atari(atari) for atari in minimal]
+        atari_actions = tuple(config.atari_minimal_actions)
+        n_actions = len(atari_actions)
+        flat = [config.from_atari(atari) for atari in atari_actions]
         to_flat = flat.__getitem__
     else:
-        n_actions, to_flat = config.n_actions, int
-    game = GameInfo(game_id, n_actions, tuple(config.mapped_slots))
+        n_actions, to_flat, atari_actions = config.n_actions, int, None
+    game = GameInfo(game_id, n_actions, atari_actions, tuple(config.mapped_slots))
     rows: list[dict[str, Any]] = []
     act_ns = calls = steps_total = 0
     try:
