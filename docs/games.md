@@ -254,7 +254,9 @@ script = [
 state = { file = "stage1.state", sha1 = "..." }   # in <data_dir>/states/<game-id>/
 ```
 
-A script holds each step's buttons (any RetroPad button) for its frames. A savestate is made
+A script holds each step's buttons (any RetroPad button) for its frames. An empty script
+(`script = []`) starts each episode at the load state itself, for a core whose load already
+starts the game: the ALE core's load runs ALE's own game reset ("Atari (ALE core)"). A savestate is made
 from the user's ROM, so it lives in the git-ignored data directory, never in `games/`; its
 SHA-1 is in `game.toml`, and `RetroEnv` refuses a file that doesn't match (`ConfigError`).
 A savestate only fits the core build that made it, so record it again, with its new hash,

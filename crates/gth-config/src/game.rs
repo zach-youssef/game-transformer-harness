@@ -471,7 +471,6 @@ impl GameConfig {
             ));
         }
         match &self.reset {
-            Reset::Script(steps) if steps.is_empty() => return Err("reset script is empty".into()),
             Reset::Script(steps) if steps.iter().any(|step| step.frames == 0) => {
                 return Err("reset script steps need at least 1 frame".into());
             }
@@ -667,6 +666,19 @@ gth_testcore_step = "4"
         let config = GameConfig::parse(&text, "digits").unwrap();
         assert_eq!(config.ram["lives"].encoding, Encoding::Digits);
         assert_eq!(config.ram["lives"].decode(&[2, 1]), Ok(12));
+        let again = GameConfig::parse(&config.to_toml(), "round trip").unwrap();
+        assert_eq!(again, config);
+    }
+
+    #[test]
+    fn an_empty_reset_script_starts_at_the_load_state() {
+        let text = full().replace(
+            "script = [{ press = [\"start\"], frames = 2 }, { press = [], frames = 60 }]",
+            "script = []",
+        );
+        assert_ne!(text, full());
+        let config = GameConfig::parse(&text, "empty script").unwrap();
+        assert_eq!(config.reset_inputs(), Some(vec![]));
         let again = GameConfig::parse(&config.to_toml(), "round trip").unwrap();
         assert_eq!(again, config);
     }
