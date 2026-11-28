@@ -6,12 +6,41 @@ confidence intervals on any of them. It follows Agarwal et al. 2021, the paper b
 `rliable` library (`agarwal2021deep` in the research KB, cited below by claim id). It is numpy
 only, with no native code, and bad input raises `ValueError` naming what is wrong.
 
+The usual path, from a finished `gth evaluate` run (docs/evaluation.md, "Results"):
+
+```python
+import numpy as np
+from gtharness import evaluate, metrics
+
+results = evaluate.check_results("results/model-ours-v1")
+scores = metrics.run_scores(results, seeds_are="independent_runs")  # {game: float[runs]}
+normalised = metrics.normalize_tasks(scores, {"gunhed": (random, human), ...})
+x = metrics.run_matrix(normalised, list(scores))                    # float[runs, tasks]
+interval = metrics.stratified_bootstrap_ci(
+    metrics.iqm, x, resamples=50_000, rng=np.random.default_rng(0), confidence=0.95
+)
+```
+
 ## Runs
 
 The aggregates and intervals treat the runs of a task as independent, identically distributed
 realisations of the algorithm's score (`agarwal2021deep` A2): for a trained model that means
 independent training runs. A run's score is the mean of its evaluation episodes
 (`agarwal2021deep` Sec. 3, as in its Atari 100k study).
+
+`run_scores(results, *, seeds_are)` makes one run per policy seed and game: the mean `score`
+over all of that seed's env seeds and episodes, as `{game: float[policy seeds]}` in the
+protocol's orders. The scores are raw; normalise them after. `seeds_are` is required, since
+the protocol's policy seeds stand for training runs, but `run.json` may show otherwise:
+
+- `"independent_runs"`: the seeds are independent training runs (each with its own
+  checkpoint), or independent random streams of a policy without weights (the random
+  policy). Refused when two policy seeds share a non-null `checkpoint_sha256` in `run.json`
+  (`policy.seeds`): those are sampling seeds of one model, not training runs, and treating
+  them as independent would make intervals look as if they covered training variance.
+- `"sampling_seeds"`: the caller accepts runs that may be sampling seeds of one model. The
+  intervals then cover the evaluation's randomness (sticky actions, no-op starts, the
+  policy's sampling) for that model only, and a report must say so.
 
 With one run per task (one checkpoint, as in MGDT-style evaluations), the stratified
 bootstrap has nothing to resample and is refused (below).

@@ -258,3 +258,42 @@ def test_bootstrap_refuses_one_run_and_mismatched_tasks():
         ci(probability_of_improvement, [[1.0], [2.0]], [[1.0, 2.0], [3.0, 4.0]])
     with pytest.raises(ValueError, match="statistic returned shape"):
         ci(lambda batch: batch.mean(axis=-2), [[1.0, 2.0], [3.0, 4.0]])
+
+
+# --- run scores from results -----------------------------------------------------------------
+
+
+def results(checkpoints):
+    """A `check_results`-shaped dict: games g and h, policy seeds 0.. with `checkpoints`, two
+    env seeds with one episode each; the score is 10 * seed + env seed (+100 on h)."""
+    seeds = {
+        str(seed): {"id": "m", "checkpoint_sha256": sha} for seed, sha in enumerate(checkpoints)
+    }
+    episodes = [
+        {"game": game, "policy_seed": seed, "env_seed": env, "episode": 0, "score": score}
+        for game, offset in (("g", 0), ("h", 100))
+        for seed in range(len(checkpoints))
+        for env in (0, 1)
+        for score in [offset + 10 * seed + env]
+    ]
+    run = {"policy": {"seeds": seeds}, "games": {"g": {}, "h": {}}}
+    return {"protocol": None, "run": run, "episodes": episodes}
+
+
+def test_run_scores_average_each_policy_seeds_episodes():
+    out = metrics.run_scores(results([None, None, None]), seeds_are="independent_runs")
+    assert list(out) == ["g", "h"]
+    np.testing.assert_allclose(out["g"], [0.5, 10.5, 20.5])
+    np.testing.assert_allclose(out["h"], [100.5, 110.5, 120.5])
+
+
+def test_run_scores_refuse_seeds_sharing_a_checkpoint_as_independent_runs():
+    a, b = "a" * 64, "b" * 64
+    metrics.run_scores(results([a, b]), seeds_are="independent_runs")
+    shared = results([a, b, a])
+    with pytest.raises(ValueError, match="policy seeds 0, 2 share checkpoint"):
+        metrics.run_scores(shared, seeds_are="independent_runs")
+    out = metrics.run_scores(shared, seeds_are="sampling_seeds")
+    np.testing.assert_allclose(out["g"], [0.5, 10.5, 20.5])
+    with pytest.raises(ValueError, match="seeds_are"):
+        metrics.run_scores(shared, seeds_are="runs")  # type: ignore[arg-type]

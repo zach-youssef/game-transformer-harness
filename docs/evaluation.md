@@ -112,6 +112,12 @@ seed or ignore it. `id` and `checkpoint_sha256` may differ between seeds, and th
 keep them per seed. Making the policy may raise (a missing checkpoint, say): that refuses
 the run.
 
+Policy seeds that share one non-null `checkpoint_sha256` (one model played with several
+seeds) are sampling seeds of that model, not training runs: the runner accepts them, but
+their episodes measure only the evaluation's randomness. Aggregates over runs
+(`gtharness.metrics.run_scores`, docs/metrics.md "Runs") refuse to treat them as independent
+runs unless the caller says `seeds_are="sampling_seeds"`.
+
 `gtharness.policies.random:RandomPolicy` (`random-v1`) draws each step's flat action
 uniformly from `0..n_actions` with numpy's PCG64. That is uniform over what the actions do:
 each distinct press appears 2^k times, k the game's unmapped slots. It is the "random" of

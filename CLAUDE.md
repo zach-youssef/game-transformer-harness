@@ -33,7 +33,7 @@ Headless libretro cores behind a Python gymnasium environment, with all per-fram
   policy, writing one, or changing a preset.
 - [docs/metrics.md](docs/metrics.md): `gtharness.metrics`, aggregates over evaluation runs
   (normalised scores, IQM, optimality gap, probability of improvement, stratified-bootstrap
-  intervals) and what they assume of runs. Read before aggregating or comparing results.
+  intervals) and what counts as a run. Read before aggregating or comparing results.
 - [docs/performance.md](docs/performance.md): `gth bench` (speed, savestates, determinism on
   real cores), the measured numbers per machine and the P5 batching decision.
 

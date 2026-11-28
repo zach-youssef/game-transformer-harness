@@ -13,9 +13,13 @@ import math
 import numbers
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any, Literal
 
 import numpy as np
 from numpy.typing import ArrayLike
+
+SeedsAre = Literal["independent_runs", "sampling_seeds"]
+"""What a results directory's policy seeds are (`run_scores`)."""
 
 # Elements a `stratified_bootstrap_ci` chunk holds at once (float64: 32 MiB): resampled scores,
 # or for several samples the pairwise comparisons a statistic like probability_of_improvement
@@ -66,6 +70,54 @@ def run_matrix(scores: Mapping[str, ArrayLike], tasks: Sequence[str]) -> np.ndar
     x = np.stack(columns, axis=1)
     _check_finite(x, "run_matrix")
     return x
+
+
+def run_scores(results: Mapping[str, Any], *, seeds_are: SeedsAre) -> dict[str, np.ndarray]:
+    """One run score per policy seed and game from `gtharness.evaluate.check_results`'s
+    output: the mean `score` over that seed's episodes (every env seed and episode), as
+    ``{game: float[policy seeds]}`` in the protocol's orders. Raw scores: normalise after.
+
+    `seeds_are` says what the policy seeds are, since aggregates and intervals treat runs as
+    independent (docs/metrics.md, "Runs"):
+
+    - ``"independent_runs"``: independent training runs, or independent streams of a policy
+      without weights. Refused when two policy seeds share a non-null checkpoint: those are
+      sampling seeds of one model.
+    - ``"sampling_seeds"``: the caller accepts that runs may be sampling seeds of one model,
+      so intervals cover evaluation noise only, not training variance.
+    """
+    if seeds_are not in ("independent_runs", "sampling_seeds"):
+        raise ValueError(
+            f"run_scores: seeds_are is {seeds_are!r}, not 'independent_runs' or 'sampling_seeds'"
+        )
+    run = results["run"]
+    seeds = run["policy"]["seeds"]
+    if seeds_are == "independent_runs":
+        by_checkpoint: dict[str, list[str]] = {}
+        for seed, made in seeds.items():
+            if made["checkpoint_sha256"] is not None:
+                by_checkpoint.setdefault(made["checkpoint_sha256"], []).append(seed)
+        shared = {sha: s for sha, s in by_checkpoint.items() if len(s) > 1}
+        if shared:
+            sha, which = next(iter(shared.items()))
+            raise ValueError(
+                f"run_scores: policy seeds {', '.join(which)} share checkpoint {sha}: they are"
+                " sampling seeds of one model, not independent runs; pass"
+                " seeds_are='sampling_seeds' to aggregate them anyway"
+            )
+    order = [int(seed) for seed in seeds]
+    totals: dict[tuple[str, int], list[float]] = {
+        (game, seed): [] for game in run["games"] for seed in order
+    }
+    for row in results["episodes"]:
+        totals[(row["game"], row["policy_seed"])].append(float(row["score"]))
+    out = {}
+    for game in run["games"]:
+        per_seed = [totals[(game, seed)] for seed in order]
+        if any(not episodes for episodes in per_seed):
+            raise ValueError(f"run_scores: {game}: a policy seed has no episodes")
+        out[game] = np.array([np.mean(episodes) for episodes in per_seed])
+    return out
 
 
 def mean(x: ArrayLike) -> np.ndarray:
