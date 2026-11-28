@@ -181,6 +181,32 @@ upstream. Anything else (a build flag, a Makefile quirk) is a `case` in the buil
 - To try a fork commit before pushing it, pass the build script the local clone's absolute
   path as the repository (Builds, above; a relative one would resolve in the build's clone).
 
+## ALE parity
+
+`scripts/ale_parity.py` checks the `ale` core against ale-py itself (the package the published
+ALE baselines ran): it plays the same random actions (uniform over ALE's 18, each held 1-8
+frames) through ale-py with `repeat_action_probability` 0 and frame skip 1 and through
+`RetroEnv` with the game's config at frame skip 1, and compares every frame's RGB SHA-1,
+reward, lives and game over, and the episode and load frame counters (so the reset and the
+first frame fall on the same emulated frame), across game overs and resets. It needs ale-py
+importable next to the harness and uses its bundled ROMs (docs/roms.md, "Atari ROMs"):
+
+```sh
+# python3.12: the venv's Python, which must be the harness's (ale-py's wheel is per version)
+PYTHONPATH=../alepy/lib/python3.12/site-packages uv run python scripts/ale_parity.py data --frames 30000
+```
+
+On the pinned core (`ef6d7ff`) and ale-py 0.12.1, all twelve Atari games match for 30,000
+frames each (4 to 16 episodes). One difference is by design: the harness starts every episode
+from its load state (docs/games.md, "Reset"), while ALE v5's environments start later
+episodes with `reset_game()` alone, which doesn't return the machine to its load state, so
+their second episode on starts from a different state in some games
+(with `--reset-game`, Assault, Demon Attack, Seaquest and Yars' Revenge differ in a later
+episode; the other eight don't). So the script reloads the ROM before ale-py's
+`reset_game()`, which is the harness's start state, and a mismatch is a shim bug. Every
+harness episode is therefore an ALE first episode, and the variety between episodes comes
+from sticky actions and the no-op start only.
+
 ## The cores workflow
 
 `.github/workflows/cores.yml` runs on a push that changes `cores.lock`, the build script, the

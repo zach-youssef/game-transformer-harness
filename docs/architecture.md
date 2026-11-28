@@ -169,7 +169,8 @@ crates/            Rust workspace members (gth-*)
 python/gtharness/  Python package; maturin builds _native into it
 games/             one directory per game with its game.toml (docs/games.md)
 tests/             Python tests (pytest); Rust tests live in their crates
-scripts/           build-core.sh, the cores workflow's build recipe (docs/cores.md)
+scripts/           build-core.sh, the cores workflow's build recipe; ale_parity.py, the ALE
+                   core against ale-py (docs/cores.md)
 cores.lock         the pinned core builds (docs/cores.md)
 docs/              focused docs, indexed from CLAUDE.md
 data/              user-supplied ROMs and BIOS, git-ignored (docs/roms.md)

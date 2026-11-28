@@ -141,7 +141,7 @@ ALE fork is pinned to), by the user's decision for this project: the one excepti
 download". Install ale-py into a virtual environment outside the checkout (or in a
 git-ignored directory) and use its `ale_py/roms/` directory as it is, as the ROM directory
 (`--rom-dir`, `GTH_ROM_DIR` or `rom_dir`): never copy the ROMs anywhere else, commit or upload
-them.
+them. `scripts/ale_parity.py` imports ale-py from that venv (docs/cores.md, "ALE parity").
 
 ```sh
 uv venv ../alepy && uv pip install --python ../alepy ale-py==0.12.1
