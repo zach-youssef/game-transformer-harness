@@ -1,8 +1,9 @@
-//! Per-frame pixel ops into caller buffers: format conversion, crop, rotate, resize.
+//! Per-frame pixel ops into caller buffers: format conversion, crop, rotate, max-pool, gray,
+//! resize.
 
 mod pipeline;
 
-pub use pipeline::{Error, Filter, Pipeline, Rect, Rotation};
+pub use pipeline::{Color, Error, Filter, Pipeline, Rect, Rotation, luma};
 
 /// A source frame's pixel format: the three libretro formats, each a native-endian integer per
 /// pixel.

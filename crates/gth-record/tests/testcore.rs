@@ -645,6 +645,7 @@ fn a_recording_exports_to_a_shard_of_its_steps() {
         options(gth_record::Steps::Recorded).crop,
         gth_frame::Rotation::Cw90,
         gth_frame::Filter::Area,
+        gth_frame::Color::Rgb,
     )
     .unwrap();
     let mut rendered = Vec::new();

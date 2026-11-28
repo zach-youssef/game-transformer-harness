@@ -55,8 +55,15 @@ impl Screen {
         let size = (frame.width, frame.height);
         if self.pipeline.as_ref().map(|(_, s)| *s) != Some(size) {
             let (w, h) = self.shown_size(frame.width, frame.height);
-            let pipeline = Pipeline::new(h, w, self.crop, self.rotation, gth_frame::Filter::Area)
-                .map_err(|e| e.to_string())?;
+            let pipeline = Pipeline::new(
+                h,
+                w,
+                self.crop,
+                self.rotation,
+                gth_frame::Filter::Area,
+                gth_frame::Color::Rgb,
+            )
+            .map_err(|e| e.to_string())?;
             self.rgb.resize(pipeline.out_len(), 0);
             self.pipeline = Some((pipeline, size));
         }

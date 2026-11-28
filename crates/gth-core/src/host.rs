@@ -24,6 +24,12 @@ pub(crate) struct Host {
     pub frame: Vec<u8>,
     pub width: usize,
     pub height: usize,
+    /// The frame drawn before `frame`, while the caller keeps it
+    /// (`Core::set_keep_previous_frame`) for max-pooling.
+    pub previous: Option<PreviousFrame>,
+    /// Set before each `retro_run` while `previous` is kept: the run's first video call (or
+    /// its end, without one) moves `frame` to `previous` ([`Host::advance_frame`]).
+    pub frame_pending: bool,
     /// Port 0 joypad buttons, bit n = button id n.
     pub buttons: u16,
     /// Audio frames the core produced since loading.
@@ -39,6 +45,14 @@ pub(crate) struct Host {
     pub regions: Vec<MemoryRegion>,
     /// The core's named-area lookup (`GTH_ENVIRONMENT_SET_AREA_INTERFACE`), if it gave one.
     pub get_area: gth_get_area_t,
+}
+
+/// A frame and its geometry, as [`Host`] keeps the current one.
+pub(crate) struct PreviousFrame {
+    pub data: Vec<u8>,
+    pub width: usize,
+    pub height: usize,
+    pub format: PixelFormat,
 }
 
 pub(crate) struct CoreOption {
@@ -66,6 +80,8 @@ impl Host {
         frame: Vec::new(),
         width: 0,
         height: 0,
+        previous: None,
+        frame_pending: false,
         buttons: 0,
         audio_frames: 0,
         audio: None,
@@ -75,12 +91,41 @@ impl Host {
         get_area: None,
     };
 
-    /// A black frame of `width` x `height` in the current format, reusing the buffer.
+    /// A black frame of `width` x `height` in the current format, reusing the buffer; the
+    /// previous frame, if kept, too.
     pub fn clear_frame(&mut self, width: usize, height: usize) {
         self.frame.clear();
         self.frame
             .resize(width * height * self.format.bytes_per_pixel(), 0);
         (self.width, self.height) = (width, height);
+        self.copy_to_previous();
+    }
+
+    /// Makes the previous frame, if kept, a copy of the current one.
+    pub fn copy_to_previous(&mut self) {
+        if let Some(previous) = &mut self.previous {
+            previous.data.clear();
+            previous.data.extend_from_slice(&self.frame);
+            (previous.width, previous.height) = (self.width, self.height);
+            previous.format = self.format;
+        }
+    }
+
+    /// The current frame becomes the previous one, once per `retro_run` while
+    /// `frame_pending`: by swapping buffers before a new frame is written to `frame`
+    /// (`drawn`), or by copying for a dupe or a run that drew nothing, which shows the same
+    /// frame again.
+    pub fn advance_frame(&mut self, drawn: bool) {
+        if !std::mem::take(&mut self.frame_pending) {
+            return;
+        }
+        if !drawn {
+            self.copy_to_previous();
+        } else if let Some(previous) = &mut self.previous {
+            std::mem::swap(&mut previous.data, &mut self.frame);
+            (previous.width, previous.height) = (self.width, self.height);
+            previous.format = self.format;
+        }
     }
 }
 
@@ -303,7 +348,8 @@ pub(crate) unsafe extern "C" fn environment(cmd: c_uint, data: *mut c_void) -> b
     }
 }
 
-/// Keeps the frame (packed) or, for a `NULL` dupe, the previous one.
+/// Keeps the frame (packed) or, for a `NULL` dupe, the previous one; moves the frame it
+/// replaces to the kept previous frame ([`Host::advance_frame`]).
 ///
 /// # Safety
 /// `data` is NULL or holds `height` rows of `width` pixels in the current format, `pitch`
@@ -314,15 +360,15 @@ pub(crate) unsafe extern "C" fn video_refresh(
     height: c_uint,
     pitch: usize,
 ) {
-    if data.is_null() {
-        return;
-    }
     let mut host = host();
     let (width, height) = (width as usize, height as usize);
     let row = width * host.format.bytes_per_pixel();
-    if height == 0 || pitch < row {
-        return; // not a frame we can read; keep the last one
+    if data.is_null() || height == 0 || pitch < row {
+        // A dupe, or not a frame we can read: keep the last one.
+        host.advance_frame(false);
+        return;
     }
+    host.advance_frame(true);
     // SAFETY: the core's frame spans `pitch * (height - 1) + row` bytes from `data`.
     let src = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), pitch * (height - 1) + row) };
     host.frame.clear();
@@ -437,6 +483,57 @@ mod tests {
         let host = host();
         assert_eq!(host.frame, [1, 2, 3, 4, 5, 6, 7, 8]);
         assert_eq!((host.width, host.height), (2, 2));
+    }
+
+    #[test]
+    fn video_keeps_the_previous_frame_once_per_run() {
+        let _claim = claim();
+        assert!(set_format(RETRO_PIXEL_FORMAT_RGB565));
+        let draw = |pixel: [u8; 2]| {
+            // SAFETY: `pixel` holds one RGB565 pixel.
+            unsafe { video_refresh(pixel.as_ptr().cast(), 1, 1, 2) };
+        };
+        let previous = || {
+            let host = host();
+            let previous = host.previous.as_ref().expect("kept");
+            (previous.data.clone(), host.frame.clone())
+        };
+        draw([1, 1]);
+        {
+            let mut host = host();
+            host.previous = Some(PreviousFrame {
+                data: Vec::new(),
+                width: 0,
+                height: 0,
+                format: PixelFormat::Rgb565,
+            });
+            host.copy_to_previous();
+        }
+        assert_eq!(previous(), (vec![1, 1], vec![1, 1]));
+        // A run that draws twice: only its last frame counts, and the run before is kept.
+        host().frame_pending = true;
+        draw([2, 2]);
+        draw([3, 3]);
+        host().advance_frame(false);
+        assert_eq!(previous(), (vec![1, 1], vec![3, 3]));
+        host().frame_pending = true;
+        draw([4, 4]);
+        assert_eq!(previous(), (vec![3, 3], vec![4, 4]));
+        // A dupe shows the frame again.
+        host().frame_pending = true;
+        // SAFETY: a NULL frame is a dupe.
+        unsafe { video_refresh(std::ptr::null(), 1, 1, 2) };
+        assert_eq!(previous(), (vec![4, 4], vec![4, 4]));
+        // So does a run without a video call (ended by `advance_frame(false)`).
+        host().frame_pending = true;
+        draw([5, 5]);
+        host().frame_pending = true;
+        host().advance_frame(false);
+        assert_eq!(previous(), (vec![5, 5], vec![5, 5]));
+        // Clearing blacks out both.
+        host().clear_frame(2, 1);
+        assert_eq!(previous(), (vec![0; 4], vec![0; 4]));
+        assert_eq!(host().previous.as_ref().map(|p| p.width), Some(2));
     }
 
     #[test]

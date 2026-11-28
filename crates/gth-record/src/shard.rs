@@ -274,6 +274,7 @@ fn write_shard(
         options.crop,
         options.rotation,
         options.interpolation,
+        gth_frame::Color::Rgb,
     )
     .map_err(|error| mismatch(replayer, error.to_string()))?;
     let frame_len = pipeline.out_len();

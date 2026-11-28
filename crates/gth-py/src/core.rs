@@ -52,6 +52,7 @@ pub(crate) fn pipeline(
         crop,
         rotation(rotate)?,
         filter(interpolation)?,
+        gth_frame::Color::Rgb,
     )?)
 }
 

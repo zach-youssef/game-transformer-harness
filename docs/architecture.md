@@ -10,7 +10,7 @@ native calls, and the reward function) and only orchestrates.
 | Crate | Holds | Doesn't hold |
 |---|---|---|
 | `gth-core` | The libretro host: load a core dynamic library, answer its callbacks, run frames (including frame skip), savestates, RAM and memory-map reads, RAM search (`ramsearch.rs`). | Python, windowing, audio output |
-| `gth-frame` | Per-frame pixel ops: pixel format to RGB8, crop, tate rotation, resize to the model size, all into caller-provided buffers. | Anything core-specific |
+| `gth-frame` | Per-frame pixel ops: pixel format to RGB8, crop, tate rotation, max of two frames, BT.601 gray, resize to the model size, all into caller-provided buffers. | Anything core-specific |
 | `gth-record` | The recording format (docs/recording-format.md): `Recorder` writes the start state, per-frame joypad masks and desync checks; `Recording` and `Replayer` read and re-run them; `export` renders a recording into a training shard (`shard.rs`), with its sprite lists from `gth-sprites` when asked. | Frame storage in recordings (frames are re-rendered by replaying) |
 | `gth-sprites` | Sprite-list labels (docs/recording-format.md, "Sprite labels"): `SpriteStream` binds a board's decoder (`sprite_hw`) to a core's named state areas (docs/libretro.md, "Named areas") and reads the list the next frame draws, one `Sprite` record each. | Observations: labels are training targets only |
 | `gth-config` | Config types (serde + TOML): `game.toml`, `cores.lock`, the action space, RAM variables, RAM search scripts and their views and relations; finding and auditing the user's ROM and BIOS files by hash. | Emulation and frame data |
@@ -77,11 +77,19 @@ The frame half of one `RetroEnv.step(action)` (`python/gtharness/env.py`) is one
 2. During each `retro_run`, the core's video callback copies its frame into the host's frame
    buffer (packed rows, in the core's pixel format), reusing the allocation. A duplicate frame
    (`NULL` data, `GET_CAN_DUPE`) keeps the previous one. Audio is counted and dropped (a
-   player keeps it instead, `Core::set_audio_capture`).
-3. After the last frame, `Core::with_frame` lends that buffer, under the host lock, to
-   `gth_frame::Pipeline::render`, which crops, converts to RGB8 and rotates in one pass, then
-   resizes (`fast_image_resize`: area, bilinear, or bicubic as Pillow's `BICUBIC`) into a newly allocated observation buffer.
-   The pipeline keeps its scratch buffer and resizer, so the resize allocates nothing. The
+   player keeps it instead, `Core::set_audio_capture`). With max-pooling on
+   (`Core::set_keep_previous_frame`), the host also keeps the frame of the run before: the
+   first video call of each `retro_run` swaps the two buffers before writing, and a dupe or a
+   run without a video call copies the frame (the screen shows it twice). Loads, resets and
+   savestate loads black out both.
+3. After the last frame, `Core::with_frame` (or `Core::with_frames`, with the previous frame)
+   lends that buffer, under the host lock, to `gth_frame::Pipeline::render` (or
+   `render_max`), which crops, converts to RGB8 and rotates in one pass, takes the
+   per-channel maximum with the previous frame when pooling, converts to gray (integer
+   BT.601 weights summing to 1, so r = g = b keeps its value) when the pipeline's `Color` is
+   `Gray`, then resizes (`fast_image_resize`: area, bilinear, or bicubic as Pillow's
+   `BICUBIC`) into a newly allocated observation buffer.
+   The pipeline keeps its scratch buffers and resizer, so the resize allocates nothing. The
    area resize is the largest host-side cost of a step (about 0.35 ms per observation in a
    release build, measured during S4); profiling it is an open follow-up.
 4. `gth-py` moves the buffer into a numpy array without copying (native.md, "Arrays").

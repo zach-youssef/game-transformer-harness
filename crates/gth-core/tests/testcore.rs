@@ -833,3 +833,65 @@ fn named_areas_come_from_the_core_s_interface() {
     assert_eq!(first.as_ptr(), again.as_ptr());
     assert!(core.areas(["gth_testcore sprites", "missing"]).is_none());
 }
+
+/// The kept previous frame's green: its frame number's low byte.
+fn previous_green(core: &Core) -> u32 {
+    core.with_frames(|_, previous| {
+        let previous = previous.expect("kept");
+        assert_eq!((previous.width, previous.height), (WIDTH, HEIGHT));
+        let (pixels, _) = previous.data.as_chunks::<4>();
+        u32::from_ne_bytes(pixels[WIDTH * 100]) >> 8 & 0xFF
+    })
+}
+
+fn green(core: &Core) -> u32 {
+    pixels(core)[WIDTH * 100] >> 8 & 0xFF
+}
+
+#[test]
+fn the_previous_frame_is_the_one_before_the_last() {
+    let _serial = serial();
+    let mut core = load(None);
+    assert!(
+        core.with_frames(|_, previous| previous.is_none()),
+        "off after loading"
+    );
+    core.run_frames(2, 0);
+    core.set_keep_previous_frame(true);
+    assert!(core.keeps_previous_frame());
+    assert_eq!(
+        (previous_green(&core), green(&core)),
+        (2, 2),
+        "starts as a copy"
+    );
+    core.run_frames(3, 0);
+    assert_eq!((previous_green(&core), green(&core)), (4, 5));
+    core.run_frames(1, A);
+    assert_eq!((previous_green(&core), green(&core)), (5, 6));
+    core.reset();
+    assert_eq!(
+        (previous_green(&core), green(&core)),
+        (0, 0),
+        "black after a reset"
+    );
+    core.run_frames(1, 0);
+    assert_eq!((previous_green(&core), green(&core)), (0, 1));
+    core.set_keep_previous_frame(false);
+    assert!(core.with_frames(|_, previous| previous.is_none()));
+    core.run_frames(1, 0);
+    assert_eq!(green(&core), 2);
+}
+
+#[test]
+fn a_duped_frame_is_its_own_previous_frame() {
+    let _serial = serial();
+    let mut core = load_with(None, &[("gth_testcore_dupe", "on")]).unwrap();
+    core.set_keep_previous_frame(true);
+    core.run_frames(2, A);
+    assert_eq!((previous_green(&core), green(&core)), (1, 2));
+    // No button held: the core sends no new frame, so both show frame 2.
+    core.run_frames(1, 0);
+    assert_eq!((previous_green(&core), green(&core)), (2, 2));
+    core.run_frames(1, A);
+    assert_eq!((previous_green(&core), green(&core)), (2, 4));
+}

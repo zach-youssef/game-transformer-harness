@@ -10,7 +10,7 @@ use gth_frame::FrameRef;
 use gth_libretro_sys::*;
 use libloading::Library;
 
-use crate::host::{self, Claim, MemoryRegion};
+use crate::host::{self, Claim, MemoryRegion, PreviousFrame};
 use crate::rng::Rng;
 use crate::{Error, Result};
 
@@ -91,6 +91,9 @@ pub struct Core {
     /// The buttons the last frame ran with, 0 after loading, a reset or a savestate load:
     /// what a sticky frame repeats ([`run_sticky`](Self::run_sticky)).
     last_buttons: u16,
+    /// Whether the host keeps the frame before the last one
+    /// ([`set_keep_previous_frame`](Self::set_keep_previous_frame)).
+    keep_previous_frame: bool,
     /// Neutral frames run after each savestate load before loading it again
     /// ([`load`](Self::load)).
     settle_frames: u32,
@@ -462,6 +465,7 @@ impl Core {
             },
             frames_run: 0,
             last_buttons: 0,
+            keep_previous_frame: false,
             settle_frames: 0,
             initialized: false,
             game_loaded: false,
@@ -552,9 +556,16 @@ impl Core {
     pub fn run_frames(&mut self, frames: u32, buttons: u16) {
         host::host().buttons = buttons;
         for _ in 0..frames {
+            if self.keep_previous_frame {
+                host::host().frame_pending = true;
+            }
             // SAFETY: the game is loaded, and `&mut self` makes this the only call into the
             // core. The host isn't locked here, so the callbacks can lock it.
             unsafe { (self.api.run)() };
+            if self.keep_previous_frame {
+                // A run without a video call shows the last frame again.
+                host::host().advance_frame(false);
+            }
         }
         self.frames_run += u64::from(frames);
         if frames > 0 {
@@ -612,6 +623,58 @@ impl Core {
             pitch: host.width * host.format.bytes_per_pixel(),
             format: host.format,
         })
+    }
+
+    /// Keeps the frame drawn before the last one, for max-pooling the last two frames of a
+    /// step ([`with_frames`](Self::with_frames)). It starts as a copy of the current frame,
+    /// and like it is black after loading, a reset or loading a savestate. Off after
+    /// loading; keeping it copies one frame per run, so it costs a little even unused.
+    /// Setting the value it already has does nothing.
+    pub fn set_keep_previous_frame(&mut self, keep: bool) {
+        if keep == self.keep_previous_frame {
+            return;
+        }
+        self.keep_previous_frame = keep;
+        let mut host = host::host();
+        host.frame_pending = false;
+        host.previous = keep.then(|| PreviousFrame {
+            data: Vec::new(),
+            width: 0,
+            height: 0,
+            format: host.format,
+        });
+        host.copy_to_previous();
+    }
+
+    /// Whether the previous frame is kept
+    /// ([`set_keep_previous_frame`](Self::set_keep_previous_frame)).
+    pub fn keeps_previous_frame(&self) -> bool {
+        self.keep_previous_frame
+    }
+
+    /// Calls `f` with the last frame the core drew, as [`with_frame`](Self::with_frame)
+    /// does, and the one it drew before that, if kept
+    /// ([`set_keep_previous_frame`](Self::set_keep_previous_frame)): the frame of the
+    /// previous `retro_run`, or the same frame again after a dupe or a run without a video
+    /// call. Its size or format can differ from the last frame's when the core changed them
+    /// in between.
+    pub fn with_frames<R>(&self, f: impl FnOnce(FrameRef<'_>, Option<FrameRef<'_>>) -> R) -> R {
+        let host = host::host();
+        let frame = FrameRef {
+            data: &host.frame,
+            width: host.width,
+            height: host.height,
+            pitch: host.width * host.format.bytes_per_pixel(),
+            format: host.format,
+        };
+        let previous = host.previous.as_ref().map(|previous| FrameRef {
+            data: &previous.data,
+            width: previous.width,
+            height: previous.height,
+            pitch: previous.width * previous.format.bytes_per_pixel(),
+            format: previous.format,
+        });
+        f(frame, previous)
     }
 
     fn clear_frame(&mut self) {
