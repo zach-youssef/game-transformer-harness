@@ -59,7 +59,17 @@ pair, and `low == high` is refused.
   human's, `100 x (agent - random) / (human - random)` in Mnih et al. 2015 (`mnih2015human`
   C8, Table 2); Agent57 also uses HNS and gives the 57-game table (`badia2020agent57` C9,
   C10). The two tables differ for some games (Alien's human 6875 in Mnih et al., 7127.7 in
-  Agent57), so a protocol's comparison must name which table it uses.
+  Agent57), so a protocol's comparison must name which table it uses. Both are in
+  `protocols/references/atari-human-random.toml` for the Atari games (`atari-<rom>`), as
+  `[<game>.<table>]` with `random`, `human` and the `claim` each comes from:
+
+  ```python
+  table = tomllib.loads(Path("protocols/references/atari-human-random.toml").read_text())
+  references = {
+      game: (t["badia2020agent57"]["random"], t["badia2020agent57"]["human"])
+      for game, t in table.items()
+  }
+  ```
 - Our games: `low` is the random policy's mean under the same protocol, `high` the human
   reference (the HNS analogue).
 - Any other pair (a DQN score, a min-max range) works the same way.

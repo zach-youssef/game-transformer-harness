@@ -1,0 +1,128 @@
+# Human and random reference scores for the Atari games, the (low, high) of the human-normalised
+# score: 100 x (agent - random) / (human - random) (docs/metrics.md, "Normalised scores"). Two
+# published tables, each row citing the knowledge-base claim (~/code/research, kb/papers) that
+# says the paper gives the table. The claims don't repeat the numbers: they are in the note's
+# "Implementation notes" bullet for the table (badia2020agent57.md, "57-game table of average
+# human and random scores", from App. H.4, p. 27; mnih2015human.md, "Per-game random and human
+# reference scores", from Table 2, p. 11), as of research commit 7bd8a38:
+#
+# - badia2020agent57: Agent57's 57-game table (App. H.4, p. 27), the one most later work uses
+#   (JOWA's Table 2 prints its values, cheng2025jointly#C20), with no source given for its
+#   human scores. Covers all twelve games.
+# - mnih2015human: DQN's 49-game table (Table 2, p. 11): a professional tester's average over
+#   about 20 five-minute episodes (mnih2015human#C9) and a uniformly random action every sixth
+#   frame (mnih2015human#C10). No Phoenix or Yars' Revenge. Its human scores differ from
+#   Agent57's in 8 of the 10 games both have (Ms. Pac-Man 15693 against 6951.6); the random
+#   scores are the same.
+#
+# Report which table a normalised score uses: they aren't interchangeable.
+
+[atari-alien.badia2020agent57]  # Alien
+random = 227.8
+human = 7127.7
+claim = "badia2020agent57#C10"
+
+[atari-alien.mnih2015human]
+random = 227.8
+human = 6875.0
+claim = "mnih2015human#C8"
+
+[atari-assault.badia2020agent57]  # Assault
+random = 222.4
+human = 742.0
+claim = "badia2020agent57#C10"
+
+[atari-assault.mnih2015human]
+random = 222.4
+human = 1496.0
+claim = "mnih2015human#C8"
+
+[atari-demon-attack.badia2020agent57]  # Demon Attack
+random = 152.1
+human = 1971.0
+claim = "badia2020agent57#C10"
+
+[atari-demon-attack.mnih2015human]
+random = 152.1
+human = 3401.0
+claim = "mnih2015human#C8"
+
+[atari-gravitar.badia2020agent57]  # Gravitar
+random = 173.0
+human = 3351.4
+claim = "badia2020agent57#C10"
+
+[atari-gravitar.mnih2015human]
+random = 173.0
+human = 2672.0
+claim = "mnih2015human#C8"
+
+[atari-ms-pacman.badia2020agent57]  # Ms. Pac-Man
+random = 307.3
+human = 6951.6
+claim = "badia2020agent57#C10"
+
+[atari-ms-pacman.mnih2015human]
+random = 307.3
+human = 15693.0
+claim = "mnih2015human#C8"
+
+[atari-phoenix.badia2020agent57]  # Phoenix
+random = 761.4
+human = 7242.6
+claim = "badia2020agent57#C10"
+
+[atari-pong.badia2020agent57]  # Pong
+random = -20.7
+human = 14.6
+claim = "badia2020agent57#C10"
+
+[atari-pong.mnih2015human]
+random = -20.7
+human = 9.3
+claim = "mnih2015human#C8"
+
+[atari-robotank.badia2020agent57]  # Robotank
+random = 2.2
+human = 11.9
+claim = "badia2020agent57#C10"
+
+[atari-robotank.mnih2015human]
+random = 2.2
+human = 11.9
+claim = "mnih2015human#C8"
+
+[atari-seaquest.badia2020agent57]  # Seaquest
+random = 68.4
+human = 42054.7
+claim = "badia2020agent57#C10"
+
+[atari-seaquest.mnih2015human]
+random = 68.4
+human = 20182.0
+claim = "mnih2015human#C8"
+
+[atari-space-invaders.badia2020agent57]  # Space Invaders
+random = 148.0
+human = 1668.7
+claim = "badia2020agent57#C10"
+
+[atari-space-invaders.mnih2015human]
+random = 148.0
+human = 1652.0
+claim = "mnih2015human#C8"
+
+[atari-star-gunner.badia2020agent57]  # Star Gunner
+random = 664.0
+human = 10250.0
+claim = "badia2020agent57#C10"
+
+[atari-star-gunner.mnih2015human]
+random = 664.0
+human = 10250.0
+claim = "mnih2015human#C8"
+
+[atari-yars-revenge.badia2020agent57]  # Yars' Revenge
+random = 3092.9
+human = 54576.9
+claim = "badia2020agent57#C10"

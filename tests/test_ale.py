@@ -54,6 +54,18 @@ def test_atari_configs_follow_the_shared_recipe(game_id: str):
     assert len(content["md5"]) == 32, "ALE's game table identifies the ROM by MD5"
 
 
+def test_every_atari_game_has_cited_human_and_random_scores():
+    path = Path(__file__).parent.parent / "protocols" / "references" / "atari-human-random.toml"
+    table = tomllib.loads(path.read_text(encoding="utf-8"))
+    assert sorted(table) == ATARI
+    for game, tables in table.items():
+        assert "badia2020agent57" in tables, f"{game}: Agent57's table covers every game"
+        for name, row in tables.items():
+            assert set(row) == {"random", "human", "claim"}, (game, name)
+            assert row["claim"].startswith(f"{name}#C"), (game, name)
+            assert row["human"] > row["random"], (game, name)
+
+
 ALE_FRAME = (210, 160)
 NOOP, FIRE = 0, 1  # flat actions: nothing; no direction with the shot slot (b)
 # ALE v5's frame cap (max_num_frames_per_episode), the Atari presets' max_episode_frames.
