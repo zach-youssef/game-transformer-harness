@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use md5::Md5;
 use serde::{Serialize, Serializer};
 use sha1::{Digest, Sha1};
 
@@ -47,6 +48,15 @@ impl Found {
     fn matches(&self, size: u64, crc32: &str, sha1: &str) -> bool {
         self.size == size && self.crc32 == crc32 && self.sha1 == sha1
     }
+}
+
+/// A file's MD5 against the one `game.toml` gives.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Md5Check {
+    /// From `game.toml`.
+    pub expected: String,
+    /// The file's.
+    pub found: String,
 }
 
 /// An archive member, as found.
@@ -93,6 +103,10 @@ pub struct FileAudit {
     /// A plain file's size and hashes, when they differ from `game.toml`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub found: Option<Found>,
+    /// For a plain file whose `game.toml` gives an MD5 (an Atari ROM, from ALE's game
+    /// table), that MD5 and the file's, whether or not they match.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub md5: Option<Md5Check>,
     /// For an archive: each expected member.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub members: Vec<MemberAudit>,
@@ -257,6 +271,7 @@ fn blank(role: Role, spec: &FileSpec, status: Status) -> FileAudit {
         status,
         path: None,
         found: None,
+        md5: None,
         members: Vec::new(),
         extra: Vec::new(),
         error: None,
@@ -267,10 +282,16 @@ fn plain_audit(role: Role, spec: &FileSpec, path: PathBuf, hashes: &Hashes) -> F
     let found = std::fs::File::open(&path).and_then(hash_reader);
     let mut audit = blank(role, spec, Status::Ok);
     match found {
-        Ok(found) if found.matches(hashes.size, &hashes.crc32, &hashes.sha1) => {}
-        Ok(found) => {
-            audit.status = Status::BadHash;
-            audit.found = Some(found);
+        Ok((found, md5)) => {
+            let md5_ok = hashes.md5.as_ref().is_none_or(|expected| *expected == md5);
+            if !(md5_ok && found.matches(hashes.size, &hashes.crc32, &hashes.sha1)) {
+                audit.status = Status::BadHash;
+                audit.found = Some(found);
+            }
+            audit.md5 = (hashes.md5.clone()).map(|expected| Md5Check {
+                expected,
+                found: md5,
+            });
         }
         Err(error) => {
             audit.status = Status::Unreadable;
@@ -423,16 +444,19 @@ fn read_archive(path: &Path) -> Archive {
                         return Err(format!("unsupported compression method {method:?}"));
                     }
                 };
-                result.map_err(|error| error.to_string())
+                result
+                    .map(|(found, _md5)| found)
+                    .map_err(|error| error.to_string())
             });
         read.push(EntryRead { name, found });
     }
     Ok(read)
 }
 
-/// The size, CRC-32 and SHA-1 of everything `reader` yields.
-fn hash_reader(mut reader: impl Read) -> std::io::Result<Found> {
+/// The size, CRC-32 and SHA-1 of everything `reader` yields, and its MD5.
+fn hash_reader(mut reader: impl Read) -> std::io::Result<(Found, String)> {
     let mut sha1 = Sha1::new();
+    let mut md5 = Md5::new();
     let mut crc32 = crc32fast::Hasher::new();
     let mut size = 0;
     let mut buffer = vec![0; 1 << 20];
@@ -442,14 +466,16 @@ fn hash_reader(mut reader: impl Read) -> std::io::Result<Found> {
             break;
         }
         sha1.update(&buffer[..read]);
+        md5.update(&buffer[..read]);
         crc32.update(&buffer[..read]);
         size += read as u64;
     }
-    Ok(Found {
+    let found = Found {
         size,
         crc32: format!("{:08x}", crc32.finalize()),
         sha1: hex(&sha1.finalize()),
-    })
+    };
+    Ok((found, hex(&md5.finalize())))
 }
 
 #[cfg(test)]
@@ -541,9 +567,52 @@ mod tests {
 
     #[test]
     fn hashes_match_the_standard_test_vectors() {
-        let abc = hash_reader(&b"abc"[..]).unwrap();
+        let (abc, md5) = hash_reader(&b"abc"[..]).unwrap();
         assert_eq!(abc.sha1, "a9993e364706816aba3e25717850c26c9cd0d89d");
         assert_eq!((abc.crc32.as_str(), abc.size), ("352441c2", 3));
+        assert_eq!(md5, "900150983cd24fb0d6963f7d28e17f72", "RFC 1321");
+    }
+
+    #[test]
+    fn an_md5_is_checked_and_reported_when_given() {
+        let dir = TempDir::new("audit-md5");
+        let roms = dir.0.join("roms");
+        std::fs::create_dir_all(&roms).unwrap();
+        let game = random(3, 2048);
+        std::fs::write(roms.join("game.bin"), &game).unwrap();
+        let md5 = hex(&Md5::digest(&game));
+        let with = |md5: &str| {
+            let content = format!("file = \"game.bin\"\n{}\nmd5 = \"{md5}\"", plain(&game));
+            config(&content, "")
+        };
+        let audit = with(&md5).audit(&roms, &dir.0).unwrap();
+        assert_eq!(audit.status, Status::Ok, "{audit:#?}");
+        let check = Md5Check {
+            expected: md5.clone(),
+            found: md5.clone(),
+        };
+        assert_eq!(audit.files[0].md5, Some(check));
+        assert!(
+            audit
+                .to_json()
+                .contains(&format!("\"md5\":{{\"expected\":\"{md5}\""))
+        );
+
+        let other = "0".repeat(32);
+        let audit = with(&other).audit(&roms, &dir.0).unwrap();
+        assert_eq!(
+            audit.files[0].status,
+            Status::BadHash,
+            "same SHA-1, other MD5"
+        );
+        assert_eq!(audit.files[0].found, Some(found(&game)));
+        assert_eq!(audit.files[0].md5.as_ref().unwrap().found, md5);
+        assert_eq!(audit.files[0].md5.as_ref().unwrap().expected, other);
+
+        let plain_audit = config(&format!("file = \"game.bin\"\n{}", plain(&game)), "");
+        let audit = plain_audit.audit(&roms, &dir.0).unwrap();
+        assert_eq!((audit.status, &audit.files[0].md5), (Status::Ok, &None));
+        assert!(!audit.to_json().contains("\"md5\""));
     }
 
     #[test]

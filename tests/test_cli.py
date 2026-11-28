@@ -31,6 +31,8 @@ def test_the_testcore_game_audits_ok(testcore_data: Path, capsys: pytest.Capture
     code, out = run(capsys, str(testcore_data), "--game", "testcore")
     assert code == 0, out
     assert "testcore: ok" in out
+    md5 = "0814d573fe3adc1ae599c65a693aa2c3"
+    assert f"    md5 {md5} == {md5} (game.toml)\n" in out, "the MD5 is printed when given"
     code, out = run(capsys, str(testcore_data), "--game", "testcore", "--json")
     report = json.loads(out)
     files = report["games"]["testcore"]["files"]
@@ -41,6 +43,8 @@ def test_the_testcore_game_audits_ok(testcore_data: Path, capsys: pytest.Capture
         ("bios", "ok"),
     ]
     assert files[0]["path"].endswith("renamed.gthc"), "found by SHA-1"
+    assert files[0]["md5"] == {"expected": md5, "found": md5}
+    assert all("md5" not in file for file in files[1:])
     assert report["system_dir"] == str(testcore_data / "system")
 
 

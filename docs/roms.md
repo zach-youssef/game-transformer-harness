@@ -74,13 +74,15 @@ read-only:
   without its extension, so a bad clone member in a merged set is `bad-hash`, not
   `missing`; else `<name>`. A clone `in_parent` is audited inside its parent's archive.
 
-Each file and member is `ok`, `missing`, `bad-hash` (the size or a hash differs; for an
-archive, a member is missing or bad) or `unreadable` (an I/O error, also while searching the
+Each file and member is `ok`, `missing`, `bad-hash` (the size or a hash differs, including a
+plain file's `md5` when `game.toml` gives one; for an archive, a member is missing or bad) or `unreadable` (an I/O error, also while searching the
 ROM directory; a zip that doesn't parse; a member that fails its own CRC or uses a
 compression method other than store and deflate). Content with the wrong hashes is found by
 its name at the top of the ROM directory only; elsewhere it's `missing`. The report gives the
 size and hashes found for anything bad, and lists the archive members that match no expected
-member (not an error: a merged set holds its clones), with their hashes or error. A game's
+member (not an error: a merged set holds its clones), with their hashes or error. For a
+plain file with an `md5` in `game.toml` (the Atari games, whose MD5s are ALE's game table's)
+it gives that MD5 and the file's whenever the file was read, ok or not. A game's
 status is the worst of its files', from best to worst `ok`, `missing`, `bad-hash`,
 `unreadable`: a game whose files are absent is `missing`, one with a bad dump `bad-hash`. It
 prints a table, or with `--json` the report as JSON:
@@ -89,6 +91,7 @@ prints a table, or with `--json` the report as JSON:
 {"rom_dir": "...", "system_dir": "...", "games": {"<game-id>": {"status": "ok", "files": [
   {"role": "content | parent | bios", "file": "<game.toml name>", "status": "ok",
    "path": "...", "found": {"size": 0, "crc32": "...", "sha1": "..."},
+   "md5": {"expected": "<game.toml's>", "found": "..."},
    "members": [{"name": "...", "status": "ok", "found_as": "<clone>/...", "found": {}}],
    "extra": [{"name": "...", "size": 0, "crc32": "...", "sha1": "...", "error": "..."}],
    "error": "..."}]}}}

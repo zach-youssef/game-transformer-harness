@@ -57,6 +57,10 @@ def table(report: dict[str, Any]) -> str:
             lines.append(f"  {file['role']:<8} {file['status']:<10} {file['file']}{where}")
             if "found" in file:
                 lines.append(f"    found {_hashes(file['found'])}")
+            if "md5" in file:
+                md5 = file["md5"]
+                same = "==" if md5["found"] == md5["expected"] else "!="
+                lines.append(f"    md5 {md5['found']} {same} {md5['expected']} (game.toml)")
             if "error" in file:
                 lines.append(f"    {file['error']}")
             for member in file.get("members", []):
@@ -81,7 +85,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     audit_parser = commands.add_parser(
         "audit",
         help="check every game's content, parent and BIOS files by hash",
-        description="Checks each game's files and archive members by size, CRC-32 and SHA-1. "
+        description="Checks each game's files and archive members by size, CRC-32 and SHA-1 "
+        "(and a file's MD5 when its game.toml gives one). "
         "Exit status: 0 when every audited game is ok, 1 otherwise, 2 on a usage or config "
         "error.",
     )

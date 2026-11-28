@@ -165,6 +165,9 @@ pub struct Hashes {
     pub sha1: String,
     /// 8 lowercase hex digits.
     pub crc32: String,
+    /// 32 lowercase hex digits, optional: the hash a core identifies the file by, checked by
+    /// the ROM audit only (ALE's game table, for an Atari ROM).
+    pub md5: Option<String>,
 }
 
 /// A file inside an archive.
@@ -187,6 +190,8 @@ struct RawFileSpec {
     sha1: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     crc32: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    md5: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     members: Vec<Member>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -240,12 +245,21 @@ impl TryFrom<RawFileSpec> for FileSpec {
             (Some(size), Some(sha1), Some(crc32), true) => {
                 check_hex("sha1", &sha1, 40)?;
                 check_hex("crc32", &crc32, 8)?;
-                Some(Hashes { size, sha1, crc32 })
+                if let Some(md5) = &raw.md5 {
+                    check_hex("md5", md5, 32)?;
+                }
+                Some(Hashes {
+                    size,
+                    sha1,
+                    crc32,
+                    md5: raw.md5,
+                })
             }
-            (None, None, None, false) => None,
+            (None, None, None, false) if raw.md5.is_none() => None,
             _ => {
                 return Err(format!(
-                    "{}: give `size`, `sha1` and `crc32`, or (for an archive) `members`",
+                    "{}: give `size`, `sha1` and `crc32` (and optionally `md5`), or (for an \
+                     archive) `members`",
                     raw.file
                 ));
             }
@@ -266,15 +280,21 @@ impl TryFrom<RawFileSpec> for FileSpec {
 
 impl From<FileSpec> for RawFileSpec {
     fn from(spec: FileSpec) -> Self {
-        let (size, sha1, crc32) = match spec.hashes {
-            Some(Hashes { size, sha1, crc32 }) => (Some(size), Some(sha1), Some(crc32)),
-            None => (None, None, None),
+        let (size, sha1, crc32, md5) = match spec.hashes {
+            Some(Hashes {
+                size,
+                sha1,
+                crc32,
+                md5,
+            }) => (Some(size), Some(sha1), Some(crc32), md5),
+            None => (None, None, None, None),
         };
         RawFileSpec {
             file: spec.file,
             size,
             sha1,
             crc32,
+            md5,
             members: spec.members,
             parents: spec.parents,
             in_parent: spec.in_parent,
@@ -632,6 +652,22 @@ gth_testcore_step = "4"
     }
 
     #[test]
+    fn parses_an_optional_md5() {
+        let md5 = "60e0ea3cbe0913d39803477945e9e5ec";
+        let text = full().replace(
+            "crc32 = \"89abcdef\"\nparents",
+            &format!("crc32 = \"89abcdef\"\nmd5 = \"{md5}\"\nparents"),
+        );
+        let config = GameConfig::parse(&text, "md5").unwrap();
+        let hashes = config.content.hashes.as_ref().unwrap();
+        assert_eq!(hashes.md5.as_deref(), Some(md5));
+        let again = GameConfig::parse(&config.to_toml(), "round trip").unwrap();
+        assert_eq!(again, config);
+        let plain = GameConfig::parse(&full(), "full").unwrap();
+        assert_eq!(plain.content.hashes.unwrap().md5, None);
+    }
+
+    #[test]
     fn parses_the_signed_encoding() {
         let text = full().replace("encoding = \"le\"", "encoding = \"sle\"");
         let config = GameConfig::parse(&text, "sle").unwrap();
@@ -741,6 +777,16 @@ gth_testcore_step = "4"
                 "lowercase hex",
             ),
             ("size = 21\n", "", "give `size`, `sha1` and `crc32`"),
+            (
+                "crc32 = \"89abcdef\"\nparents",
+                "crc32 = \"89abcdef\"\nmd5 = \"60E0EA3CBE0913D39803477945E9E5EC\"\nparents",
+                "isn't 32 lowercase hex digits",
+            ),
+            (
+                "\"parent.zip\", members",
+                "\"parent.zip\", md5 = \"60e0ea3cbe0913d39803477945e9e5ec\", members",
+                "give `size`, `sha1` and `crc32`",
+            ),
             (
                 "file = \"game.gthc\"",
                 "file = \"../game.gthc\"",

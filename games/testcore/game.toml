@@ -13,6 +13,7 @@ file = "testcore.gthc"    # its bytes seed the PRNG
 size = 49
 sha1 = "1a03ac5869e1d56cfd138db9790087dd926c18b3"
 crc32 = "5ca42140"
+md5 = "0814d573fe3adc1ae599c65a693aa2c3"  # optional; the audit checks and prints it (ALE's games)
 parents = [               # a clone's parent set, checked beside the content (found by name)
   { file = "gth_testcore_parent.zip", members = [
     { name = "parent.bin", size = 53, sha1 = "4abec8a8f48e9105b1271f938a0df5f88cf2ce7c", crc32 = "2e66fc54" },

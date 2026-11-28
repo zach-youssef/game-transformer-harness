@@ -175,9 +175,13 @@ file = "gunhed.pce"       # the name the core expects
 size = 393216             # bytes
 sha1 = "..."              # 40 lowercase hex digits
 crc32 = "..."             # 8 lowercase hex digits
+md5 = "..."               # optional, 32 lowercase hex digits
 ```
 
-A plain file is identified by size and hashes, whatever its name (docs/roms.md). An archive
+A plain file is identified by size and hashes, whatever its name (docs/roms.md). `md5` is
+for a core that identifies its content by MD5 (the ALE core looks ROMs up in ALE's game
+table by it): the audit checks it and prints it beside the file's, but the lookup doesn't
+need it. An archive
 whose own hash depends on how it was packed (an arcade set's zip) gives `members` instead of
 `size`/`sha1`/`crc32`, one inline table per file inside it, and is found by name; its
 members are checked by the ROM audit (docs/roms.md, "Auditing"), not by the lookup here:

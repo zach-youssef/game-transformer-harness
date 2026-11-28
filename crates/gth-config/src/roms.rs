@@ -263,6 +263,7 @@ pub(crate) mod tests {
                 size: 3,
                 sha1: sha1.into(),
                 crc32: "352441c2".into(),
+                md5: None,
             }),
             members: Vec::new(),
             parents: Vec::new(),
