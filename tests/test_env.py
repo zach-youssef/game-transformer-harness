@@ -326,6 +326,8 @@ def test_resize_rotate_and_crop(testcore_path: Path, tmp_path: Path):
     with retro_env(testcore_path, tmp_path, obs_size=(84, 84), interpolation="bilinear") as small:
         assert small.reset()[0].shape == (84, 84, 3)
         assert small.observation_space.shape == (84, 84, 3)
+    with retro_env(testcore_path, tmp_path, obs_size=(84, 84), interpolation="bicubic") as cubic:
+        assert cubic.reset()[0].shape == (84, 84, 3)
     for bad in ({"interpolation": "cubic"}, {"obs_size": (0, 4)}):
         with pytest.raises((ValueError, HarnessError)), retro_env(testcore_path, tmp_path, **bad):
             pass

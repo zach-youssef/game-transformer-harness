@@ -81,7 +81,7 @@ class ShardOptions:
             before the first input through game over.
         chunk_samples: samples per frame chunk: larger compresses better, smaller decodes less
             to reach one sample.
-        interpolation: "area" or "bilinear".
+        interpolation: "area", "bilinear" or "bicubic".
         sprites: whether to write every frame's sprite list (docs/recording-format.md,
             "Sprite labels"); the game must have a ``sprite_hw`` and the core must give it.
 
@@ -521,7 +521,7 @@ def add_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         required=True,
         help="write every frame's sprite list (needs the game's sprite_hw)",
     )
-    parser.add_argument("--interpolation", choices=["area", "bilinear"], default="area")
+    parser.add_argument("--interpolation", choices=INTERPOLATIONS, default="area")
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1, help="default: CPU count")
     parser.add_argument(
         "--rom-dir", type=Path, help="default: GTH_ROM_DIR or rom_dir in the user config"

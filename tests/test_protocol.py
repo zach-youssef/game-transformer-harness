@@ -210,7 +210,7 @@ BAD_VALUES = [
     ("obs.orientation", 180, 'must be "game", 0, 90 or 270'),
     ("obs.orientation", "90", 'must be "game", 0, 90 or 270'),
     ("obs.orientation", True, 'must be "game", 0, 90 or 270'),
-    ("obs.interpolation", "bicubic", "must be one of area, bilinear"),
+    ("obs.interpolation", "cubic", "must be one of area, bilinear, bicubic"),
     ("obs.grayscale", "yes", "must be true or false"),
     ("frame_stack", 0, "must be at least 1"),
     ("action_set", "minimal", "must be one of harness, atari_full, atari_minimal"),

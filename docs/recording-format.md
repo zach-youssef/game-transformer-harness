@@ -279,7 +279,7 @@ work at the emulator's rate or need the presses between observations; sample i's
 | `episode_id` | The episode's index in its source: 0 for a recording, which holds one episode. |
 | `game_id`, `fps` | From the recording. |
 | `frameskip` | Frames per sample, or `null` when the recorded steps it follows vary in length (`episode_frame` then gives the step ends). |
-| `obs_size`, `crop`, `orientation`, `interpolation` | The observation pipeline: `[height, width]`, `[x, y, width, height]` or `null`, degrees clockwise, `area` or `bilinear`. |
+| `obs_size`, `crop`, `orientation`, `interpolation` | The observation pipeline: `[height, width]`, `[x, y, width, height]` or `null`, degrees clockwise, `area`, `bilinear` or `bicubic`. |
 | `ram_names` | The names of `ram`'s columns (the recording's `game.toml` variables, in name order). |
 | `label_source`, `idm_model` | `replay` or `idm`, and for `idm` the model's id (`null` otherwise). |
 | `filter` | The sample filter (below). |

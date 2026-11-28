@@ -31,6 +31,10 @@ pub enum Filter {
     /// when shrinking, and what OpenCV calls `INTER_AREA`.
     Area,
     Bilinear,
+    /// Pillow's `BICUBIC`: the Catmull-Rom cubic (Keys, a = -0.5), widened by the scale when
+    /// shrinking so it averages as well. OpenCV's `INTER_CUBIC` (a = -0.75, never widened)
+    /// differs.
+    Bicubic,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -86,6 +90,7 @@ impl Pipeline {
         let filter = match filter {
             Filter::Area => FilterType::Box,
             Filter::Bilinear => FilterType::Bilinear,
+            Filter::Bicubic => FilterType::CatmullRom,
         };
         Ok(Pipeline {
             out_height,
@@ -401,6 +406,67 @@ mod tests {
             .unwrap();
         assert_eq!(big[0], 0);
         assert_eq!(big[(8 * 8 - 1) * 3], 120);
+    }
+
+    #[test]
+    fn bicubic_matches_pillow() {
+        // An 8x6 frame; pixel (y, x) is [(37x + 11y) % 256, (7x^2 + 29y) % 256, 31(x ^ y) % 256].
+        let rows: Vec<Vec<u32>> = (0..6u32)
+            .map(|y| {
+                (0..8u32)
+                    .map(|x| {
+                        let r = (37 * x + 11 * y) % 256;
+                        let g = (7 * x * x + 29 * y) % 256;
+                        (r << 16) | (g << 8) | ((31 * (x ^ y)) % 256)
+                    })
+                    .collect()
+            })
+            .collect();
+        let rows: Vec<&[u32]> = rows.iter().map(Vec::as_slice).collect();
+        let (data, w, h, pitch) = xrgb(&rows, 0);
+        // Pillow 10.4's BICUBIC in float (mode "F", per channel, clipped to 0..=255): the
+        // exact two-pass result. Ours rounds once between the passes, so a channel may be up
+        // to 1 off; Pillow's own 8-bit path rounds more and is up to 2.1 off.
+        let pillow: [((usize, usize), &[f32]); 2] = [
+            (
+                (2, 3),
+                &[
+                    45.6, 40.5, 34.5, 149.0, 124.3, 108.5, 158.1, 132.5, 182.5, 75.8, 126.5, 124.2,
+                    176.7, 139.9, 108.5, 120.8, 121.4, 92.8,
+                ],
+            ),
+            (
+                (4, 10),
+                &[
+                    1.6, 8.0, 8.6, 27.1, 11.9, 9.7, 58.7, 24.1, 46.5, 88.3, 45.4, 81.7, 117.9,
+                    75.6, 87.5, 147.5, 114.7, 129.5, 177.1, 171.2, 135.3, 222.7, 187.6, 170.5,
+                    166.3, 149.6, 207.3, 0.0, 92.0, 208.4, 17.2, 49.3, 52.9, 42.8, 53.1, 56.8,
+                    74.3, 65.3, 41.4, 103.9, 86.6, 20.9, 133.5, 116.9, 39.9, 163.1, 156.5, 177.1,
+                    191.9, 214.1, 196.1, 244.3, 121.2, 175.6, 190.3, 51.4, 160.2, 11.9, 140.9,
+                    164.1, 34.6, 95.1, 102.1, 60.2, 99.0, 101.9, 91.7, 111.2, 87.9, 121.3, 132.2,
+                    71.7, 150.9, 164.5, 78.1, 180.5, 221.4, 138.9, 216.4, 72.5, 145.3, 207.6, 41.2,
+                    129.1, 131.8, 121.6, 115.1, 33.4, 186.4, 114.9, 50.2, 136.3, 146.4, 75.8,
+                    140.2, 135.6, 107.3, 152.4, 176.5, 136.9, 179.0, 224.0, 166.5, 193.6, 194.1,
+                    196.1, 89.7, 22.9, 245.5, 51.1, 0.0, 120.3, 85.7, 40.5, 2.8, 163.8, 81.4, 57.0,
+                    227.6, 70.6,
+                ],
+            ),
+        ];
+        for ((height, width), expected) in pillow {
+            let mut pipeline =
+                Pipeline::new(height, width, None, Rotation::None, Filter::Bicubic).unwrap();
+            let mut out = vec![0; pipeline.out_len()];
+            pipeline
+                .render(frame_of(&data, w, h, pitch), &mut out)
+                .unwrap();
+            assert_eq!(out.len(), expected.len());
+            for (i, (&ours, &exact)) in out.iter().zip(expected).enumerate() {
+                assert!(
+                    (f32::from(ours) - exact).abs() <= 1.0,
+                    "{height}x{width}[{i}]: {ours}"
+                );
+            }
+        }
     }
 
     #[test]

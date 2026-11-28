@@ -33,7 +33,7 @@ ActionFormat = Literal["dict", "flat"]
 GAMES_DIR = Path(__file__).resolve().parents[2] / "games"
 """The checkout's ``games/`` directory, the default for `RetroEnv.from_game`."""
 
-INTERPOLATIONS = ("area", "bilinear")
+INTERPOLATIONS = ("area", "bilinear", "bicubic")
 """The ``interpolation`` values the env (and the shard exporter) resize frames with."""
 ORIENTATIONS = (0, 90, 270)
 """Clockwise rotations a game config, a shard export or a protocol can ask for."""
@@ -113,7 +113,8 @@ class RetroEnv(gym.Env[Observation, Action]):
         sticky_prob: the sticky-action probability, in [0, 1); 0 turns them off.
         max_episode_frames: the episode cap in emulated frames (>= 1), or None for none.
         noop_max: the most no-op frames an episode starts with (>= 0); 0 turns them off.
-        interpolation: "area" (averages, best for shrinking) or "bilinear".
+        interpolation: "area" (averages, best for shrinking), "bilinear" or "bicubic"
+            (Pillow's).
         record: where and how to record episodes (`gtharness.record.Record`), or None.
         game_id: the game's directory under ``games/``, kept in recordings; required with
             ``record`` (`from_game` passes it).

@@ -167,7 +167,7 @@ pub struct ShardMeta {
     pub crop: Option<[usize; 4]>,
     /// Degrees clockwise: 0, 90 or 270.
     pub orientation: u32,
-    /// `area` or `bilinear`.
+    /// `area`, `bilinear` or `bicubic`.
     pub interpolation: String,
     /// The names of `ram.npy`'s columns.
     pub ram_names: Vec<String>,
@@ -445,6 +445,7 @@ fn write_shard(
         interpolation: match options.interpolation {
             Filter::Area => "area",
             Filter::Bilinear => "bilinear",
+            Filter::Bicubic => "bicubic",
         }
         .into(),
         ram_names,

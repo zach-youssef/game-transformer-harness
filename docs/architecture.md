@@ -80,7 +80,7 @@ The frame half of one `RetroEnv.step(action)` (`python/gtharness/env.py`) is one
    player keeps it instead, `Core::set_audio_capture`).
 3. After the last frame, `Core::with_frame` lends that buffer, under the host lock, to
    `gth_frame::Pipeline::render`, which crops, converts to RGB8 and rotates in one pass, then
-   resizes (`fast_image_resize`, area or bilinear) into a newly allocated observation buffer.
+   resizes (`fast_image_resize`: area, bilinear, or bicubic as Pillow's `BICUBIC`) into a newly allocated observation buffer.
    The pipeline keeps its scratch buffer and resizer, so the resize allocates nothing. The
    area resize is the largest host-side cost of a step (about 0.35 ms per observation in a
    release build, measured during S4); profiling it is an open follow-up.

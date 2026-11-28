@@ -85,8 +85,9 @@ pub(crate) fn filter(name: &str) -> errors::Result<gth_frame::Filter> {
     match name {
         "area" => Ok(gth_frame::Filter::Area),
         "bilinear" => Ok(gth_frame::Filter::Bilinear),
+        "bicubic" => Ok(gth_frame::Filter::Bicubic),
         _ => Err(PyValueError::new_err(format!(
-            "interpolation must be \"area\" or \"bilinear\", not {name:?}"
+            "interpolation must be \"area\", \"bilinear\" or \"bicubic\", not {name:?}"
         ))
         .into()),
     }
@@ -158,7 +159,7 @@ impl Core {
     /// Loads a core (one per process) with `core_options` set, settling `settle_frames`
     /// after each savestate load (a game's `settle_frames`, docs/games.md), and sets up the
     /// observation pipeline. `crop` is `(x, y, width, height)` in the core's pixels, `rotate` is 0, 90 or
-    /// 270 degrees clockwise, `interpolation` is "area" or "bilinear".
+    /// 270 degrees clockwise, `interpolation` is "area", "bilinear" or "bicubic".
     #[new]
     #[allow(clippy::too_many_arguments)]
     fn new(

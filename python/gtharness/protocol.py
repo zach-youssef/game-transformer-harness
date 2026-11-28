@@ -52,7 +52,7 @@ class Obs:
     orientation: Orientation
     """``"game"`` (the game config's) or clockwise degrees: 0, 90 or 270."""
     interpolation: str
-    """``"area"`` or ``"bilinear"``."""
+    """One of `gtharness.env.INTERPOLATIONS`: ``"area"``, ``"bilinear"`` or ``"bicubic"``."""
     grayscale: bool
 
 
