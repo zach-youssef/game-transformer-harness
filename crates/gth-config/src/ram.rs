@@ -64,6 +64,9 @@ pub enum Encoding {
     Le,
     /// Unsigned big-endian.
     Be,
+    /// Signed (two's complement) little-endian: a score that goes negative (the ALE core's,
+    /// docs/cores.md).
+    Sle,
     /// One decimal digit (0 to 9) per byte, most significant first: a score a game keeps as
     /// the digits it draws.
     Digits,
@@ -72,15 +75,17 @@ pub enum Encoding {
 impl Encoding {
     /// The encodings a RAM search reads candidates in (its views), not all of them: `Digits`
     /// is left out, since a search can't find a variable by one-digit-per-byte, so its bytes
-    /// are found by looking at the RAM (docs/games.md, "RAM variables").
+    /// are found by looking at the RAM (docs/games.md, "RAM variables"), and so is `Sle`, whose
+    /// non-negative values the `le` views already find.
     pub const SEARCHABLE: [Encoding; 3] = [Encoding::Bcd, Encoding::Le, Encoding::Be];
 
-    /// Its name in `game.toml` (`bcd`, `le`, `be`, `digits`).
+    /// Its name in `game.toml` (`bcd`, `le`, `be`, `sle`, `digits`).
     pub fn name(self) -> &'static str {
         match self {
             Encoding::Bcd => "bcd",
             Encoding::Le => "le",
             Encoding::Be => "be",
+            Encoding::Sle => "sle",
             Encoding::Digits => "digits",
         }
     }
@@ -148,8 +153,11 @@ impl TryFrom<RawRamVar> for RamVar {
             swap16: raw.swap16,
             scale: raw.scale,
         };
+        // A signed variable's largest magnitude is its most negative value, which may reach
+        // i64::MIN (one past i64::MAX).
+        let limit = i64::MAX as u128 + u128::from(var.encoding == Encoding::Sle);
         let max = var.max_raw() * u128::from(var.scale);
-        if max > i64::MAX as u128 {
+        if max > limit {
             return Err(format!(
                 "{} {:?} bytes x scale {} can reach {max}, which doesn't fit an i64",
                 var.size, var.encoding, var.scale
@@ -178,12 +186,14 @@ impl From<RamVar> for RawRamVar {
 }
 
 impl RamVar {
-    /// The largest value `size` bytes can hold in this encoding, before scaling.
+    /// The largest magnitude `size` bytes can hold in this encoding, before scaling (for
+    /// `Sle`, that of its most negative value).
     fn max_raw(&self) -> u128 {
         let digits = 2 * self.size as u32;
         match self.encoding {
             Encoding::Bcd => 10u128.pow(digits) - 1,
             Encoding::Le | Encoding::Be => (1u128 << (4 * digits)) - 1,
+            Encoding::Sle => 1u128 << (4 * digits - 1),
             Encoding::Digits => 10u128.pow(self.size as u32) - 1,
         }
     }
@@ -204,8 +214,18 @@ impl RamVar {
                 .iter_mut()
                 .for_each(|word| word.swap(0, 1));
         }
+        let le = |bytes: &[u8]| bytes.iter().rev().fold(0u64, |v, &b| v << 8 | u64::from(b));
+        if self.encoding == Encoding::Sle {
+            // Sign-extend from the top bit of the `size` bytes.
+            let shift = 64 - 8 * self.size as u32;
+            let value = ((le(bytes) << shift) as i64) >> shift;
+            return value
+                .checked_mul(i64::from(self.scale))
+                .ok_or_else(|| format!("{value} x {} doesn't fit an i64", self.scale));
+        }
         let value = match self.encoding {
-            Encoding::Le => bytes.iter().rev().fold(0u64, |v, &b| v << 8 | u64::from(b)),
+            Encoding::Le => le(bytes),
+            Encoding::Sle => unreachable!("decoded above"),
             Encoding::Be => bytes.iter().fold(0u64, |v, &b| v << 8 | u64::from(b)),
             Encoding::Bcd => {
                 let mut value = 0u64;
@@ -286,6 +306,56 @@ mod tests {
             Ok(476_100)
         );
         assert_eq!(var(2, Encoding::Digits, true, 1).decode(&[1, 2]), Ok(21));
+    }
+
+    #[test]
+    fn decodes_signed_little_endian() {
+        // The ALE core's score: an i32, -21 for a lost game of Pong.
+        let pong = (-21i32).to_le_bytes();
+        assert_eq!(var(4, Encoding::Sle, false, 1).decode(&pong), Ok(-21));
+        assert_eq!(var(4, Encoding::Sle, false, 10).decode(&pong), Ok(-210));
+        assert_eq!(
+            var(4, Encoding::Sle, false, 1).decode(&[21, 0, 0, 0]),
+            Ok(21)
+        );
+        // The sign is the top bit of `size` bytes, whatever the size.
+        assert_eq!(var(1, Encoding::Sle, false, 1).decode(&[0xFF]), Ok(-1));
+        assert_eq!(var(1, Encoding::Sle, false, 1).decode(&[0x7F]), Ok(127));
+        assert_eq!(
+            var(2, Encoding::Sle, false, 1).decode(&[0x00, 0x80]),
+            Ok(-32768)
+        );
+        assert_eq!(
+            var(2, Encoding::Sle, true, 1).decode(&[0x80, 0x00]),
+            Ok(-32768)
+        );
+        let min = var(8, Encoding::Sle, false, 1).decode(&i64::MIN.to_le_bytes());
+        assert_eq!(min, Ok(i64::MIN));
+        let max = var(8, Encoding::Sle, false, 1).decode(&i64::MAX.to_le_bytes());
+        assert_eq!(max, Ok(i64::MAX));
+        let error = var(8, Encoding::Sle, false, 2)
+            .decode(&(i64::MIN / 2 - 1).to_le_bytes())
+            .unwrap_err();
+        assert!(error.contains("doesn't fit"), "{error}");
+    }
+
+    #[test]
+    fn validates_signed_range_with_scale() {
+        let parse = |size: usize, scale: u32| {
+            RamVar::try_from(RawRamVar {
+                memory: None,
+                offset: None,
+                address: Some(0),
+                size,
+                encoding: Encoding::Sle,
+                swap16: false,
+                scale,
+            })
+        };
+        assert!(parse(8, 1).is_ok(), "i64::MIN fits");
+        assert!(parse(8, 2).unwrap_err().contains("doesn't fit an i64"));
+        assert!(parse(4, 1 << 31).is_ok(), "-2^31 x 2^31 = -2^62");
+        assert!(parse(4, u32::MAX).is_ok());
     }
 
     #[test]

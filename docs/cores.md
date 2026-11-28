@@ -164,8 +164,8 @@ upstream. Anything else (a build flag, a Makefile quirk) is a `case` in the buil
   bytes of RAM as `RETRO_MEMORY_SYSTEM_RAM` and a synthetic memory-map region at `0x10000`
   with ALE's score, lives, game over and frame counts (layout in the fork's
   `libretro/README.md`). The score is a signed little-endian i32 at offset 0 (Pong, Skiing
-  and others go negative); the harness's `le` RAM encoding is unsigned, so reading it needs
-  signed decoding, which the harness doesn't have yet: the first ALE game's config needs it.
+  and others go negative), which game configs read with the `sle` RAM encoding (docs/games.md,
+  "RAM variables").
   It checks a ROM's MD5 before ALE's `loadROM`, which exits the process for an unknown ROM, so
   a bad ROM fails the load, and refuses another game's or a damaged savestate (its envelope
   holds the cartridge's MD5 and a hash of the header and the state). Its audio is silent (ALE's sound isn't in its

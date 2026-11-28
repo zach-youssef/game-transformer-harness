@@ -263,7 +263,7 @@ no-op frames for the first observation.
 memory = "system_ram"     # system_ram | save_ram | video_ram | rtc
 offset = 0x10
 size = 4                  # bytes, 1-8
-encoding = "bcd"          # bcd | le | be | digits
+encoding = "bcd"          # bcd | le | be | sle | digits
 swap16 = false            # optional, default false
 scale = 10                # optional, default 1
 
@@ -274,7 +274,10 @@ encoding = "le"
 ```
 
 - `bcd` is packed BCD, two digits per byte, most significant byte first. `le` and `be` are
-  unsigned. `digits` is one decimal digit (0 to 9) per byte, most significant first: a score
+  unsigned. `sle` is signed (two's complement) little-endian, the sign being the top bit of
+  the `size` bytes: the ALE core's score, an i32 that goes negative in Pong, Skiing or Boxing
+  (docs/cores.md, "Forks"). RAM search has no signed view; its `le` views find a signed
+  variable's non-negative values. `digits` is one decimal digit (0 to 9) per byte, most significant first: a score
   a game keeps as the digits it draws (Zanac's, six bytes). Like `bcd`, a byte above 9 makes
   a read fail. RAM search has no view for it (below), so its bytes are found by looking at
   the RAM: dump the work RAM at known scores and look for the digits.
@@ -282,7 +285,8 @@ encoding = "le"
   host-endian 16-bit words, so a value's bytes come out swapped in pairs.
 - The value is multiplied by `scale` (a score stored in tens has `scale = 10`). A variable
   whose largest value times `scale` doesn't fit an `i64` (8 `le` bytes, say) is rejected
-  when the config is parsed.
+  when the config is parsed; for `sle` that is its most negative value (8 `sle` bytes fit
+  with `scale = 1` only).
 - Names are identifiers. Use `score`, `lives`, `bombs`, `stage` and `credits` for those
   meanings, so rewards and tools work across games; add others as needed. `gth-play` rewinds
   when `lives` goes down (docs/human-play.md, "Rewind"), so it must fall on every lost life.

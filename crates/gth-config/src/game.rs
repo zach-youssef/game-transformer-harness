@@ -632,6 +632,17 @@ gth_testcore_step = "4"
     }
 
     #[test]
+    fn parses_the_signed_encoding() {
+        let text = full().replace("encoding = \"le\"", "encoding = \"sle\"");
+        let config = GameConfig::parse(&text, "sle").unwrap();
+        assert_eq!(config.ram["lives"].encoding, Encoding::Sle);
+        // lives is swap16: the bytes swap to [0xEB, 0xFF], -21 little-endian.
+        assert_eq!(config.ram["lives"].decode(&[0xFF, 0xEB]), Ok(-21));
+        let again = GameConfig::parse(&config.to_toml(), "round trip").unwrap();
+        assert_eq!(again, config);
+    }
+
+    #[test]
     fn evaluates_the_terminate_condition() {
         let config = GameConfig::parse(&full(), "full").unwrap();
         let values =

@@ -254,6 +254,27 @@ def test_ram_variables_are_checked_when_the_env_is_made(testcore_path: Path, tmp
             env.step(act())
 
 
+def test_signed_ram_variables_read_twos_complement(testcore_path: Path, tmp_path: Path):
+    # The PRNG's 32 bits as le and sle: the same bytes, signed when the top bit is set.
+    both = (
+        'prng_le = { memory = "system_ram", offset = 4, size = 4, encoding = "le" }\n'
+        'prng_sle = { memory = "system_ram", offset = 4, size = 4, encoding = "sle" }\n'
+    )
+    content = tmp_path / "seed.gthc"
+    content.write_bytes(b"any bytes seed the PRNG")
+    seen = set()
+    with retro_env(testcore_path, tmp_path, config(extra_ram=both), content_path=content) as env:
+        _, info = env.reset()
+        for _ in range(40):
+            values = info["ram"]
+            signed = int.from_bytes(ram(env)[4:8], "little", signed=True)
+            assert values["prng_sle"] == signed
+            assert values["prng_le"] == signed % 2**32
+            seen.add(signed < 0)
+            *_, info = env.step(act())
+    assert seen == {True, False}, "the PRNG crosses the sign bit"
+
+
 def test_frameskip_advances_k_frames_and_is_settable(env: RetroEnv):
     env.frameskip = 4
     obs, info = env.reset()
