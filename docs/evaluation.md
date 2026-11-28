@@ -91,3 +91,28 @@ actions. Every preset has `life_loss_terminal = false` and `reward_clip = "none"
 - The Atari game ids are ALE's ROM names with hyphens (`ms-pacman`); they don't exist until
   the Atari game configs are added, and their `score_var` is a guess at the name the ALE
   core's score variable will get.
+
+## Policies
+
+A policy is what an evaluation plays. `gtharness.policies.Policy` has:
+
+| Member | Meaning |
+|---|---|
+| `id` | A name and version (`random-v1`) or the model and run; in `run.json`, every row and recordings' `player`. |
+| `checkpoint_sha256` | The SHA-256 of the weights it loaded, or None for a policy without weights. |
+| `obs_requirements` | An `ObsRequirements`: `size`, `grayscale`, `maxpool`, `frame_stack`, `frameskip` and `action_set`, each the protocol value the policy needs, or None for any. All are required, so "any" is written down. |
+| `reset(seed, game)` | Starts an episode: `seed` an int seeds the policy's randomness, None lets it run on. `game` is a `GameInfo` (`game_id`, `n_actions`, `mapped_slots`). It clears the policy's per-episode state. |
+| `act(obs)` | One flat action (`direction * 16 + buttons`), or a chunk: a non-empty 1-D sequence of them, played one per step before `act` is called again. An episode that ends mid-chunk drops the rest. |
+
+`MODULE:NAME` is called as `NAME(policy_seed=seed, **kwargs)`, once per policy seed. The
+protocol's policy seeds stand for training runs (`policy_seeds` above), so a trained model
+loads the checkpoint of that seed's run, for example from a `checkpoints` kwarg mapping
+seeds to files, and reports its `checkpoint_sha256`; a policy without weights may use the
+seed or ignore it. `id` and `checkpoint_sha256` may differ between seeds, and the results
+keep them per seed. Making the policy may raise (a missing checkpoint, say): that refuses
+the run.
+
+`gtharness.policies.random:RandomPolicy` (`random-v1`) draws each step's flat action
+uniformly from `0..n_actions` with numpy's PCG64. That is uniform over what the actions do:
+each distinct press appears 2^k times, k the game's unmapped slots. It is the "random" of
+normalised scores and plays only the `harness` action set.
