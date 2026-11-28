@@ -139,6 +139,10 @@ far are the pilot set of the Atari presets (docs/evaluation.md):
 - **Options**: `ale_mode` and `ale_difficulty` are `"default"`, the game's own, as in ALE
   v5's environments. ALE's sticky actions are the env's `sticky_prob` (docs/actions.md), and
   the core plays none of its own.
+- **Tests**: `tests/test_ale.py` checks every config against this recipe and, with the ROMs
+  and the pinned core, that episodes are deterministic, a sticky-action recording replays,
+  the score is ALE's reward sum (Pong's points in its own RAM), a lost life isn't terminal,
+  the 108,000-frame cap truncates and `ale_gray` is ALE's grayscale palette exactly.
 
 ### Changing the schema
 

@@ -83,6 +83,9 @@ such test adds a skip for them.
 GTH_ROM_DIR=~/roms uv run pytest tests/test_gunhed.py -rs   # -rs prints why a test skipped
 ```
 
+The Atari ROM tests (`tests/test_ale.py`) take their ROMs from ale-py's bundled directory
+(docs/roms.md, "Atari ROMs") as `GTH_ROM_DIR`.
+
 ## GPU tests
 
 The harness itself emulates on the CPU and has no GPU tests yet. Work that needs a GPU
