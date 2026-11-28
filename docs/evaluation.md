@@ -17,7 +17,7 @@ must have 2 integers, not 3`).
 
 Loading checks the file alone. What needs a game or the env (the game exists, its content
 SHA-1 matches its `game.toml`, it has the `score_var` RAM variable, the env supports the
-setting) is checked when the protocol is used.
+setting) is checked when the protocol is used, by the runner (below, "Checks before a run").
 
 ### Fields
 
@@ -36,7 +36,7 @@ setting) is checked when the protocol is used.
 | `frame_stack` | integer >= 1 | How many observations the policy sees at once. The env doesn't stack: this is recorded for the policy, which must use this many. |
 | `action_set` | `"harness"`, `"atari_full"`, `"atari_minimal"` | The policy's action space: the harness's direction + four slots (docs/actions.md), or Atari's 18 actions or a game's minimal set. |
 | `start.reset` | `"game"` or a savestate's lowercase SHA-1 | Where an episode starts: the game config's reset (script or savestate), or a given savestate. |
-| `start.noop_max` | integer >= 0, below `max_episode_frames` | Random no-op starts. 0: none, the first observation follows the reset directly. Otherwise each episode starts with N no-op frames (no input), N drawn uniformly from 1..noop_max with the env seed. This is the convention of OpenAI baselines' `NoopResetEnv`, which implements DQN's "up to 30 no-ops" (Mnih et al. 2015, p. 6) and which IRIS and many Atari codebases copy. N counts emulated frames, as `NoopResetEnv` does (it wraps the frame-skip-free env); ALE itself has no no-op starts. |
+| `start.noop_max` | integer >= 0, below `max_episode_frames` (the runner needs `noop_max + frameskip` below it) | Random no-op starts. 0: none, the first observation follows the reset directly. Otherwise each episode starts with N no-op frames (no input), N drawn uniformly from 1..noop_max with the env seed. This is the convention of OpenAI baselines' `NoopResetEnv`, which implements DQN's "up to 30 no-ops" (Mnih et al. 2015, p. 6) and which IRIS and many Atari codebases copy. N counts emulated frames, as `NoopResetEnv` does (it wraps the frame-skip-free env); ALE itself has no no-op starts. |
 | `max_episode_frames` | integer >= 1 | The cap: an episode is truncated after this many emulated frames, counted from the reset (the end of the game's reset), no-ops included. Required, so an idle policy can't run forever. |
 | `life_loss_terminal` | must be `false` | Episodes end at game over, never at a lost life (Machado et al. 2018, `machado2018revisiting` C8 in the research KB). The field is kept so the choice is visible in the text. |
 | `reward_clip` | must be `"none"` | Scores are the game's own. Papers that clip rewards clip them for training; their reported scores aren't clipped. |
@@ -94,7 +94,7 @@ actions. Every preset has `life_loss_terminal = false` and `reward_clip = "none"
 
 ## Policies
 
-A policy is what an evaluation plays. `gtharness.policies.Policy` has:
+A policy is what `gth evaluate` plays (below). `gtharness.policies.Policy` has:
 
 | Member | Meaning |
 |---|---|
@@ -116,3 +116,124 @@ the run.
 uniformly from `0..n_actions` with numpy's PCG64. That is uniform over what the actions do:
 each distinct press appears 2^k times, k the game's unmapped slots. It is the "random" of
 normalised scores and plays only the `harness` action set.
+
+## Running an evaluation
+
+`gth evaluate` (`gtharness.evaluate.evaluate`) plays a policy under a protocol:
+
+```sh
+uv run gth evaluate data --protocol ours-v1 --policy gtharness.policies.random:RandomPolicy \
+    --out results/random-ours-v1 --jobs 8 [--record --license CC-BY-NC-4.0 --checks-every 600]
+```
+
+- `--protocol` is a file (a path ending in `.toml` or with a directory in it) or a preset's
+  name in `protocols/`. There is no run without one.
+- `--policy MODULE:NAME` names a callable (usually a class) that returns a `Policy` (above);
+  `--policy-kwargs` passes it a JSON object of keyword arguments (checkpoint paths, say),
+  which `run.json` keeps.
+- `--jobs` (required) is how many pairs of seeds play at once. Each runs in its own process,
+  which makes its own policy: a model policy holds `--jobs` copies of its weights, in RAM or
+  on the GPU, so pick it for the policy and the machine (the CPU count for the random
+  policy; what fits in memory for a model).
+- `--out` must be new or empty: results are never overwritten.
+- `--record` records every episode (docs/recording-format.md) under
+  `OUT/recordings/<game>/`, with recorder `policy` and player
+  `<policy id> checkpoint=<sha256 or none> seed=<policy seed>`; it needs `--license` and
+  `--checks-every` (as in `gtharness.record.Record`).
+- Files are found as `RetroEnv.from_game` finds them: `DATA_DIR`, `--rom-dir`,
+  `--core-path` (only for protocols whose games share one core) and `--games-dir`.
+- Exit status: 0 when the run finished, 1 when an episode's process failed, 2 for a refused
+  run (a check below, or the policy can't be made) or a usage error.
+
+### Seeds, processes and steps
+
+Every game is played for every pair of policy seed and env seed, `episodes_per_seed`
+episodes each, in a spawned process per pair (one core per process, docs/architecture.md),
+`--jobs` pairs at a time. The results don't depend on `--jobs`. The first failure stops the
+run at once: no further pair starts, the running ones are terminated, and the error names
+the game and seeds. Within a pair:
+
+- the policy is made as `NAME(policy_seed=policy_seed, **kwargs)` ("Policies" above);
+- the first episode calls `env.reset(seed=env_seed)` and `policy.reset(seed, game)`, with
+  `seed` derived from both seeds (`numpy.random.SeedSequence([policy_seed, env_seed])`, its
+  first 32-bit word), so a stochastic policy plays a different stream under each env seed;
+  later episodes call `reset(seed=None)` and `policy.reset(None, game)`, so both RNGs run on
+  from one episode to the next (the protocol's seed rule above) and a pair's episodes
+  differ;
+- the env runs the protocol's frame skip, sticky actions, no-op starts, cap, observation size
+  and interpolation, with flat actions (docs/actions.md) and the game's crop and orientation;
+- the policy sees the last `frame_stack` observations, oldest first, as one
+  `uint8[frame_stack, height, width, channels]` array; at an episode's start the first
+  observation fills the stack (gymnasium's `FrameStackObservation` padding);
+- an episode ends when the game's `episode.terminate` condition holds (terminated) or at the
+  cap (truncated); both can hold on the same step.
+
+The policy never sees RAM: `info["ram"]` gives the score and nothing else.
+
+Before any episode the runner makes the policy for every seed in one spawned process and
+checks it there (its type, `id`, `checkpoint_sha256`, and every `obs_requirements` field
+against the protocol), so no weights stay loaded in the runner's own process. Each pair's
+process then makes its seed's policy again, which must give the same `id` and checkpoint.
+A policy with weights loads them once per pair of seeds.
+
+### Checks before a run
+
+Nothing is written, and no episode starts, until all of these pass (`ConfigError` naming the
+field or game otherwise):
+
+- The env supports every setting. `maxpool` and `obs.grayscale` are passed to
+  `RetroEnv.from_game` when its signature has those parameters; until it does, `false` runs
+  and `true` is refused (so an env that adds them needs no runner change). `action_set` must
+  be `harness` (Atari's sets need the Atari action map), `start.reset` must be `"game"`, and
+  an explicit `obs.crop` or `obs.orientation` must equal the game config's, since the env
+  uses the game's.
+- `start.noop_max + frameskip < max_episode_frames`: the env's rule, so the reset (no-ops and
+  the first observation's frames) leaves an episode at least one step. It is stricter than
+  the protocol's own `noop_max < max_episode_frames`.
+- Each game: its `games/<id>/game.toml` exists, its content is found by SHA-1 (so the
+  protocol plus the game configs pin the dumps), its BIOS files, reset savestate (when it
+  has one) and core library are there, and `score_var` is one of its RAM variables.
+- The policy, for every policy seed: `MODULE:NAME` imports, makes a `Policy` without
+  raising, and its `obs_requirements` match.
+
+## Results
+
+A run's directory holds three files; `gtharness.evaluate.check_results(dir)` checks one
+against this schema (and that every row agrees with the protocol) and returns its contents.
+`run.json` is written last, so a directory without it is an unfinished or failed run.
+
+`protocol.toml` is the protocol's canonical text (`EvalProtocol.expand`); `run.json`'s
+`protocol_sha1` is its SHA-1. Two runs compare only when their SHA-1s match.
+
+`episodes.jsonl` has one JSON object per episode, ordered by game (the protocol's order),
+policy seed, env seed and episode, with these fields in this order:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `game` | string | The game id. |
+| `env_seed`, `policy_seed` | integer | The pair of seeds. |
+| `policy_id`, `checkpoint_sha256` | string; string or null | The policy made for `policy_seed`: its `id` and checkpoint, as in `run.json`. |
+| `episode` | integer | The episode's index within its pair, from 0. |
+| `score` | integer | `score_var` at the end minus at the start (after the reset and the first observation). |
+| `frames` | integer | Emulated frames counted as the cap counts them: no-ops, the first observation's frames and every step's, not the reset script's. In `(frameskip, max_episode_frames]`. |
+| `steps` | integer | Env steps (actions played), at least 1. |
+| `terminated` | bool | The game's `episode.terminate` condition held at the end. |
+| `truncated` | bool | The cap ended it: true exactly when `frames == max_episode_frames`. |
+| `mapped_slots_used` | array of slot names | The game's mapped slots the policy pressed at least once, in slot order. A policy that never uses `bomb` (an Atari-trained one, say) shows here. |
+| `recording` | string or null | The episode's recording, relative to the run's directory; null without `--record`. |
+
+`run.json`:
+
+| Field | Meaning |
+|---|---|
+| `format` | `1`; bumped whenever a results file's fields change. |
+| `protocol_sha1` | The SHA-1 of `protocol.toml`. |
+| `policy` | `spec` (`MODULE:NAME`), `kwargs`, and `seeds`: per policy seed (a string key, in the protocol's order), the `id` and `checkpoint_sha256` of the policy made for it. |
+| `games` | Per game, in the protocol's order: `core` and `content_sha1`. |
+| `recorded` | Whether episodes were recorded. |
+| `harness` | The build (`_native.build_info()`: git SHA, dirty flag, profile, rustc, target). |
+| `machine` | Platform, CPU, CPU count, Python (as in `gth bench`). |
+| `started`, `wall_s` | The UTC start time and the run's wall time in seconds. |
+| `jobs` | Pairs of seeds played at once. |
+| `episodes`, `steps`, `policy_calls` | Totals over the run. |
+| `policy_ms_per_step` | Time spent in `act`, over all steps, in milliseconds per step (a chunk's time is spread over its steps). |

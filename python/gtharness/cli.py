@@ -2,7 +2,8 @@
 ``gth ram-search``: RAM search (docs/games.md, "RAM search"); ``gth export-shards``: training
 shards (docs/recording-format.md, "Training shards"); ``gth cores``: the pinned core builds
 (docs/cores.md); ``gth bench``: benchmarks of real cores (docs/performance.md); ``gth capture``:
-scripted captures (docs/recording-format.md, "Scripted captures")."""
+scripted captures (docs/recording-format.md, "Scripted captures"); ``gth evaluate``: a policy
+under an evaluation protocol (docs/evaluation.md, "Running an evaluation")."""
 
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from gtharness import _native, bench, capture, cores, ramsearch, shards
+from gtharness import _native, bench, capture, cores, evaluate, ramsearch, shards
 from gtharness.env import GAMES_DIR
 from gtharness.errors import ConfigError
 
@@ -96,6 +97,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     shards.add_parser(commands)
     bench.add_parser(commands)
     capture.add_parser(commands)
+    evaluate.add_parser(commands)
     _add_cores_parser(commands)
     args = parser.parse_args(argv)
     if args.command == "ram-search":
@@ -106,6 +108,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return bench.main(args)
     if args.command == "capture":
         return capture.main(args)
+    if args.command == "evaluate":
+        return evaluate.main(args)
     if args.command == "cores":
         return _cores_main(args)
 

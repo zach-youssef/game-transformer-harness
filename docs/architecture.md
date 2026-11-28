@@ -32,8 +32,10 @@ The Python package `gtharness` (in `python/gtharness/`) orchestrates:
 | `ramsearch.py` | RAM search on an environment's core, `assert_ram` for game tests, and `gth ram-search` (docs/games.md, "RAM search"); a developer tool, never policy input |
 | `capture.py` | `gth capture`: scripted captures, a game recorded from its reset with an input script (docs/recording-format.md, "Scripted captures") |
 | `bench.py` | `gth bench`: speed, savestate and determinism benchmarks of real cores (docs/performance.md) |
+| `protocol.py` | Evaluation protocols: `load`, `EvalProtocol` and its canonical text and SHA-1 (docs/evaluation.md) |
+| `evaluate.py` | `gth evaluate`: a policy played under a protocol, one process per game and seed pair, and `check_results`, the results schema (docs/evaluation.md, "Running an evaluation") |
 | `policies/` | The `Policy` protocol and `ObsRequirements` (`__init__.py`), and the random policy (`random.py`) |
-| `cli.py` | The `gth` command (`gth audit`, docs/roms.md; `gth ram-search`; `gth export-shards`; `gth cores`; `gth bench`; `gth capture`) |
+| `cli.py` | The `gth` command (`gth audit`, docs/roms.md; `gth ram-search`; `gth export-shards`; `gth cores`; `gth bench`; `gth capture`; `gth evaluate`) |
 | `errors.py` | The exceptions, re-exported from `_native` (docs/native.md, "Errors") |
 | `_native.pyi` | Type stubs of the extension module (docs/native.md) |
 

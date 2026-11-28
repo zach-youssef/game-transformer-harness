@@ -27,8 +27,9 @@ Headless libretro cores behind a Python gymnasium environment, with all per-fram
 - [docs/cores.md](docs/cores.md): the pinned core builds (`cores.lock`, `gth cores`, the cores
   workflow) and how to bump a pin.
 - [docs/evaluation.md](docs/evaluation.md): evaluation protocols (`gtharness.protocol`, the
-  presets in `protocols/`), every field and where each preset's values come from. Read before
-  evaluating a policy or changing a preset.
+  presets in `protocols/`), every field and where each preset's values come from; the runner
+  (`gth evaluate`, the `Policy` protocol) and its results format. Read before evaluating a
+  policy, writing one, or changing a preset.
 - [docs/performance.md](docs/performance.md): `gth bench` (speed, savestates, determinism on
   real cores), the measured numbers per machine and the P5 batching decision.
 
