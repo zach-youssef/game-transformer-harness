@@ -72,3 +72,46 @@ The inverse, NitroGen output to harness action:
 
 Every harness action survives the round trip through the gamepad unchanged (tested
 exhaustively for every subset of mapped slots).
+
+## Atari
+
+ALE numbers the Atari 2600's actions 0-17: a joystick direction with or without its one fire
+button. The harness maps them onto direction and `shot` (`ActionSpace::to_atari` and
+`from_atari`), for Atari-trained policies and the `atari_full` and `atari_minimal` action
+sets. The order is ALE's action enum, taken from ALE's documentation
+(ale.farama.org/environments, "Action Space"); the research notes on machado2018revisiting
+and mnih2015human give only the set's size (18, or a game's minimal 4-18):
+
+| ALE | Name | Direction | `shot` |
+|---|---|---|---|
+| 0 | `NOOP` | 0 neutral | no |
+| 1 | `FIRE` | 0 neutral | yes |
+| 2 | `UP` | 1 up | no |
+| 3 | `RIGHT` | 3 right | no |
+| 4 | `LEFT` | 7 left | no |
+| 5 | `DOWN` | 5 down | no |
+| 6 | `UPRIGHT` | 2 up-right | no |
+| 7 | `UPLEFT` | 8 up-left | no |
+| 8 | `DOWNRIGHT` | 4 down-right | no |
+| 9 | `DOWNLEFT` | 6 down-left | no |
+| 10 | `UPFIRE` | 1 up | yes |
+| 11 | `RIGHTFIRE` | 3 right | yes |
+| 12 | `LEFTFIRE` | 7 left | yes |
+| 13 | `DOWNFIRE` | 5 down | yes |
+| 14 | `UPRIGHTFIRE` | 2 up-right | yes |
+| 15 | `UPLEFTFIRE` | 8 up-left | yes |
+| 16 | `DOWNRIGHTFIRE` | 4 down-right | yes |
+| 17 | `DOWNLEFTFIRE` | 6 down-left | yes |
+
+- `from_atari` never sets `bomb`, `aux1` or `aux2`: an Atari-trained policy can't press
+  them, so its score on a game that needs a bomb is a lower bound.
+- `to_atari` maps `shot` to fire whether the game maps it or not, drops an unmapped `bomb`,
+  `aux1` or `aux2` (they press nothing), and returns `None` for an action that holds a mapped
+  `bomb`, `aux1` or `aux2`, which no Atari action expresses. In a game that maps only `shot`,
+  every harness action has an Atari action.
+- Every Atari action survives `to_atari(from_atari(a))`, and every harness action without a
+  mapped non-`shot` slot comes back from `from_atari(to_atari(a))` with its direction,
+  `shot` and the same RetroPad mask (tested exhaustively for every subset of mapped slots).
+- A game's minimal action set (ALE's `getMinimalActionSet`) is a list of these numbers.
+  `ActionSpace::atari_mask(set)` turns it into a mask over the 18, for masking an 18-way
+  policy head.

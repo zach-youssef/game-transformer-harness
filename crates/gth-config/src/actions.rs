@@ -1,6 +1,6 @@
 //! The action space (docs/actions.md): an 8-way direction and the four button slots, as a
-//! pair or one flat integer, the same in every game, and its mapping to the RetroPad and to
-//! NitroGen's gamepad.
+//! pair or one flat integer, the same in every game, and its mapping to the RetroPad, to
+//! NitroGen's gamepad and to the Atari 2600's 18 actions (ALE).
 
 use std::collections::BTreeMap;
 
@@ -213,6 +213,92 @@ impl ActionSpace {
     }
 }
 
+/// ALE's 18 Atari actions, in its enum order (`NOOP` = 0 ... `DOWNLEFTFIRE` = 17;
+/// docs/actions.md, "Atari"), as a direction and whether fire is held.
+const ATARI: [(Direction, bool); ActionSpace::ATARI_LEN as usize] = [
+    (Direction::Neutral, false),
+    (Direction::Neutral, true),
+    (Direction::Up, false),
+    (Direction::Right, false),
+    (Direction::Left, false),
+    (Direction::Down, false),
+    (Direction::UpRight, false),
+    (Direction::UpLeft, false),
+    (Direction::DownRight, false),
+    (Direction::DownLeft, false),
+    (Direction::Up, true),
+    (Direction::Right, true),
+    (Direction::Left, true),
+    (Direction::Down, true),
+    (Direction::UpRight, true),
+    (Direction::UpLeft, true),
+    (Direction::DownRight, true),
+    (Direction::DownLeft, true),
+];
+
+impl ActionSpace {
+    /// The number of Atari actions in ALE's full action set.
+    pub const ATARI_LEN: u8 = 18;
+
+    /// ALE's names of the Atari actions, indexed by action.
+    pub const ATARI_NAMES: [&'static str; ActionSpace::ATARI_LEN as usize] = [
+        "NOOP",
+        "FIRE",
+        "UP",
+        "RIGHT",
+        "LEFT",
+        "DOWN",
+        "UPRIGHT",
+        "UPLEFT",
+        "DOWNRIGHT",
+        "DOWNLEFT",
+        "UPFIRE",
+        "RIGHTFIRE",
+        "LEFTFIRE",
+        "DOWNFIRE",
+        "UPRIGHTFIRE",
+        "UPLEFTFIRE",
+        "DOWNRIGHTFIRE",
+        "DOWNLEFTFIRE",
+    ];
+
+    /// The Atari action (ALE's enum order) of `action`: its direction, with fire when `shot`
+    /// is held, mapped or not (so `to_atari(from_atari(a))` is `a` in every space). Unmapped
+    /// `bomb`, `aux1` and `aux2` press nothing, so they are dropped. `None` when `action`
+    /// holds a mapped `bomb`, `aux1` or `aux2` (the 2600 joystick has one button) or sets a
+    /// bit above the four slots.
+    pub fn to_atari(&self, action: Action) -> Option<u8> {
+        let mapped = (self.mapped_slots().iter()).fold(0u8, |mask, &slot| mask | 1 << slot as u8);
+        let shot = 1 << Slot::Shot as u8;
+        if action.buttons >> Self::N_BUTTONS != 0 || action.buttons & mapped & !shot != 0 {
+            return None;
+        }
+        let fire = action.buttons & shot != 0;
+        let index = ATARI.iter().position(|&a| a == (action.direction, fire));
+        Some(index.expect("every direction with and without fire is an Atari action") as u8)
+    }
+
+    /// The harness action of an Atari action (ALE's enum order): its direction, with `shot`
+    /// for fire. `bomb`, `aux1` and `aux2` are never set. `None` when `atari` is 18 or more.
+    pub fn from_atari(atari: u8) -> Option<Action> {
+        let &(direction, fire) = ATARI.get(usize::from(atari))?;
+        Some(Action {
+            direction,
+            buttons: u8::from(fire) << Slot::Shot as u8,
+        })
+    }
+
+    /// The mask over the 18 Atari actions of an action set (a game's minimal set from ALE,
+    /// say), for masking an 18-way policy head. `None` when an action is 18 or more.
+    pub fn atari_mask(set: &[u8]) -> Option<[bool; ActionSpace::ATARI_LEN as usize]> {
+        set.iter()
+            .try_fold([false; Self::ATARI_LEN as usize], |mut mask, &atari| {
+                *mask.get_mut(usize::from(atari))? = true;
+                Some(mask)
+            })
+    }
+}
+
 /// The part of NitroGen's gamepad the harness uses: the d-pad and the four face buttons,
 /// named by position. Its sticks, shoulders and triggers have no field: the harness neither
 /// sets nor reads them.
@@ -379,5 +465,112 @@ mod tests {
             ..Gamepad::default()
         };
         assert_eq!(shot, expected);
+    }
+
+    #[test]
+    fn atari_actions_follow_ale_and_round_trip() {
+        let names = ActionSpace::ATARI_NAMES;
+        for space in spaces() {
+            for atari in 0..ActionSpace::ATARI_LEN {
+                let action = ActionSpace::from_atari(atari).unwrap();
+                assert_eq!(
+                    action.buttons & !1,
+                    0,
+                    "only shot: {}",
+                    names[atari as usize]
+                );
+                assert_eq!(space.to_atari(action), Some(atari));
+                // The name spells the action: its direction, then FIRE for shot.
+                let (x, y) = action.direction.delta();
+                let mut name = String::new();
+                name += [
+                    ("UP", y < 0),
+                    ("DOWN", y > 0),
+                    ("RIGHT", x > 0),
+                    ("LEFT", x < 0),
+                ]
+                .iter()
+                .filter(|(_, on)| *on)
+                .map(|(part, _)| *part)
+                .collect::<String>()
+                .as_str();
+                if action.buttons == 1 {
+                    name += "FIRE";
+                }
+                assert_eq!(
+                    if name.is_empty() { "NOOP" } else { &name },
+                    names[atari as usize]
+                );
+            }
+            assert_eq!(ActionSpace::from_atari(ActionSpace::ATARI_LEN), None);
+        }
+        assert_eq!(
+            ActionSpace::from_atari(0).unwrap().direction,
+            Direction::Neutral
+        );
+        assert_eq!(
+            ActionSpace::from_atari(17).unwrap().direction,
+            Direction::DownLeft
+        );
+    }
+
+    #[test]
+    fn harness_actions_map_to_atari_unless_they_hold_a_mapped_non_shot_slot() {
+        for space in spaces() {
+            let mapped = (space.mapped_slots().iter()).fold(0, |m, &s| m | 1 << s as u8);
+            for flat in 0..ActionSpace::LEN {
+                let action = space.decode(flat).unwrap();
+                let atari = space.to_atari(action);
+                if action.buttons & mapped & !1 != 0 {
+                    assert_eq!(atari, None, "{action:?} holds a mapped bomb or aux slot");
+                    continue;
+                }
+                // Unmapped slots press nothing, so only the direction and shot come back.
+                let back = ActionSpace::from_atari(atari.unwrap()).unwrap();
+                let expected = Action {
+                    direction: action.direction,
+                    buttons: action.buttons & 1,
+                };
+                assert_eq!(back, expected);
+                assert_eq!(space.joypad(back), space.joypad(action), "same buttons");
+            }
+        }
+        // With only shot mapped, every harness action has an Atari action.
+        let shot_only = space(&[Slot::Shot]);
+        for flat in 0..ActionSpace::LEN {
+            assert!(
+                shot_only
+                    .to_atari(shot_only.decode(flat).unwrap())
+                    .is_some()
+            );
+        }
+        let extra = Action {
+            direction: Direction::Up,
+            buttons: 1 << 4,
+        };
+        assert_eq!(
+            shot_only.to_atari(extra),
+            None,
+            "a bit above the four slots"
+        );
+    }
+
+    #[test]
+    fn atari_mask_marks_the_set() {
+        let minimal = [0, 1, 3, 4, 11, 12]; // Space Invaders' minimal set.
+        let mask = ActionSpace::atari_mask(&minimal).unwrap();
+        for atari in 0..ActionSpace::ATARI_LEN {
+            assert_eq!(mask[atari as usize], minimal.contains(&atari));
+        }
+        assert_eq!(ActionSpace::atari_mask(&[]), Some([false; 18]));
+        assert_eq!(
+            ActionSpace::atari_mask(&[0, 0, 17])
+                .unwrap()
+                .map(u8::from)
+                .iter()
+                .sum::<u8>(),
+            2
+        );
+        assert_eq!(ActionSpace::atari_mask(&[2, 18]), None);
     }
 }

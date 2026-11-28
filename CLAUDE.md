@@ -16,7 +16,8 @@ Headless libretro cores behind a Python gymnasium environment, with all per-fram
   callbacks or tests that load a core.
 - [docs/games.md](docs/games.md): how to add a game, and the `game.toml` and `cores.lock`
   schemas (`gth-config`). Read before writing or changing a game config.
-- [docs/actions.md](docs/actions.md): the action space, slot convention and NitroGen mapping.
+- [docs/actions.md](docs/actions.md): the action space, slot convention, and the NitroGen and
+  Atari (ALE) mappings.
 - [docs/recording-format.md](docs/recording-format.md): recordings (`gth-record`), replay,
   desync checks and the training-shard spec.
 - [docs/training.md](docs/training.md): `gtharness.train`, sequence windows over shards with
