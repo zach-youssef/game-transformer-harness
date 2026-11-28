@@ -2,7 +2,8 @@
 //! savestate plus the joypad mask of every emulated frame, with periodic hashes and RAM
 //! values to detect desyncs. Frames aren't stored: [`Replayer`] re-runs the core to render
 //! them, which needs the same core build the recording was made with. [`export`] renders a
-//! recording into a training shard.
+//! recording into a training shard, and [`write_dataset`] writes one from an offline dataset's
+//! arrays.
 
 mod format;
 mod meta;
@@ -20,9 +21,10 @@ pub use meta::{
 pub use recorder::{Recorder, RecordingInfo};
 pub use replay::{Recording, Replayer, Stopped};
 pub use shard::{
-    FRAME_ZSTD_LEVEL, KeepAll, Playing, SHARD_VERSION, SPRITE_CHUNK_FRAMES, SampleFilter,
-    ShardMeta, ShardOptions, ShardSummary, StepInfo, Steps, chunk_name, decode_frames,
-    decode_sprites, export, filter_by_name, sprite_chunk_name,
+    DatasetMeta, DatasetSamples, FRAME_ZSTD_LEVEL, KeepAll, Playing, SHARD_VERSION,
+    SPRITE_CHUNK_FRAMES, SampleFilter, ShardMeta, ShardOptions, ShardSummary, StepInfo, Steps,
+    chunk_name, decode_frames, decode_sprites, export, filter_by_name, sprite_chunk_name,
+    write_dataset,
 };
 
 /// Everything that can go wrong writing, reading or replaying a recording. Not

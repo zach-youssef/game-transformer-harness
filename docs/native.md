@@ -13,8 +13,9 @@ Read this before adding or changing anything it exports.
 - Python code imports the exceptions from `gtharness.errors` and `Replayer` from
   `gtharness.record`, the modules that re-export them, never from `_native`. Classes and
   functions with no re-export (`Core`, `GameConfig`, `RamSearch`, `rom_dir`,
-  `user_config_path`, `export_shard`, `decode_frames`, `decode_sprites`) are used from `_native` directly, by
-  the package's own modules (`env.py`, `cli.py`, `ramsearch.py`, `shards.py`) and tests.
+  `user_config_path`, `export_shard`, `write_dataset_shard`, `decode_frames`, `decode_sprites`)
+  are used from `_native` directly, by the package's own modules (`env.py`, `cli.py`,
+  `ramsearch.py`, `shards.py`) and tests.
 - Test hooks, which let pytest drive a convention before a real binding uses it, have
   underscore names and live in `gth-py/src/testing.rs`. Only `tests/` calls them.
 - PyO3 converts a returned `Vec<u8>` to `bytes`, not a list: a getter returning a list of small
@@ -137,7 +138,13 @@ process's one core slot until `close()`.
 `gth_record::export` with the GIL released and returns the counts as a dict; the core is
 unloaded when it returns. Its arguments are the `Replayer`'s plus the output path, the
 frameskip (`None` for the recording's steps), the filter's name, the chunk size and
-`sprites`; nothing has a default. `_native.decode_frames(data, samples, height, width, path)`
+`sprites`; nothing has a default. `_native.write_dataset_shard(out_path, meta_json, frames,
+direction, buttons, ram, episode_frame, segment, chunk_samples)` writes an imported dataset's
+arrays (C-contiguous numpy arrays, read in place; `frames` is `uint8[n, height, width,
+channels]` as the meta's `obs_size` and `grayscale` say) with `gth_record::write_dataset`, GIL
+released;
+`meta_json` is `gth_record::DatasetMeta` as JSON (docs/recording-format.md, "Imported datasets").
+`_native.decode_frames(data, samples, height, width, path)`
 decodes one frame chunk and `_native.decode_sprites(data, records, path)` one sprite chunk,
 as `bytes` that `gtharness.shards` views with `SPRITE_DTYPE` (GIL released). `gtharness.shards`
 calls them: one spawned process per recording for

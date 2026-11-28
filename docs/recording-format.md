@@ -281,7 +281,7 @@ work at the emulator's rate or need the presses between observations; sample i's
 
 | Field | Meaning |
 |---|---|
-| `shard_version` | `gth_record::SHARD_VERSION` (3). Version 2 is version 3 without `maxpool`, `grayscale` and `channels` (RGB, not pooled); version 1 is version 2 without the `sprite_*` fields and members. `Shard` reads all three. |
+| `shard_version` | `gth_record::SHARD_VERSION` (4). Version 3 is version 4 without `dataset` (so without imported shards); version 2 is version 3 without `maxpool`, `grayscale` and `channels` (RGB, not pooled); version 1 is version 2 without the `sprite_*` fields and members. `Shard` reads all four. |
 | `source_id` | The recording's directory name, or the video's id. |
 | `episode_id` | The episode's index in its source: 0 for a recording, which holds one episode. |
 | `game_id`, `fps` | From the recording. |
@@ -290,7 +290,7 @@ work at the emulator's rate or need the presses between observations; sample i's
 | `maxpool` | Whether each observation is the per-channel maximum of its step's last two frames (`RetroEnv`'s `maxpool`; at a step of one frame, the other is the previous step's last). A savestate holds no frame, so at a step of one frame the first sample pools with black where the env pooled with the reset's last frame; every later sample matches. |
 | `grayscale`, `channels` | Whether observations are BT.601 gray (`RetroEnv`'s `grayscale`), and the bytes per pixel: 1 when gray, else 3. Readers size frames by `channels`; `batches` and `Windows` refuse shards of different `(height, width, channels)`. |
 | `ram_names` | The names of `ram`'s columns (the recording's `game.toml` variables, in name order). |
-| `label_source`, `idm_model` | `replay` or `idm`, and for `idm` the model's id (`null` otherwise). |
+| `label_source`, `idm_model` | `replay`, `idm` or `dataset` (imported, below, "Imported datasets"), and for `idm` the model's id (`null` otherwise). |
 | `filter` | The sample filter (below). |
 | `samples`, `frames` | Sample count, and frames replayed (the per-frame arrays' length). |
 | `chunk_samples`, `frame_chunks` | Samples per frame chunk, and chunk count. |
@@ -298,7 +298,8 @@ work at the emulator's rate or need the presses between observations; sample i's
 | `sprite_hw` | The board whose sprite lists the shard holds (the recording's `game.toml` `sprite_hw`), or `null` without sprite lists; then the other `sprite_*` fields are `null` too. |
 | `sprite_screen` | `[width, height]` of the native screen the sprite coordinates are in (the board's screen, which binding checks is the core's `base_width` and `base_height`, so a rotated core output is refused): before `crop`, `orientation` and the resize. |
 | `sprite_chunk_frames`, `sprite_chunks` | Frames per sprite chunk (`gth_record::SPRITE_CHUNK_FRAMES`, 4096; the last holds the rest), and chunk count. |
-| `recording` | The recording's `meta.toml` as JSON (license, player, core, content, the recording harness build). |
+| `recording` | The recording's `meta.toml` as JSON (license, player, core, content, the recording harness build); `null` for `idm` and `dataset` shards. |
+| `dataset` | For `dataset` shards, where in the dataset the samples come from: each importer's fields (below, "Imported datasets"); `null` otherwise. |
 | `harness` | The exporting harness build (`_native.build_info()`). |
 
 A per-slot confidence (direction and each button) may replace `confidence` if the IDM can
@@ -445,3 +446,29 @@ The test core replays at 106,000 frames/s alone, so rendering and compressing co
 125 µs per 128 x 128 sample. A real core emulates at a few thousand frames/s or less, so an
 export runs at about the core's replay speed and scales with `--jobs`. The test core's flat
 frames compress far better than a game's: expect real shards to be much larger per sample.
+
+### Imported datasets
+
+Offline datasets published by others become shards too, so the
+same `Shard`, `batches` and `Windows` read them. Their frames were rendered by the dataset's
+own pipeline, not replayed, so an importer writes the arrays it decoded through
+`gth_record::write_dataset` (`_native.write_dataset_shard`), which compresses the frame chunks
+and writes the members and `meta.json` exactly as an export does. What differs:
+
+- `label_source` is `dataset`, `recording` is `null`, and `dataset` holds the importer's own
+  fields: the dataset, the source files and the samples' place in them.
+- The observation fields (`obs_size`, `crop`, `orientation`, `interpolation`, `maxpool`,
+  `grayscale`, `frameskip`, `fps`) describe the dataset's pipeline as closely as these fields
+  can; each importer says where it differs from `RetroEnv`'s.
+- `frames` is 0 and the per-frame arrays are empty: a dataset holds one action per step,
+  not the emulator's frames. `filter` is `all`, and `confidence` is 1 (the action the agent
+  chose is known exactly).
+- `ram_names` are the dataset's per-sample values, not RAM variables: the step's reward and
+  its terminal flag (`reward`, `terminal`).
+- One shard holds one episode, or the part of one that the imported slice covers:
+  `terminated` says whether its last sample ends the episode, and `episode_id` is the
+  episode's index in the source file.
+
+`write_dataset` checks the arrays against each other and the meta (lengths, direction 0-8,
+buttons below 16, segments from 0 and never going down) and refuses with `ConfigError` before
+writing; like an export it writes `<shard>.partial` and renames it when complete.

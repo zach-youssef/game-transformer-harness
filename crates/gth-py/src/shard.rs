@@ -1,11 +1,14 @@
-//! `_native.export_shard`, `_native.decode_frames` and `_native.decode_sprites`: training
-//! shards (docs/recording-format.md, "Training shards"), written by `gth_record::export` and
+//! `_native.export_shard`, `_native.write_dataset_shard`, `_native.decode_frames` and
+//! `_native.decode_sprites`: training shards (docs/recording-format.md, "Training shards"),
+//! written by `gth_record::export` (or `gth_record::write_dataset` for imported datasets) and
 //! read back by `gtharness.shards`.
 
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
-use numpy::PyArray4;
+use numpy::{
+    PyArray4, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray4, PyUntypedArrayMethods,
+};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
@@ -97,6 +100,64 @@ fn export_shard<'py>(
     Ok(dict)
 }
 
+/// Writes an imported dataset's samples to the shard `out_path`, replacing any file there:
+/// `meta_json` is the `gth_record::DatasetMeta` (docs/recording-format.md, "Imported
+/// datasets"), the arrays are C-contiguous numpy arrays of `n` samples (`frames`
+/// `uint8[n, height, width, channels]`, `ram` `int64[n, len(ram_names)]`). Returns the
+/// write's counts. Raises `ConfigError` if the arrays don't fit the meta or each other.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn write_dataset_shard<'py>(
+    py: Python<'py>,
+    out_path: PathBuf,
+    meta_json: &str,
+    frames: PyReadonlyArray4<'py, u8>,
+    direction: PyReadonlyArray1<'py, u8>,
+    buttons: PyReadonlyArray1<'py, u8>,
+    ram: PyReadonlyArray2<'py, i64>,
+    episode_frame: PyReadonlyArray1<'py, u64>,
+    segment: PyReadonlyArray1<'py, u32>,
+    chunk_samples: u32,
+) -> errors::Result<Bound<'py, PyDict>> {
+    let chunk_samples = NonZeroU32::new(chunk_samples)
+        .ok_or_else(|| PyValueError::new_err("chunk_samples must be positive"))?;
+    let samples = gth_record::DatasetSamples {
+        frames: contiguous("frames", frames.as_slice())?,
+        direction: contiguous("direction", direction.as_slice())?,
+        buttons: contiguous("buttons", buttons.as_slice())?,
+        ram: contiguous("ram", ram.as_slice())?,
+        episode_frame: contiguous("episode_frame", episode_frame.as_slice())?,
+        segment: contiguous("segment", segment.as_slice())?,
+    };
+    let harness = gth_build_info::build_info_owned();
+    let frame_shape = [frames.shape()[1], frames.shape()[2], frames.shape()[3]];
+    let summary = py.detach(|| {
+        let meta = gth_record::DatasetMeta::from_json(meta_json, &out_path)?;
+        let channels = if meta.grayscale { 1 } else { 3 };
+        let expected = [meta.obs_size[0], meta.obs_size[1], channels];
+        if frame_shape != expected {
+            return Err(gth_record::Error::Mismatch {
+                path: out_path.clone(),
+                reason: format!(
+                    "frames are {frame_shape:?} per sample, not the meta's {expected:?}"
+                ),
+            });
+        }
+        gth_record::write_dataset(&meta, &samples, chunk_samples, &harness, &out_path)
+    })?;
+    let dict = PyDict::new(py);
+    dict.set_item("path", summary.path)?;
+    dict.set_item("samples", summary.samples)?;
+    dict.set_item("frame_chunks", summary.frame_chunks)?;
+    dict.set_item("bytes", summary.bytes)?;
+    Ok(dict)
+}
+
+/// A numpy array's data, raising `ValueError` naming the array when it isn't C-contiguous.
+fn contiguous<'a, T>(name: &str, slice: Result<&'a [T], numpy::AsSliceError>) -> PyResult<&'a [T]> {
+    slice.map_err(|_| PyValueError::new_err(format!("{name} must be C-contiguous")))
+}
+
 /// Decodes a frame chunk of the shard at `path` (named in errors) into a new
 /// `uint8[samples, height, width, channels]` array (`channels` from the shard's meta: 3 for
 /// RGB, 1 for gray). Raises `HarnessError` if the chunk is corrupt or
@@ -143,6 +204,7 @@ fn decode_sprites<'py>(
 
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(export_shard, module)?)?;
+    module.add_function(wrap_pyfunction!(write_dataset_shard, module)?)?;
     module.add_function(wrap_pyfunction!(decode_frames, module)?)?;
     module.add_function(wrap_pyfunction!(decode_sprites, module)?)?;
     Ok(())

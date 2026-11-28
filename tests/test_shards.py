@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from gtharness import _native
 from gtharness._native import GameConfig
 from gtharness.cli import main
 from gtharness.env import GAMES_DIR, RetroEnv
@@ -433,7 +434,8 @@ def test_a_pooled_gray_shard_holds_the_env_s_pooled_gray_frames(
     )
     assert gray.error is None and rgb.error is None
     with Shard(gray.shard) as shard:
-        assert shard.meta["shard_version"] == 3
+        assert shard.meta["shard_version"] == 4
+        assert shard.meta["label_source"] == "replay" and shard.meta["dataset"] is None
         assert (shard.meta["maxpool"], shard.meta["grayscale"], shard.meta["channels"]) == (
             True,
             True,
@@ -491,8 +493,8 @@ def test_an_old_shard_reads_as_rgb(
     (result,) = export_shards(
         paths, tmp_path / "shards", testcore_data, options(), jobs=1, core_path=testcore_path
     )
-    # Versions 1 and 2's meta.json: no maxpool, grayscale or channels; version 1 has no
-    # sprite fields either.
+    # Versions 1 and 2's meta.json: no dataset, maxpool, grayscale or channels; version 1 has
+    # no sprite fields either.
     old = tmp_path / "old.npz"
     with zipfile.ZipFile(result.shard) as source, zipfile.ZipFile(old, "w") as target:
         for item in source.infolist():
@@ -500,6 +502,7 @@ def test_an_old_shard_reads_as_rgb(
             if item.filename == "meta.json":
                 meta = json.loads(data)
                 meta["shard_version"] = version
+                assert meta.pop("dataset") is None
                 assert (meta.pop("maxpool"), meta.pop("grayscale"), meta.pop("channels")) == (
                     False,
                     False,
@@ -529,7 +532,7 @@ def test_a_version_1_shard_reads_without_sprites(
     (result,) = export_shards(
         paths, tmp_path / "shards", testcore_data, options(), jobs=1, core_path=testcore_path
     )
-    # Version 1's meta.json: no sprite fields.
+    # Version 1's meta.json: no sprite or dataset fields.
     old = tmp_path / "old.npz"
     with zipfile.ZipFile(result.shard) as source, zipfile.ZipFile(old, "w") as target:
         for item in source.infolist():
@@ -537,7 +540,13 @@ def test_a_version_1_shard_reads_without_sprites(
             if item.filename == "meta.json":
                 meta = json.loads(data)
                 meta["shard_version"] = 1
-                for key in ("sprite_hw", "sprite_screen", "sprite_chunk_frames", "sprite_chunks"):
+                for key in (
+                    "dataset",
+                    "sprite_hw",
+                    "sprite_screen",
+                    "sprite_chunk_frames",
+                    "sprite_chunks",
+                ):
                     assert meta.pop(key) is None
                 data = json.dumps(meta).encode()
             target.writestr(item, data)
@@ -555,3 +564,83 @@ def test_a_version_1_shard_reads_without_sprites(
             ):
                 with pytest.raises(HarnessError, match="no sprite lists"):
                     read()
+
+
+def dataset_meta(**changes) -> dict:
+    meta = {
+        "source_id": "synthetic",
+        "episode_id": 2,
+        "game_id": "atari-pong",
+        "fps": 60.0,
+        "frameskip": 4,
+        "obs_size": [84, 84],
+        "crop": None,
+        "orientation": 0,
+        "interpolation": "area",
+        "maxpool": True,
+        "grayscale": True,
+        "ram_names": ["reward", "terminal"],
+        "terminated": False,
+        "dataset": {"name": "synthetic", "first_index": 7},
+    }
+    return meta | changes
+
+
+def dataset_arrays(n: int) -> dict:
+    rng = np.random.default_rng(5)
+    return {
+        "frames": rng.integers(0, 256, (n, 84, 84, 1), dtype=np.uint8),
+        "direction": (np.arange(n) % 9).astype(np.uint8),
+        "buttons": (np.arange(n) % 2).astype(np.uint8),
+        "ram": np.stack([np.arange(n) % 3 - 1, np.zeros(n, dtype=np.int64)], axis=1),
+        "episode_frame": (4 * np.arange(n)).astype(np.uint64),
+        "segment": np.zeros(n, dtype=np.uint32),
+    }
+
+
+def test_a_dataset_shard_reads_back_as_written(tmp_path: Path):
+    arrays = dataset_arrays(50)
+    path = tmp_path / "d.npz"
+    summary = _native.write_dataset_shard(
+        path, json.dumps(dataset_meta()), **arrays, chunk_samples=16
+    )
+    assert (summary["samples"], summary["frame_chunks"]) == (50, 4)
+    with Shard(path) as shard:
+        assert len(shard) == 50 and shard.obs_shape == (84, 84, 1)
+        assert shard.meta["label_source"] == "dataset" and shard.meta["frames"] == 0
+        assert shard.meta["dataset"] == {"name": "synthetic", "first_index": 7}
+        assert shard.meta["recording"] is None
+        frames = np.concatenate([shard.frames(c) for c in range(shard.frame_chunks)])
+        np.testing.assert_array_equal(frames, arrays["frames"])
+        for name in ("direction", "buttons", "ram", "episode_frame", "segment"):
+            np.testing.assert_array_equal(shard.label(name), arrays[name])
+        assert (shard.confidence == 1).all() and len(shard.frame_direction) == 0
+    (batch,) = batches([path], 50, rng=None, buffer_chunks=4)
+    np.testing.assert_array_equal(batch["frame"], arrays["frames"])
+
+
+def test_a_dataset_shard_refuses_arrays_that_don_t_fit(tmp_path: Path):
+    path = tmp_path / "d.npz"
+    arrays = dataset_arrays(4)
+    with pytest.raises(ConfigError, match="buttons has 3 values"):
+        _native.write_dataset_shard(
+            path,
+            json.dumps(dataset_meta()),
+            **(arrays | {"buttons": arrays["buttons"][:3]}),
+            chunk_samples=2,
+        )
+    with pytest.raises(
+        ConfigError, match=r"frames are \[84, 84, 1\] per sample, not the meta's \[3, 2, 1\]"
+    ):
+        meta = dataset_meta() | {"obs_size": [3, 2]}
+        _native.write_dataset_shard(path, json.dumps(meta), **arrays, chunk_samples=2)
+    with pytest.raises(ConfigError, match="missing field `episode_id`"):
+        meta = dataset_meta()
+        del meta["episode_id"]
+        _native.write_dataset_shard(path, json.dumps(meta), **arrays, chunk_samples=2)
+    with pytest.raises(ValueError, match="direction must be C-contiguous"):
+        twice = np.repeat(arrays["direction"], 2)[::2]
+        _native.write_dataset_shard(
+            path, json.dumps(dataset_meta()), **(arrays | {"direction": twice}), chunk_samples=2
+        )
+    assert not path.exists() and not (tmp_path / "d.npz.partial").exists()

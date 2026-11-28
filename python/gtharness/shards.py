@@ -32,12 +32,13 @@ from gtharness import _native
 from gtharness.env import INTERPOLATIONS, ORIENTATIONS, core_library, find_content
 from gtharness.errors import ConfigError, HarnessError
 
-SHARD_VERSION = 3
+SHARD_VERSION = 4
 """The shard format version the harness writes (`gth_record::SHARD_VERSION`)."""
-READ_VERSIONS = (1, 2, 3)
-"""The shard versions `Shard` reads: version 2 is version 3 with RGB frames and no max-pool
-(no ``maxpool``, ``grayscale`` or ``channels`` in its meta), and version 1 is version 2
-without sprite lists."""
+READ_VERSIONS = (1, 2, 3, 4)
+"""The shard versions `Shard` reads: version 3 is version 4 without imported datasets (no
+``dataset`` in its meta), version 2 is version 3 with RGB frames and no max-pool (no
+``maxpool``, ``grayscale`` or ``channels``), and version 1 is version 2 without sprite
+lists."""
 
 SPRITE_DTYPE = np.dtype(
     [

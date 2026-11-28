@@ -32,6 +32,17 @@ def export_shard(
     chunk_samples: int,
     sprites: bool,
 ) -> dict[str, Any]: ...
+def write_dataset_shard(
+    out_path: str | os.PathLike[str],
+    meta_json: str,
+    frames: npt.NDArray[np.uint8],
+    direction: npt.NDArray[np.uint8],
+    buttons: npt.NDArray[np.uint8],
+    ram: npt.NDArray[np.int64],
+    episode_frame: npt.NDArray[np.uint64],
+    segment: npt.NDArray[np.uint32],
+    chunk_samples: int,
+) -> dict[str, Any]: ...
 def decode_frames(
     data: bytes,
     samples: int,

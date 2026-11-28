@@ -2,7 +2,9 @@
 //! replay at the model's observation size and rate. Each sample is an observation and the
 //! action the player chose after seeing it; every replayed frame's action is kept too. A shard
 //! is one `.npz` file: a zip of uncompressed members that numpy's `np.load` opens, holding
-//! the labels as `.npy` arrays, the frames as zstd chunks and `meta.json`.
+//! the labels as `.npy` arrays, the frames as zstd chunks and `meta.json`. [`write_dataset`]
+//! writes the same format from an offline dataset's arrays (docs/recording-format.md,
+//! "Imported datasets").
 
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -21,7 +23,7 @@ use crate::replay::Replayer;
 use crate::{Error, Result, format_error, io_error};
 
 /// The shard format version this build writes (`meta.json`'s `shard_version`).
-pub const SHARD_VERSION: u32 = 3;
+pub const SHARD_VERSION: u32 = 4;
 
 /// zstd level of the frame chunks. Frames are written once per export and read every epoch,
 /// so decompression speed (the same at every level) matters most; level 3 keeps compression
@@ -186,7 +188,8 @@ pub struct ShardMeta {
     pub channels: u32,
     /// The names of `ram.npy`'s columns.
     pub ram_names: Vec<String>,
-    /// `replay` (from a recording) or `idm` (labelled by an inverse dynamics model).
+    /// `replay` (from a recording), `idm` (labelled by an inverse dynamics model) or `dataset`
+    /// (imported from an offline dataset, [`write_dataset`]).
     pub label_source: String,
     /// The IDM's id for `idm` labels.
     pub idm_model: Option<String>,
@@ -214,8 +217,13 @@ pub struct ShardMeta {
     pub sprite_chunk_frames: Option<u32>,
     #[serde(default)]
     pub sprite_chunks: Option<u32>,
-    /// The recording's `meta.toml`; for `idm` shards, `None`.
+    /// The recording's `meta.toml`; for `idm` and `dataset` shards, `None`.
     pub recording: Option<Meta>,
+    /// For `dataset` shards, where in the dataset the samples come from (each importer's
+    /// fields, docs/recording-format.md, "Imported datasets"); `None` otherwise and before
+    /// version 4.
+    #[serde(default)]
+    pub dataset: Option<serde_json::Map<String, serde_json::Value>>,
     /// The exporting harness build.
     pub harness: BTreeMap<String, String>,
 }
@@ -489,6 +497,7 @@ fn write_shard(
         sprite_chunk_frames: sprites.as_ref().map(|_| SPRITE_CHUNK_FRAMES),
         sprite_chunks: sprites.as_ref().map(|s| s.chunks),
         recording: Some(recording.meta.clone()),
+        dataset: None,
         harness: options.harness.clone(),
     };
     let json = serde_json::to_vec_pretty(&meta).expect("ShardMeta serializes");
@@ -517,6 +526,230 @@ fn mismatch(replayer: &Replayer, reason: String) -> Error {
         path: replayer.recording().dir.clone(),
         reason,
     }
+}
+
+/// What an imported shard's `meta.json` says that its arrays don't: the source, the
+/// observation pipeline that made the dataset's frames, and the dataset's own fields. Parsed
+/// from JSON ([`DatasetMeta::from_json`]); every field is required.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DatasetMeta {
+    pub source_id: String,
+    pub episode_id: u32,
+    pub game_id: String,
+    pub fps: f64,
+    pub frameskip: Option<u32>,
+    pub obs_size: [usize; 2],
+    pub crop: Option<[usize; 4]>,
+    pub orientation: u32,
+    pub interpolation: String,
+    pub maxpool: bool,
+    pub grayscale: bool,
+    pub ram_names: Vec<String>,
+    /// Whether the last sample's step ends the episode (the dataset's terminal flag).
+    pub terminated: bool,
+    pub dataset: serde_json::Map<String, serde_json::Value>,
+}
+
+impl DatasetMeta {
+    /// Parses `json`, failing with [`Error::Mismatch`] (naming `path`, the shard it is for)
+    /// on a missing, unknown or mistyped field.
+    pub fn from_json(json: &str, path: &Path) -> Result<DatasetMeta> {
+        serde_json::from_str(json).map_err(|error| Error::Mismatch {
+            path: path.to_owned(),
+            reason: format!("dataset shard meta: {error}"),
+        })
+    }
+}
+
+/// An imported shard's per-sample arrays, `n` samples long (`ram` is `n * ram_names.len()`,
+/// row-major; `frames` is `n * height * width * channels`).
+#[derive(Debug, Clone, Copy)]
+pub struct DatasetSamples<'a> {
+    pub frames: &'a [u8],
+    pub direction: &'a [u8],
+    pub buttons: &'a [u8],
+    pub ram: &'a [i64],
+    pub episode_frame: &'a [u64],
+    pub segment: &'a [u32],
+}
+
+/// Writes a shard of an offline dataset's samples to `out` (docs/recording-format.md,
+/// "Imported datasets"), through `out` with `.partial` appended as [`export`] does: frames in
+/// zstd chunks of `chunk_samples`, `label_source = "dataset"`, confidence 1, no per-frame
+/// arrays (`frames` is 0: a dataset holds no emulated frames) and no sprite lists. Fails with
+/// [`Error::Mismatch`] if the arrays don't fit `meta` or each other, or a label is out of
+/// range.
+pub fn write_dataset(
+    meta: &DatasetMeta,
+    samples: &DatasetSamples<'_>,
+    chunk_samples: NonZeroU32,
+    harness: &BTreeMap<String, String>,
+    out: &Path,
+) -> Result<ShardSummary> {
+    let n = samples.direction.len();
+    let bad = |reason: String| Error::Mismatch {
+        path: out.to_owned(),
+        reason,
+    };
+    let channels = if meta.grayscale {
+        Color::Gray
+    } else {
+        Color::Rgb
+    }
+    .channels();
+    let [height, width] = meta.obs_size;
+    let frame_len = height
+        .checked_mul(width)
+        .and_then(|len| len.checked_mul(channels))
+        .filter(|&len| len > 0)
+        .ok_or_else(|| bad(format!("observation size {height}x{width}")))?;
+    if samples.frames.len() != n.saturating_mul(frame_len) {
+        return Err(bad(format!(
+            "{} frame bytes for {n} samples of {height}x{width}x{channels}",
+            samples.frames.len()
+        )));
+    }
+    let columns = meta.ram_names.len();
+    for (name, len, expected) in [
+        ("buttons", samples.buttons.len(), n),
+        ("ram", samples.ram.len(), n.saturating_mul(columns)),
+        ("episode_frame", samples.episode_frame.len(), n),
+        ("segment", samples.segment.len(), n),
+    ] {
+        if len != expected {
+            return Err(bad(format!("{name} has {len} values for {n} samples")));
+        }
+    }
+    if let Some(i) = samples
+        .direction
+        .iter()
+        .position(|&d| u32::from(d) >= Direction::COUNT)
+    {
+        return Err(bad(format!(
+            "sample {i}'s direction {} isn't below {}",
+            samples.direction[i],
+            Direction::COUNT
+        )));
+    }
+    if let Some(i) = samples
+        .buttons
+        .iter()
+        .position(|&b| u32::from(b) >= 1 << ActionSpace::N_BUTTONS)
+    {
+        return Err(bad(format!(
+            "sample {i}'s buttons {} hold more than {} slots",
+            samples.buttons[i],
+            ActionSpace::N_BUTTONS
+        )));
+    }
+    if samples.segment.first().is_some_and(|&s| s != 0)
+        || samples.segment.windows(2).any(|pair| pair[1] < pair[0])
+    {
+        return Err(bad("segments must start at 0 and never go down".into()));
+    }
+    if !matches!(meta.interpolation.as_str(), "area" | "bilinear" | "bicubic") {
+        return Err(bad(format!("interpolation {:?}", meta.interpolation)));
+    }
+    if !matches!(meta.orientation, 0 | 90 | 270) {
+        return Err(bad(format!("orientation {}", meta.orientation)));
+    }
+    let mut partial = out.as_os_str().to_owned();
+    partial.push(".partial");
+    let partial = PathBuf::from(partial);
+    let result = write_dataset_shard(meta, samples, chunk_samples, harness, frame_len, &partial)
+        .and_then(|summary| {
+            std::fs::rename(&partial, out).map_err(io_error(out))?;
+            Ok(ShardSummary {
+                path: out.to_owned(),
+                ..summary
+            })
+        });
+    if result.is_err() {
+        let _ = std::fs::remove_file(&partial);
+    }
+    result
+}
+
+fn write_dataset_shard(
+    meta: &DatasetMeta,
+    samples: &DatasetSamples<'_>,
+    chunk_samples: NonZeroU32,
+    harness: &BTreeMap<String, String>,
+    frame_len: usize,
+    path: &Path,
+) -> Result<ShardSummary> {
+    let io = |source: io::Error| io_error(path)(source);
+    let file = File::create(path).map_err(io_error(path))?;
+    let mut zip = ZipArchiveWriter::new(BufWriter::new(file));
+    let mut compressor = zstd::bulk::Compressor::new(FRAME_ZSTD_LEVEL).map_err(io_error(path))?;
+    let chunk_len = frame_len.saturating_mul(chunk_samples.get() as usize);
+    let mut frame_chunks = 0u32;
+    for chunk in samples.frames.chunks(chunk_len) {
+        let compressed = compressor.compress(chunk).map_err(io)?;
+        write_member(&mut zip, &chunk_name(frame_chunks), &compressed).map_err(io)?;
+        frame_chunks += 1;
+    }
+    let n = samples.direction.len();
+    let labels = Labels {
+        direction: samples.direction.to_vec(),
+        buttons: samples.buttons.to_vec(),
+        ram: samples.ram.to_vec(),
+        episode_frame: samples.episode_frame.to_vec(),
+        segment: samples.segment.to_vec(),
+        ..Labels::default()
+    };
+    labels.write(&mut zip, meta.ram_names.len()).map_err(io)?;
+    let shard_meta = ShardMeta {
+        shard_version: SHARD_VERSION,
+        source_id: meta.source_id.clone(),
+        episode_id: meta.episode_id,
+        game_id: meta.game_id.clone(),
+        fps: meta.fps,
+        frameskip: meta.frameskip,
+        obs_size: meta.obs_size,
+        crop: meta.crop,
+        orientation: meta.orientation,
+        interpolation: meta.interpolation.clone(),
+        maxpool: meta.maxpool,
+        grayscale: meta.grayscale,
+        channels: if meta.grayscale { 1 } else { 3 },
+        ram_names: meta.ram_names.clone(),
+        label_source: "dataset".into(),
+        idm_model: None,
+        filter: KeepAll.name().into(),
+        samples: n as u64,
+        frames: 0,
+        chunk_samples: chunk_samples.get(),
+        frame_chunks,
+        terminated: n > 0 && meta.terminated,
+        sprite_hw: None,
+        sprite_screen: None,
+        sprite_chunk_frames: None,
+        sprite_chunks: None,
+        recording: None,
+        dataset: Some(meta.dataset.clone()),
+        harness: harness.clone(),
+    };
+    let json = serde_json::to_vec_pretty(&shard_meta).expect("ShardMeta serializes");
+    write_member(&mut zip, "meta.json", &json).map_err(io)?;
+    let file = zip
+        .finish()
+        .map_err(io::Error::other)
+        .and_then(|writer| writer.into_inner().map_err(io::IntoInnerError::into_error))
+        .map_err(io)?;
+    file.sync_all().map_err(io)?;
+    let bytes = file.metadata().map_err(io)?.len();
+    Ok(ShardSummary {
+        path: path.to_owned(),
+        samples: n as u64,
+        frames: 0,
+        unlabelled: 0,
+        filtered: 0,
+        frame_chunks,
+        sprites: 0,
+        bytes,
+    })
 }
 
 /// An observation rendered into the chunk, waiting for the frame after it.
