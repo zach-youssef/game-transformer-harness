@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import importlib
-import inspect
 import json
 import multiprocessing
 import multiprocessing.connection
@@ -47,7 +46,6 @@ __all__ = [
     "Recording",
     "check_protocol",
     "check_results",
-    "env_options",
     "evaluate",
     "make_policy",
 ]
@@ -59,10 +57,6 @@ RESULTS_FORMAT = 1
 
 SUPPORTED_ACTION_SETS = ("harness",)
 """The protocol action sets the runner can play: Atari's need the Atari action map (C13)."""
-
-_OFF = {"maxpool": False, "grayscale": False}
-"""Observation options the env may not have yet, and the value that means "not used": a
-protocol asking for another value needs an env whose `RetroEnv.from_game` takes the option."""
 
 EPISODE_FIELDS = (
     "game",
@@ -124,29 +118,6 @@ def make_policy(spec: str, kwargs: Mapping[str, Any], policy_seed: int) -> Polic
         raise ConfigError(f"{spec}: {error}") from error
 
 
-def env_options(
-    protocol: EvalProtocol, parameters: Mapping[str, inspect.Parameter] | None = None
-) -> dict[str, Any]:
-    """The `RetroEnv.from_game` arguments for the protocol's observation options the env
-    may lack (`maxpool`, `grayscale`): passed when ``parameters`` (default:
-    `RetroEnv.from_game`'s) has them; when it doesn't, a protocol that leaves an option off
-    runs without it and one that turns it on raises ConfigError."""
-    if parameters is None:
-        parameters = inspect.signature(RetroEnv.from_game).parameters
-    wanted = {"maxpool": protocol.maxpool, "grayscale": protocol.obs.grayscale}
-    options = {}
-    for name, value in wanted.items():
-        if name in parameters:
-            options[name] = value
-        elif value != _OFF[name]:
-            field = "obs.grayscale" if name == "grayscale" else name
-            raise ConfigError(
-                f"the protocol's {field} = {json.dumps(value)} needs an env with that option,"
-                f" and this harness's RetroEnv.from_game has no {name} parameter yet"
-            )
-    return options
-
-
 def check_protocol(
     protocol: EvalProtocol,
     data_dir: str | os.PathLike[str],
@@ -158,7 +129,6 @@ def check_protocol(
     """The checks of a protocol that need the games and the env (docs/evaluation.md, "Checks
     before a run"); returns each game's core and content SHA-1. Raises ConfigError naming
     the game and what fails."""
-    env_options(protocol)
     if protocol.action_set not in SUPPORTED_ACTION_SETS:
         raise ConfigError(
             f"action_set {protocol.action_set!r}: the runner plays only"
@@ -468,8 +438,9 @@ def _play(task: dict[str, Any]) -> dict[str, Any]:
         core_path=task["core_path"],
         games_dir=games_dir,
         interpolation=protocol.obs.interpolation,
+        maxpool=protocol.maxpool,
+        grayscale=protocol.obs.grayscale,
         record=record,
-        **env_options(protocol),
     )
     config = env.config
     # info["episode_frame"] counts the reset script's frames, which the cap doesn't.

@@ -4,7 +4,6 @@ documented schema and its recordings replay; a run the env or the policy can't h
 refused before anything is written."""
 
 import dataclasses
-import inspect
 import json
 import sys
 import time
@@ -23,7 +22,6 @@ from gtharness.evaluate import (
     Recording,
     check_protocol,
     check_results,
-    env_options,
     evaluate,
 )
 from gtharness.protocol import loads
@@ -223,6 +221,18 @@ class Chunks:
 
     def act(self, obs):
         assert obs.shape == (3, 12, 10, 3) and obs.dtype == np.uint8
+        return np.array([1 * 16 + 1, 1, 0][: self.chunk], dtype=np.int64)
+
+class Gray(Chunks):
+    """Chunks on max-pooled gray observations: one channel."""
+
+    obs_requirements = ObsRequirements(
+        size=(12, 10), grayscale=True, maxpool=True, frame_stack=3, frameskip=2,
+        action_set="harness",
+    )
+
+    def act(self, obs):
+        assert obs.shape == (3, 12, 10, 1) and obs.dtype == np.uint8
         return np.array([1 * 16 + 1, 1, 0][: self.chunk], dtype=np.int64)
 
 class Wrong:
@@ -426,24 +436,51 @@ def test_the_games_own_crop_and_orientation_may_be_spelled_out(
     assert list(games) == ["testcore"]
 
 
-def test_obs_options_follow_the_env_signature():
-    # Without the parameters (the env before maxpool and grayscale), off runs and on is
-    # refused; with them, both are passed. So the env gaining them needs no runner change.
-    without = {}
-    params = {
-        name: inspect.Parameter(name, inspect.Parameter.KEYWORD_ONLY)
-        for name in ("maxpool", "grayscale")
-    }
-    assert env_options(protocol(), without) == {}
-    with pytest.raises(ConfigError, match=r"obs.grayscale = true needs an env"):
-        env_options(protocol(grayscale=True), without)
-    with pytest.raises(ConfigError, match=r"maxpool = true needs an env"):
-        env_options(protocol(maxpool=True), without)
-    assert env_options(protocol(grayscale=True, maxpool=True), params) == {
-        "maxpool": True,
-        "grayscale": True,
-    }
-    assert env_options(protocol(), params) == {"maxpool": False, "grayscale": False}
+def test_a_maxpooled_gray_protocol_runs_and_replays(
+    testcore_path: Path, testcore_data: Path, tmp_path: Path, policy_module: str
+):
+    text = PROTOCOL.replace("maxpool = false", "maxpool = true")
+    text = text.replace("grayscale = false", "grayscale = true")
+    assert loads(text).maxpool and loads(text).obs.grayscale
+    out = tmp_path / "out"
+    status = main(
+        [
+            "evaluate",
+            str(testcore_data),
+            "--protocol",
+            str(write_protocol(tmp_path, text)),
+            "--policy",
+            f"{policy_module}:Gray",
+            "--out",
+            str(out),
+            "--record",
+            "--license",
+            "CC0-1.0",
+            "--checks-every",
+            "8",
+            "--jobs",
+            "2",
+            "--core-path",
+            str(testcore_path),
+        ]
+    )
+    assert status == 0  # Gray.act asserts its observations are one channel
+    results = check_results(out)
+    assert results["protocol"] == loads(text)
+    assert results["run"]["policy_calls"] > 0 and len(results["episodes"]) == 8
+    # The RGB policy refuses the gray protocol before anything runs.
+    with pytest.raises(ConfigError, match="grayscale"):
+        evaluate(
+            loads(text),
+            f"{policy_module}:Chunks",
+            tmp_path / "refused",
+            testcore_data,
+            policy_kwargs={},
+            record=None,
+            jobs=1,
+            core_path=testcore_path,
+        )
+    assert not (tmp_path / "refused").exists()
 
 
 def test_results_are_never_overwritten(testcore_path: Path, testcore_data: Path, tmp_path: Path):

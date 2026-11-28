@@ -181,11 +181,9 @@ A policy with weights loads them once per pair of seeds.
 Nothing is written, and no episode starts, until all of these pass (`ConfigError` naming the
 field or game otherwise):
 
-- The env supports every setting. `maxpool` and `obs.grayscale` are passed to
-  `RetroEnv.from_game` when its signature has those parameters; until it does, `false` runs
-  and `true` is refused (so an env that adds them needs no runner change). `action_set` must
-  be `harness` (Atari's sets need the Atari action map), `start.reset` must be `"game"`, and
-  an explicit `obs.crop` or `obs.orientation` must equal the game config's, since the env
+- The env supports every setting (`maxpool` and `obs.grayscale` go to `RetroEnv.from_game`
+  as they are). `action_set` must be `harness` (Atari's sets need the Atari action map),
+  `start.reset` must be `"game"`, and an explicit `obs.crop` or `obs.orientation` must equal the game config's, since the env
   uses the game's.
 - `start.noop_max + frameskip < max_episode_frames`: the env's rule, so the reset (no-ops and
   the first observation's frames) leaves an episode at least one step. It is stricter than
